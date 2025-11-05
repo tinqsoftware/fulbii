@@ -5,14 +5,21 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-use Illuminate\Support\Facades\Crypt;
-
 class Posicion extends Model
 {
     use HasFactory;
+
     protected $connection = 'mysql';
-    protected $table= 'posicion';
-    protected $fillable = [
-        'id',
-    ];
+    protected $table = 'posicion';
+    protected $guarded = ['id'];
+
+    public function formacion()
+    {
+        return $this->belongsTo(Formacion::class, 'id_formacion');
+    }
+
+    public function pichangas()
+    {
+        return $this->hasMany(Pichanga::class, 'id_posicion');
+    }
 }
