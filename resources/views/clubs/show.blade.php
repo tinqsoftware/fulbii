@@ -91,19 +91,18 @@
              data-defensa="{{ $p->defensa_prom ?? '' }}"
              data-avg="{{ $avg ? number_format($avg,1) : '—' }}"
         >
-          <div class="card-body d-flex align-items-center">
-            <div class="flex-fill">
+          <div class="card-body d-flex align-items-center p-2">
+            <div class="flex-fill" >
               <div class="avatar me-3">{{ $ini }}</div>
               <div class="fw-600" style="font-size:11px">{{ '@'.$nick }}</div>
             </div>
             <div class="flex-fill">
               
-              <div class="fw-700" style="line-height: 1.2;">{{ $u->name }}</div>
-              <div class="text-muted" style="font-size:11px"><span class="text-success">{{ $pos }}</span></div>
-              <div style="font-size:11px">Promedio: <b>{{ $avg ? number_format($avg,1) : '—' }}</b></div>
+              <div class="fw-600" style="line-height: 1.2; font-size:14px;">{{ $u->name }}</div>
+              <div class="text-muted" style="font-size:11px;"><span class="text-success fw-600" style="font-size:12px; color: #23b05f !important;">{{ $pos }}</span></div>
+              <div style="font-size:11px">Promedio: <span class="badge badge-pill badge-success" style=" font-size: 16px;"> <b>{{ $avg ? number_format($avg,1) : '—' }}</b></span></div>
               <div style="font-size:11px">Votos: <b>{{ $p->votos ?? 0 }}</b></div>
             </div>
-            <i class="ti-angle-right text-muted"></i>
           </div>
         </div>
       </div>
@@ -228,12 +227,13 @@
             <div class="p-3 border rounded row">
               <div id="jug-name" class="fw-600 mb-2">—</div>
               <div class="text-muted col-5" style="font-size:14px">Posición sugerida</div>
-              <div id="jug-pos" class="fw-600 text-success mb-2 col-7">—</div>
+              <div id="jug-pos" class="fw-600 text-success mb-2 col-7" style="font-size:19px; color: #23b05f !important;">—</div>
               <div class="text-muted col-5" style="font-size:14px">Votos</div>
               <div id="jug-votos" class="mb-2 col-7">0</div>
               <div class="text-muted col-5" style="font-size:14px">Promedio total</div>
-              <div id="jug-avg" class="fw-800 col-7">—</div>
+              <div class="fw-800 col-7"><span class="badge badge-pill badge-success" style=" font-size: 16px;"> <b id="jug-avg">-</b></span></div>
               <hr>
+
               <div class="metric">
                 <div class="d-flex justify-content-between small"><span>Físico</span><span id="jug-f-val">0.0</span></div>
                 <div class="meter"><div id="jug-f-bar" class="fill"></div></div>
