@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Models\{Calificacion, VwClubJugadorPromediosTodo};
+use App\Models\{Calificacion, VwClubJugadorPromediosTodo,VwClubJugadorPromediosPublicos};
 
 class MiPerfilController extends Controller
 {
@@ -15,6 +15,7 @@ class MiPerfilController extends Controller
 
         // Promedios por club (vista "todo")
         $promedios = VwClubJugadorPromediosTodo::where('user_id', $u->id)->get();
+        $promedios_p = VwClubJugadorPromediosPublicos::where('user_id',$u->id)->first();
 
         // Calificaciones separadas: públicas (no ocultas) y ocultas (solo visibles para el calificado)
         $recibidasPublicas = Calificacion::where('user_calificado_id', $u->id)
@@ -69,7 +70,7 @@ class MiPerfilController extends Controller
 
         $global['promedio'] = count($vals) ? array_sum($vals) / count($vals) : null;
 
-        return view('perfil.show', compact('u','promedios','recibidasPublicas','ocultas','clubs','global','miAuto'));
+        return view('perfil.show', compact('u','promedios','promedios_p','recibidasPublicas','ocultas','clubs','global','miAuto'));
     }
 
     public function update(Request $r)

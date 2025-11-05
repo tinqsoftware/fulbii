@@ -81,9 +81,13 @@
   </div>
 
   {{-- Promedios en barras (global) --}}
+  @php
+    $pos = $promedios_p->posicion_sugerida ?? '—';
+  @endphp
+
   <div class="card shadow-sm mb-3">
     <div class="card-body">
-      <h5 class="fw-700 mb-2">Mi promedio global</h5>
+      <h5 class="fw-600 mb-2">Mi promedio global - <span class="fw-800">{{ $pos }}</span></h5>
       <div class="text-muted small mb-2">Basado en {{ $global['votos'] ?? 0 }} votos.</div>
 
       @php
