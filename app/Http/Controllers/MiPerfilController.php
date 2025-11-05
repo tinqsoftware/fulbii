@@ -133,12 +133,18 @@ class MiPerfilController extends Controller
         return back()->with('ok', $wasNew ? 'Autocalificación registrada' : 'Autocalificación actualizada');
     }
 
+
     public function nickavailable(Request $request)
     {
         $raw  = (string) $request->query('nick', '');
-        // Normaliza: quita espacios, quita '@' iniciales y valida 3–20 [a-z0-9_-] (case-insensitive)
-        $nick = preg_replace('/\s+/', '', ltrim(trim($raw), '@'));
-        $valid = (bool) preg_match('/^[a-z0-9_-]{3,20}$/i', $nick);
+
+        // Normaliza: recorta, quita '@' inicial y elimina espacios visibles/ocultos
+        $nick = ltrim(trim($raw), '@');
+        // Elimina espacios comunes y zero‑width: NBSP, ZWSP, ZWNJ, ZWJ, WJ, BOM
+        $nick = preg_replace('/[\s\x{00A0}\x{200B}\x{200C}\x{200D}\x{2060}\x{FEFF}]+/u', '', $nick);
+
+        // Permite únicamente ASCII [A‑Z a‑z 0‑9 _ -], longitud 3–20
+        $valid = (bool) preg_match('/^[A-Za-z0-9_-]{3,20}$/', $nick);
 
         if (!$valid) {
             return response()->json([
@@ -149,7 +155,6 @@ class MiPerfilController extends Controller
         }
 
         $exists = \App\Models\User::where('nick', $nick)->exists();
-        dd($exists);
 
         return response()->json([
             'valid'     => true,
