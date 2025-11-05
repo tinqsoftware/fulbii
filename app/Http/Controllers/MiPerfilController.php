@@ -144,7 +144,7 @@ class MiPerfilController extends Controller
         $nick = preg_replace('/[\s\x{00A0}\x{200B}\x{200C}\x{200D}\x{2060}\x{FEFF}]+/u', '', $nick);
 
         // Permite únicamente ASCII [A‑Z a‑z 0‑9 _ -], longitud 3–20
-        $valid = (bool) preg_match('/^[A-Za-z0-9_-]{3,20}$/', $nick);
+        $valid = $nick;
 
         if (!$valid) {
             return response()->json([
