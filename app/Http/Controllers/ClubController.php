@@ -122,9 +122,28 @@ class ClubController extends Controller
         $isMember = $this->isMember($club);
         $miRol    = $this->miRol($club);
 
-        $promedios = VwClubJugadorPromediosPublicos::where('club_id',$club->id)->get();
-        $miembros  = ClubUser::with('user')->where('club_id',$club->id)->orderByDesc('rol')->get();
+        // Promedios del club (para la vista)
+        $promedios = VwClubJugadorPromediosPublicos::where('club_id', $club->id)->get();
 
+        // Miembros ordenados por promedio total (desc), nulos al final
+        $miembros = ClubUser::query()
+            ->with('user')
+            ->where('club_users.club_id', $club->id)
+            ->leftJoin('vw_club_jugador_promedios_publicos as v', function($j) use ($club) {
+                $j->on('v.user_id', '=', 'club_users.user_id')
+                ->where('v.club_id', '=', $club->id);
+            })
+            ->select('club_users.*')
+            ->selectRaw("
+            (
+                (COALESCE(v.fisico_prom,0)+COALESCE(v.arquero_prom,0)+COALESCE(v.delantero_prom,0)+COALESCE(v.mediocampo_prom,0)+COALESCE(v.defensa_prom,0))
+                / NULLIF(
+                    (v.fisico_prom IS NOT NULL)+(v.arquero_prom IS NOT NULL)+(v.delantero_prom IS NOT NULL)+(v.mediocampo_prom IS NOT NULL)+(v.defensa_prom IS NOT NULL)
+                ,0)
+            ) as promedio_total
+            ")
+            ->orderByRaw("promedio_total IS NULL, promedio_total DESC")
+            ->get();
         return view('clubs.show', compact('club','promedios','miembros','isSuper','isAdmin','isMember','miRol'));
     }
 
