@@ -95,12 +95,12 @@
             <div class="flex-fill" >
               <div class="avatar me-3">{{ $ini }}</div>
               <div class="fw-600" style="font-size:11px">{{ '@'.$nick }}</div>
+              <span class="badge badge-pill badge-success" style=" font-size: 16px;"> <b>{{ $avg ? number_format($avg,1) : '—' }}</b>
             </div>
             <div class="flex-fill">
               
               <div class="fw-600" style="line-height: 1.2; font-size:14px;">{{ $u->name }}</div>
-              <div class="text-muted" style="font-size:11px;"><span class="text-success fw-600" style="font-size:12px; color: #23b05f !important;">{{ $pos }}</span></div>
-              <div style="font-size:11px">Promedio: <span class="badge badge-pill badge-success" style=" font-size: 16px;"> <b>{{ $avg ? number_format($avg,1) : '—' }}</b></span></div>
+              <div class="text-muted" style="font-size:11px;"><span class="text-success fw-600" style="font-size:14px; color: #23b05f !important;">{{ $pos }}</span></div>
               <div style="font-size:11px">Votos: <b>{{ $p->votos ?? 0 }}</b></div>
             </div>
           </div>
