@@ -2,47 +2,37 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use Auth;
-use Http;
-use Session;
-use DB;
-use DatePeriod;
-use DateTime;
-use DateInterval;
-use PDF;
-
-//modelos
-use App\Models\Cancha;
-use App\Models\Distritos;
-use App\Models\Equipos;
-use App\Models\Evento;
-use App\Models\EventoUsuarios;
-use App\Models\Formacion;
-use App\Models\Goles;
-use App\Models\HistorialCalificacion;
-use App\Models\HorarioAtencion;
-use App\Models\Pais;
-use App\Models\Perfil;
-use App\Models\Pichanga;
 use App\Models\Polideportivo;
-use App\Models\Posicion;
-use App\Models\Provincia;
-use App\Models\Region;
-use App\Models\ServicioPolideportivo;
-use App\Models\ServicioPolideportivoDetalle;
-use App\Models\UserPerfil;
-use App\Models\User;
-
 
 class Mapa extends Controller
 {
+    public function mapa()
+    {
+        $polideportivo = Polideportivo::select('id','nombre','x','y','descripcion','precio_desde','url_foto')->get();
 
-    public function mapa(){
-        $polideportivo = Polideportivo::all();
+        $fields = $polideportivo->map(function($p){
+            return [
+                'id'    => $p->id,
+                'name'  => $p->nombre,
+                'x'     => (float) $p->x,
+                'y'     => (float) $p->y,
+                'description' => $p->descripcion,
+                'price' => (int) ($p->precio_desde ?? 0),
+                'photo' => $p->url_foto,
+            ];
+        })->values();
 
-        return view('mapa.mapa', compact('polideportivo'));
+        $cards = $polideportivo->take(6)->map(function($p){
+            return [
+                'sub'      => 'Pichanga',
+                'title'    => $p->nombre,
+                'zona'     => $p->descripcion ? mb_strimwidth($p->descripcion,0,28,'…') : '',
+                'modalidad'=> '6vs6',
+                'hora'     => '9pm',
+                'dur'      => '1 hora',
+            ];
+        })->values();
+
+        return view('home', compact('fields','cards'));
     }
-
-   
 }
