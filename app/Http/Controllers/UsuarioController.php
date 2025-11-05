@@ -54,6 +54,7 @@ class UsuarioController extends Controller
         abort_unless(auth()->check(), 401); // solo logueados (la UI solo la ven admin/super)
 
         $q = trim((string) $request->get('q', ''));
+        dd($q);
         if ($q === '') {
             return response()->json([]);
         }
