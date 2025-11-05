@@ -14,13 +14,25 @@ Route::get('/mapa', fn() => redirect()->route('home'))->name('mapa');
 Auth::routes();
 
 Route::get('/nick/available', function(Request $request){
-  $nick = trim((string)$request->query('nick',''));
-  // Normalizamos: solo letras, números, guiones y guion_bajo
-  if($nick === '' || !preg_match('/^[A-Za-z0-9_\\-]{3,20}$/', $nick)){
-    return response()->json(['valid'=>false,'available'=>false,'message'=>'Usa 3–20 caracteres (letras, números, - o _)']);
+  $raw  = (string) $request->query('nick', '');
+  // Normaliza: quita espacios, quita '@' iniciales y valida 3–20 [a-z0-9_-] (case-insensitive)
+  $nick = preg_replace('/\s+/', '', ltrim(trim($raw), '@'));
+  $valid = (bool) preg_match('/^[a-z0-9_-]{3,20}$/i', $nick);
+
+  if (!$valid) {
+      return response()->json([
+          'valid'     => false,
+          'available' => false,
+          'message'   => 'Usa 3–20 caracteres (letras, números, - o _).'
+      ]);
   }
-  $exists = User::where('nick', $nick)->exists();
-  return response()->json(['valid'=>true,'available'=>!$exists]);
+
+  $exists = \App\Models\User::where('nick', $nick)->exists();
+
+  return response()->json([
+      'valid'     => true,
+      'available' => !$exists
+  ]);
 })->name('nick.available');
 
 Route::get('/mi-perfil', [MiPerfilController::class, 'show'])->name('mi-perfil.show');

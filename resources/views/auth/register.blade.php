@@ -149,7 +149,10 @@
   }
 
   async function checkNick(){
-    const raw = nickI.value.trim();
+    let raw = nickI.value.trim();
+    // Quita '@' si el usuario lo escribe y elimina espacios internos
+    raw = raw.replace(/^@+/, '').replace(/\s+/g, '');
+    nickI.value = raw;
     if(raw.length < 3){ setNickState('bad','Mín. 3 caracteres'); return; }
     try{
       const res = await fetch(NICK_URL + '?nick=' + encodeURIComponent(raw), { headers:{ 'X-Requested-With':'XMLHttpRequest' }});
