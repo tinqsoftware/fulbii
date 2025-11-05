@@ -12,7 +12,7 @@
     <aside class="auth-hero d-none d-lg-flex order-lg-1">
       <div class="hero-copy">
         <h2 class="hero-title">
-          Inicia sesión y arma tu <span>pichanga</span> con estilo
+          Ingresa para una <span>pichanga</span> con estilo
         </h2>
         <p class="hero-sub">Explora clubes, califica jugadores y organiza partidos.</p>
 
