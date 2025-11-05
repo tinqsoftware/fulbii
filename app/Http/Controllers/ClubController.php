@@ -128,12 +128,12 @@ class ClubController extends Controller
         // Miembros ordenados por promedio total (desc), nulos al final
         $miembros = ClubUser::query()
             ->with('user')
-            ->where('club_users.club_id', $club->id)
+            ->where('club_user.club_id', $club->id)
             ->leftJoin('vw_club_jugador_promedios_publicos as v', function($j) use ($club) {
-                $j->on('v.user_id', '=', 'club_users.user_id')
+                $j->on('v.user_id', '=', 'club_user.user_id')
                 ->where('v.club_id', '=', $club->id);
             })
-            ->select('club_users.*')
+            ->select('club_user.*')
             ->selectRaw("
             (
                 (COALESCE(v.fisico_prom,0)+COALESCE(v.arquero_prom,0)+COALESCE(v.delantero_prom,0)+COALESCE(v.mediocampo_prom,0)+COALESCE(v.defensa_prom,0))
