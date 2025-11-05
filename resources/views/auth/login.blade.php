@@ -57,7 +57,6 @@
           <!-- Marca + frases (visible en móvil) -->
           <div class="hero-copy-mobile d-lg-none mb-1">
             <h2 class="hero-title">Inicia sesión y arma tu <span>pichanga</span> con estilo</h2>
-            <p class="hero-sub">Explora clubes, califica jugadores y organiza partidos ⚽.</p>
           </div>
 
           <form method="POST" action="{{ route('login') }}" autocomplete="on" novalidate>
@@ -237,7 +236,7 @@
 
   /* Ticker (frases en carrusel horizontal continuo) */
   .phrase-ticker{
-    position:relative; overflow:hidden; height:28px; max-width:350px;
+    position:relative; overflow:hidden; height:28px; max-width:320px;
     -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 6%, #000 94%, transparent 100%);
             mask-image: linear-gradient(90deg, transparent 0, #000 6%, #000 94%, transparent 100%);
   }
