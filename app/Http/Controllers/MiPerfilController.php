@@ -135,6 +135,8 @@ class MiPerfilController extends Controller
 
     public function nickavailable(Request $request)
     {
+
+        dd($request);
         $raw  = (string) $request->query('nick', '');
         // Normaliza: quita espacios, quita '@' iniciales y valida 3–20 [a-z0-9_-] (case-insensitive)
         $nick = preg_replace('/\s+/', '', ltrim(trim($raw), '@'));
@@ -149,7 +151,7 @@ class MiPerfilController extends Controller
         }
 
         $exists = \App\Models\User::where('nick', $nick)->exists();
-        dd($exists);
+        
 
         return response()->json([
             'valid'     => true,
