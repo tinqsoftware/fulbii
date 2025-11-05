@@ -143,16 +143,6 @@ class MiPerfilController extends Controller
         // Elimina espacios comunes y zero‑width: NBSP, ZWSP, ZWNJ, ZWJ, WJ, BOM
         $nick = preg_replace('/[\s\x{00A0}\x{200B}\x{200C}\x{200D}\x{2060}\x{FEFF}]+/u', '', $nick);
 
-        // Permite únicamente ASCII [A‑Z a‑z 0‑9 _ -], longitud 3–20
-        $valid = $nick;
-
-        if (!$valid) {
-            return response()->json([
-                'valid'     => false,
-                'available' => false,
-                'message'   => 'Usa 3–20 caracteres (letras, números, - o _).'
-            ]);
-        }
 
         $exists = \App\Models\User::where('nick', $nick)->exists();
 
