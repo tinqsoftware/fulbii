@@ -435,7 +435,7 @@
   const $id  = document.getElementById('ac-user-id');
   const $btn = document.getElementById('ac-submit');
   const $lst = document.getElementById('ac-list');
-  const fetchUrl = "{{ route('users.search') }}";
+  const fetchUrl = "{{ route('users.search') }}?club_id={{ $club->id }}";
   let controller = null;
 
   function clearList(){ if($lst){ $lst.innerHTML=''; $lst.hidden = true; } }
@@ -449,7 +449,7 @@
     if (controller) controller.abort();
     controller = new AbortController();
     try{
-      const res = await fetch(fetchUrl + '?q=' + encodeURIComponent(q), {
+      const res = await fetch(fetchUrl + '&q=' + encodeURIComponent(q), {
         signal: controller.signal,
         headers: { 'X-Requested-With': 'XMLHttpRequest' }
       });

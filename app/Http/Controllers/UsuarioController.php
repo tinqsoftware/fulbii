@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Models\{User, Perfil};
+use App\Models\{User, Perfil, ClubUser};
 
 class UsuarioController extends Controller
 {
@@ -58,12 +58,24 @@ class UsuarioController extends Controller
             return response()->json([]);
         }
 
+        // Excluir usuarios que ya pertenecen al club (si se envía club_id)
+        $excludeIds = [];
+        if ($request->filled('club_id')) {
+            $excludeIds = ClubUser::where('club_id', (int) $request->get('club_id'))
+                ->pluck('user_id')
+                ->all();
+        }
+
         $users = User::query()
             ->select('id','nick','name','email')
             ->where(function ($w) use ($q) {
                 $w->where('nick', 'like', "%{$q}%")
                 ->orWhere('name', 'like', "%{$q}%")
                 ->orWhere('email', 'like', "%{$q}%");
+            })
+            // excluye a los ya miembros del club actual
+            ->when(!empty($excludeIds), function ($qq) use ($excludeIds) {
+                $qq->whereNotIn('id', $excludeIds);
             })
             // prioriza coincidencias al inicio del nick
             ->orderByRaw("CASE WHEN nick LIKE ? THEN 0 ELSE 1 END", ["{$q}%"])
