@@ -105,7 +105,7 @@ class MiPerfilController extends Controller
             'comentario' => 'nullable|string|max:500',
         ]);
 
-        // Si viene un ID válido y pertenece al usuario, actualizar esa; si no, usar (o crear) la fila global (club_id null)
+        // Si viene un ID válido y pertenece al usuario, actualizar esa; si no, usar (o crear) la fila global (club_id puede ser null)
         $cal = null;
         if (!empty($validated['id'])) {
             $cal = Calificacion::where('id', $validated['id'])
@@ -114,11 +114,12 @@ class MiPerfilController extends Controller
                 ->first();
         }
         if (!$cal) {
-
+            // Fila "global" de autocalificación: club puede ser NULL si el usuario no pertenece a ninguno
+            $clubId = $u->clubs()->first()?->id; // <- devuelve null si no hay club
             $cal = Calificacion::firstOrNew([
                 'user_calificador_id' => $u->id,
                 'user_calificado_id'  => $u->id,
-                'club_id'             => $u->clubs->first()->id,
+                'club_id'             => $clubId,
             ]);
         }
 
