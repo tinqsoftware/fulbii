@@ -84,8 +84,8 @@
                       <button class="btn btn-outline-danger btn-sm">Eliminar</button>
                     </form>
 
-                  {{-- Admin del club: gestionar miembros --}}
-                  @elseif($c->miRol === 'admin')
+                  {{-- //adun falta desarrollar más esta parte de la plataforma ==> Admin del club: gestionar miembros --}}
+                  @elseif($c->miRol === 'admiin')
                     <a href="{{ route('clubs.miembros',$c) }}" class="btn btn-outline-primary btn-sm">Gestionar</a>
 
                   {{-- No miembro: unirse rápido --}}
