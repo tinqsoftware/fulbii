@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Fulbii</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>fulbii_app</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(FLUTTER_BUILD_NAME)</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.fulbii.app</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>fulbii</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.googleusercontent.apps</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.14247591730-dfee0vv5g7p02h2gatkebob4de62alrl</string>
+			</array>
+		</dict>
+	</array>
+	<key>CFBundleVersion</key>
+	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>GIDClientID</key>
+	<string>14247591730-dfee0vv5g7p02h2gatkebob4de62alrl.apps.googleusercontent.com</string>
+	<key>GIDServerClientID</key>
+	<string>14247591730-nru6ieshjvg4fp480rheupp2fjevkq2s.apps.googleusercontent.com</string>
+	<key>GOOGLE_MAPS_API_KEY</key>
+	<string>AIzaSyBF1lm3JuLCjnrbqLf2L8UP4X0EIn4IRJA</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>waze</string>
+		<string>comgooglemaps</string>
+		<string>google.navigation</string>
+		<string>maps</string>
+	</array>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Fulbii necesita acceso a tu galería para subir fotos de canchas y clips de perfil.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Fulbii necesita guardar contenido exportado en tu galería.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Fulbii puede usar la cámara para agregar fotos de canchas y clips de perfil.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Fulbii usa tu ubicación para mostrar canchas cercanas.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<!-- Allows the simulator-only Laravel server at localhost:8000. -->
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIMainStoryboardFile</key>
+	<string>Main</string>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+</dict>
+</plist>

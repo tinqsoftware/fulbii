@@ -11,6 +11,16 @@ class Club extends Model
 
     protected $table = 'clubs';
     protected $guarded = ['id'];
+    protected $casts = [
+        'is_visible' => 'boolean',
+        'link_join_enabled' => 'boolean',
+        'auto_reminder_enabled' => 'boolean',
+        'auto_reminder_48h_enabled' => 'boolean',
+        'auto_reminder_24h_enabled' => 'boolean',
+        'renotify_cooldown_minutes' => 'integer',
+        'renotify_max_per_pichanga' => 'integer',
+        'audience_max_degree' => 'integer',
+    ];
 
     public function miembros()
     {
@@ -27,5 +37,25 @@ class Club extends Model
     public function calificaciones()
     {
         return $this->hasMany(Calificacion::class, 'club_id');
+    }
+
+    public function notificationPrefs()
+    {
+        return $this->hasMany(UserGroupNotificationPref::class, 'club_id');
+    }
+
+    public function groupPichangas()
+    {
+        return $this->hasMany(GroupPichanga::class, 'club_id');
+    }
+
+    public function outgoingChallenges()
+    {
+        return $this->hasMany(ClubChallenge::class, 'challenger_club_id');
+    }
+
+    public function incomingChallenges()
+    {
+        return $this->hasMany(ClubChallenge::class, 'challenged_club_id');
     }
 }

@@ -9,7 +9,6 @@ class Perfil extends Model
 {
     use HasFactory;
 
-    protected $connection = 'mysql';
     protected $table = 'perfil';
     protected $guarded = ['id'];
 

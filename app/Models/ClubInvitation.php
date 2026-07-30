@@ -8,6 +8,9 @@ class ClubInvitation extends Model
 {
     protected $table = 'club_invitations';
     protected $guarded = ['id'];
+    protected $casts = [
+        'accepted_at' => 'datetime',
+    ];
 
     public function club()       { return $this->belongsTo(Club::class, 'club_id'); }
     public function invitedUser(){ return $this->belongsTo(User::class, 'invited_user_id'); }

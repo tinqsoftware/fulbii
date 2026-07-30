@@ -31,4 +31,32 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    'google' => [
+        'client_id' => env('GOOGLE_CLIENT_ID'),
+    ],
+
+    'apple' => [
+        'client_id' => env('APPLE_CLIENT_ID'),
+    ],
+
+    'geoapify' => [
+        'key' => env('GEOAPIFY_API_KEY'),
+    ],
+
+    'app_links' => [
+        'base_url' => env('APP_LINK_BASE_URL', env('APP_URL', 'http://fulbii.test')),
+        'android_store_url' => env('ANDROID_STORE_URL', ''),
+        'ios_store_url' => env('IOS_STORE_URL', ''),
+        'ios_app_ids' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('APP_LINK_IOS_APP_IDS', env('APP_LINK_IOS_APP_ID', '')))
+        ))),
+        'android_package_name' => env('APP_LINK_ANDROID_PACKAGE_NAME', 'com.fulbii.fulbii_app'),
+        'android_sha256_cert_fingerprints' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('APP_LINK_ANDROID_SHA256_CERT_FINGERPRINTS', ''))
+        ))),
+        'paths' => ['/join/*', '/pichanga/*'],
+    ],
+
 ];

@@ -1,0 +1,1445 @@
+<?php
+
+namespace App\Http\Controllers\Api\V1;
+
+use App\Http\Controllers\Controller;
+use App\Models\Cancha;
+use App\Models\Club;
+use App\Models\ClubUser;
+use App\Models\GroupPichanga;
+use App\Models\GroupPichangaExternalRequest;
+use App\Models\GroupPichangaNotificationBatch;
+use App\Models\GroupPichangaParticipant;
+use App\Models\User;
+use App\Models\WatchMatchSession;
+use App\Services\ClubPushMuteService;
+use App\Services\CombinedSkillRatingService;
+use App\Services\GroupPichangaAudienceService;
+use App\Services\ProductEventService;
+use App\Services\PushNotificationService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\Rule;
+
+class GroupPichangaController extends Controller
+{
+    public function __construct(
+        private readonly GroupPichangaAudienceService $audienceService,
+        private readonly ClubPushMuteService $muteService,
+        private readonly PushNotificationService $pushNotificationService,
+        private readonly ProductEventService $eventService,
+        private readonly CombinedSkillRatingService $combinedSkillRatings
+    ) {
+    }
+
+    public function indexByClub(Request $request, Club $club)
+    {
+        $auth = $request->user() ?? abort(401);
+        abort_unless($this->isMember($club->id, $auth->id) || (bool) $auth->is_superadmin, 403);
+
+        $status = $request->query('status');
+        $query = GroupPichanga::query()
+            ->where(function ($q) use ($club) {
+                $q->where('club_id', $club->id);
+                if (Schema::hasColumn('group_pichangas', 'rival_club_id')) {
+                    $q->orWhere('rival_club_id', $club->id);
+                }
+            });
+        if (!empty($status) && in_array($status, ['published', 'confirmed', 'cancelled', 'completed'], true)) {
+            $query->where('status', $status);
+        }
+
+        $items = $query->orderBy('starts_at')->limit(200)->get()->map(fn(GroupPichanga $p) => $this->serializePichanga($p));
+
+        return response()->json(['items' => $items]);
+    }
+
+    public function available(Request $request)
+    {
+        $auth = $request->user() ?? abort(401);
+        $now = now();
+        $monthlyPlayedCount = $this->monthlyPlayedCount((int) $auth->id, $now);
+        $days = (int) $request->query('days', 0);
+        $days = $days > 0 ? max(1, min(14, $days)) : 0;
+
+        $userClubIds = ClubUser::where('user_id', $auth->id)->pluck('club_id')->map(fn($i) => (int) $i)->all();
+        $baseQuery = GroupPichanga::query()
+            ->whereIn('status', ['published', 'confirmed'])
+            ->where('starts_at', '>=', $now);
+        if ($days > 0) {
+            $baseQuery->where('starts_at', '<=', $now->copy()->addDays($days - 1)->endOfDay());
+        }
+
+        $base = $baseQuery->orderBy('starts_at')->limit(300)->get();
+        if ($base->isEmpty()) {
+            return response()->json([
+                'items' => [],
+                'meta' => [
+                    'monthly_played_count' => $monthlyPlayedCount,
+                ],
+            ]);
+        }
+
+        $pichangaIds = $base->pluck('id')->map(fn($id) => (int) $id)->all();
+
+        $confirmedCountByPichanga = GroupPichangaParticipant::query()
+            ->selectRaw('pichanga_id, COUNT(*) AS total')
+            ->whereIn('pichanga_id', $pichangaIds)
+            ->where('status', 'confirmed')
+            ->groupBy('pichanga_id')
+            ->pluck('total', 'pichanga_id')
+            ->map(fn($count) => (int) $count);
+
+        $participantStatusByPichanga = GroupPichangaParticipant::query()
+            ->whereIn('pichanga_id', $pichangaIds)
+            ->where('user_id', $auth->id)
+            ->pluck('status', 'pichanga_id')
+            ->map(fn($status) => $status !== null ? (string) $status : null);
+
+        $externalRequestStatusByPichanga = GroupPichangaExternalRequest::query()
+            ->whereIn('pichanga_id', $pichangaIds)
+            ->where('user_id', $auth->id)
+            ->pluck('status', 'pichanga_id')
+            ->map(fn($status) => $status !== null ? (string) $status : null);
+
+        $items = [];
+        foreach ($base as $pichanga) {
+            $pichangaId = (int) $pichanga->id;
+            $isMember = $this->isMemberOfPichanga($pichanga, $userClubIds);
+            $participantStatus = $participantStatusByPichanga->get($pichangaId);
+            $externalRequestStatus = $externalRequestStatusByPichanga->get($pichangaId);
+
+            $extra = [
+                '_confirmed_count' => $confirmedCountByPichanga->get($pichangaId, 0),
+                'me_is_member' => $isMember,
+                'me_participant_status' => $participantStatus,
+                'me_external_request_status' => $externalRequestStatus,
+            ];
+
+            if ($isMember) {
+                $extra['me_pending_kind'] = $participantStatus === 'confirmed' ? null : 'pending_group';
+                $items[] = $this->serializePichanga($pichanga, $extra);
+                continue;
+            }
+
+            if (!$pichanga->is_open && !$pichanga->allow_external_requests) {
+                continue;
+            }
+
+            $eligibility = $this->audienceService->externalEligibility($pichanga, (int) $auth->id);
+            if (!$eligibility['eligible']) {
+                continue;
+            }
+
+            $items[] = $this->serializePichanga($pichanga, array_merge($extra, [
+                'eligible_external_degree' => $eligibility['degree'],
+                'me_pending_kind' => $participantStatus === 'confirmed' ? null : 'pending_open',
+            ]));
+        }
+
+        return response()->json([
+            'items' => $items,
+            'meta' => [
+                'monthly_played_count' => $monthlyPlayedCount,
+            ],
+        ]);
+    }
+
+    public function myBoard(Request $request)
+    {
+        $auth = $request->user() ?? abort(401);
+        $now = now();
+        $days = max(1, min(14, (int) $request->query('days', 7)));
+        $terminatedLimit = max(20, min(500, (int) $request->query('terminated_limit', 200)));
+        $page = max(1, (int) $request->query('page', 1));
+
+        $todayStart = $now->copy()->startOfDay();
+        $windowEnd = $todayStart->copy()->addDays($days)->endOfDay();
+        $hasRivalColumn = Schema::hasColumn('group_pichangas', 'rival_club_id');
+        $hasCreatedByColumn = Schema::hasColumn('group_pichangas', 'created_by_user_id');
+        $watchTableReady = Schema::hasTable('watch_match_sessions');
+
+        $clubIds = ClubUser::query()
+            ->where('user_id', (int) $auth->id)
+            ->pluck('club_id')
+            ->map(fn($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        $participantRows = GroupPichangaParticipant::query()
+            ->where('user_id', (int) $auth->id)
+            ->get(['pichanga_id', 'status']);
+        $participantStatusByPichanga = $participantRows
+            ->mapWithKeys(fn(GroupPichangaParticipant $row) => [(int) $row->pichanga_id => (string) $row->status])
+            ->all();
+        $participantPichangaIds = array_keys($participantStatusByPichanga);
+
+        $createdByIds = [];
+        if ($hasCreatedByColumn) {
+            $createdByIds = GroupPichanga::query()
+                ->where('created_by_user_id', (int) $auth->id)
+                ->pluck('id')
+                ->map(fn($id) => (int) $id)
+                ->unique()
+                ->values()
+                ->all();
+        }
+
+        if (empty($clubIds) && empty($participantPichangaIds) && empty($createdByIds)) {
+            return response()->json([
+                'confirmed_items' => [],
+                'pending_items' => [],
+                'terminated_items' => [],
+                'meta' => [
+                    'days' => $days,
+                    'window_from' => $todayStart->toISOString(),
+                    'window_to' => $windowEnd->toISOString(),
+                    'terminated_limit' => $terminatedLimit,
+                    'page' => $page,
+                ],
+            ]);
+        }
+
+        $query = GroupPichanga::query()
+            ->whereIn('status', ['published', 'confirmed'])
+            ->where(function ($scope) use ($clubIds, $participantPichangaIds, $createdByIds, $hasRivalColumn) {
+                $appliedAny = false;
+                if (!empty($clubIds)) {
+                    $scope->whereIn('club_id', $clubIds);
+                    if ($hasRivalColumn) {
+                        $scope->orWhereIn('rival_club_id', $clubIds);
+                    }
+                    $appliedAny = true;
+                }
+                if (!empty($participantPichangaIds)) {
+                    if ($appliedAny) {
+                        $scope->orWhereIn('id', $participantPichangaIds);
+                    } else {
+                        $scope->whereIn('id', $participantPichangaIds);
+                        $appliedAny = true;
+                    }
+                }
+                if (!empty($createdByIds)) {
+                    if ($appliedAny) {
+                        $scope->orWhereIn('id', $createdByIds);
+                    } else {
+                        $scope->whereIn('id', $createdByIds);
+                        $appliedAny = true;
+                    }
+                }
+                if (!$appliedAny) {
+                    $scope->whereRaw('1 = 0');
+                }
+            })
+            ->orderBy('starts_at');
+
+        $pichangas = $query->limit(2000)->get();
+
+        $confirmedItems = [];
+        $pendingItems = [];
+        $terminatedItems = [];
+        foreach ($pichangas as $pichanga) {
+            if (!$pichanga->starts_at) {
+                continue;
+            }
+
+            $startAt = $pichanga->starts_at->copy();
+            $durationMinutes = max(1, (int) ($pichanga->duration_minutes ?? 90));
+            $endAt = $startAt->copy()->addMinutes($durationMinutes);
+            $isTerminated = $now->gt($endAt);
+            $isInProgress = $startAt->lte($now) && $endAt->gte($now);
+
+            $isWithinUpcomingWindow = $startAt->gte($todayStart) && $startAt->lte($windowEnd);
+            $isRelevantNow = $isInProgress || $isWithinUpcomingWindow;
+
+            $meParticipantStatus = $participantStatusByPichanga[(int) $pichanga->id] ?? null;
+            $isConfirmed = $meParticipantStatus === 'confirmed';
+
+            $extra = [
+                '_me_user_id' => (int) $auth->id,
+                'me_participant_status' => $meParticipantStatus,
+                'end_at' => $endAt->toISOString(),
+                'is_in_progress' => $isInProgress,
+                'watch_used' => false,
+            ];
+            $serialized = $this->serializePichanga($pichanga, $extra);
+
+            if ($isTerminated) {
+                $terminatedItems[] = $serialized;
+                continue;
+            }
+            if (!$isRelevantNow) {
+                continue;
+            }
+
+            if ($isConfirmed) {
+                $confirmedItems[] = $serialized;
+            } else {
+                $pendingItems[] = $serialized;
+            }
+        }
+
+        usort($confirmedItems, fn($a, $b) => strcmp((string) ($a['starts_at'] ?? ''), (string) ($b['starts_at'] ?? '')));
+        usort($pendingItems, fn($a, $b) => strcmp((string) ($a['starts_at'] ?? ''), (string) ($b['starts_at'] ?? '')));
+        usort($terminatedItems, fn($a, $b) => strcmp((string) ($b['starts_at'] ?? ''), (string) ($a['starts_at'] ?? '')));
+
+        $offset = ($page - 1) * $terminatedLimit;
+        $terminatedPage = array_slice($terminatedItems, $offset, $terminatedLimit);
+
+        if ($watchTableReady) {
+            $idsForWatchLookup = collect($confirmedItems)
+                ->merge($terminatedPage)
+                ->map(fn($item) => (int) ($item['id'] ?? 0))
+                ->filter(fn($id) => $id > 0)
+                ->unique()
+                ->values()
+                ->all();
+
+            if (!empty($idsForWatchLookup)) {
+                $watchUsedSet = WatchMatchSession::query()
+                    ->where('user_id', (int) $auth->id)
+                    ->whereIn('group_pichanga_id', $idsForWatchLookup)
+                    ->pluck('group_pichanga_id')
+                    ->map(fn($id) => (int) $id)
+                    ->unique()
+                    ->values()
+                    ->all();
+                $watchLookup = array_fill_keys($watchUsedSet, true);
+
+                $confirmedItems = array_map(function (array $item) use ($watchLookup) {
+                    $item['watch_used'] = isset($watchLookup[(int) ($item['id'] ?? 0)]);
+                    return $item;
+                }, $confirmedItems);
+
+                $terminatedPage = array_map(function (array $item) use ($watchLookup) {
+                    $item['watch_used'] = isset($watchLookup[(int) ($item['id'] ?? 0)]);
+                    return $item;
+                }, $terminatedPage);
+            }
+        }
+
+        return response()->json([
+            'confirmed_items' => array_values($confirmedItems),
+            'pending_items' => array_values($pendingItems),
+            'terminated_items' => array_values($terminatedPage),
+            'meta' => [
+                'days' => $days,
+                'window_from' => $todayStart->toISOString(),
+                'window_to' => $windowEnd->toISOString(),
+                'terminated_limit' => $terminatedLimit,
+                'page' => $page,
+                'terminated_total' => count($terminatedItems),
+                'terminated_has_more' => ($offset + count($terminatedPage)) < count($terminatedItems),
+            ],
+        ]);
+    }
+
+    public function confirmedNextWidget(Request $request)
+    {
+        $auth = $request->user() ?? abort(401);
+        $now = now();
+        $limit = min(3, max(1, (int) $request->query('limit', 3)));
+
+        $pichangaIds = GroupPichangaParticipant::query()
+            ->join('group_pichangas as gp', 'gp.id', '=', 'group_pichanga_participants.pichanga_id')
+            ->where('group_pichanga_participants.user_id', (int) $auth->id)
+            ->where('group_pichanga_participants.status', 'confirmed')
+            ->where('gp.starts_at', '>=', $now)
+            ->whereIn('gp.status', ['published', 'confirmed'])
+            ->orderBy('gp.starts_at')
+            ->limit($limit)
+            ->pluck('gp.id')
+            ->map(fn($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        if (empty($pichangaIds)) {
+            return response()->json([
+                'items' => [],
+            ]);
+        }
+
+        $items = GroupPichanga::query()
+            ->whereIn('id', $pichangaIds)
+            ->orderBy('starts_at')
+            ->get()
+            ->map(function (GroupPichanga $pichanga) use ($auth) {
+                $serialized = $this->serializePichanga($pichanga, [
+                    '_me_user_id' => (int) $auth->id,
+                    'me_participant_status' => 'confirmed',
+                ]);
+
+                $teams = collect($serialized['teams'] ?? [])
+                    ->filter(fn($team) => is_array($team))
+                    ->map(function (array $team) {
+                        $slots = collect($team['slots'] ?? [])
+                            ->filter(fn($slot) => is_array($slot))
+                            ->map(function (array $slot) {
+                                $user = is_array($slot['user'] ?? null) ? $slot['user'] : null;
+                                return [
+                                    'slot' => (int) ($slot['slot'] ?? 0),
+                                    'user' => $user ? [
+                                        'name' => $user['name'] ?? null,
+                                        'nick' => $user['nick'] ?? null,
+                                        'is_me' => (bool) ($user['is_me'] ?? false),
+                                    ] : null,
+                                ];
+                            })
+                            ->values()
+                            ->all();
+
+                        return [
+                            'code' => (string) ($team['code'] ?? ''),
+                            'avg_rating' => $team['avg_rating'] ?? null,
+                            'slots' => $slots,
+                        ];
+                    })
+                    ->values()
+                    ->all();
+
+                return [
+                    'id' => (int) $serialized['id'],
+                    'title' => $serialized['title'],
+                    'starts_at' => $serialized['starts_at'],
+                    'duration_minutes' => (int) ($serialized['duration_minutes'] ?? 0),
+                    'match_format' => $serialized['match_format'] ?? null,
+                    'team_count' => (int) ($serialized['team_count'] ?? 0),
+                    'players_per_team' => (int) ($serialized['players_per_team'] ?? 0),
+                    'me_participant_status' => 'confirmed',
+                    'share_url' => $serialized['share_url'] ?? $this->buildPichangaShareUrl((int) $serialized['id']),
+                    'teams' => $teams,
+                ];
+            })
+            ->values();
+
+        return response()->json([
+            'items' => $items,
+        ]);
+    }
+
+    public function store(Request $request, Club $club)
+    {
+        $auth = $request->user() ?? abort(401);
+        abort_unless($this->canCreatePichanga($club, $auth->id, (bool) $auth->is_superadmin), 403);
+
+        $data = $request->validate([
+            'title' => ['nullable', 'string', 'max:160'],
+            'description' => ['nullable', 'string'],
+            'field_id' => ['nullable', 'integer'],
+            'cancha_id' => ['nullable', 'integer', 'min:1'],
+            'address' => ['nullable', 'string', 'max:255'],
+            'starts_at' => ['required', 'date'],
+            'duration_minutes' => ['required', 'integer', 'min:30', 'max:600'],
+            'capacity' => ['nullable', 'integer', 'min:2', 'max:200'],
+            'match_format' => ['nullable', Rule::in(['versus', 'triangular', 'cuadrangular'])],
+            'players_per_team' => ['nullable', 'integer', 'min:5', 'max:11'],
+            'status' => ['nullable', Rule::in(['published', 'confirmed'])],
+            'confirmation_mode' => ['nullable', Rule::in(['auto_by_capacity', 'manual_paid'])],
+            'is_open' => ['nullable', 'boolean'],
+            'notify_degree' => ['nullable', 'integer', 'min:1', 'max:3'],
+            'allow_external_requests' => ['nullable', 'boolean'],
+            'auto_reminder_enabled' => ['nullable', 'boolean'],
+            'withdraw_until' => ['nullable', 'date'],
+            'audience_sex' => ['nullable', Rule::in(['M', 'F'])],
+            'audience_age_min' => ['nullable', 'integer', 'min:14', 'max:80'],
+            'audience_age_max' => ['nullable', 'integer', 'min:14', 'max:80'],
+            'skill_fisico_min' => ['nullable', 'integer', 'min:1', 'max:10'],
+            'skill_arquero_min' => ['nullable', 'integer', 'min:1', 'max:10'],
+            'skill_delantero_min' => ['nullable', 'integer', 'min:1', 'max:10'],
+            'skill_mediocampo_min' => ['nullable', 'integer', 'min:1', 'max:10'],
+            'skill_defensa_min' => ['nullable', 'integer', 'min:1', 'max:10'],
+        ]);
+
+        if (!empty($data['audience_age_min']) && !empty($data['audience_age_max'])) {
+            abort_if((int) $data['audience_age_min'] > (int) $data['audience_age_max'], 422, 'Rango de edad inválido.');
+        }
+
+        if (!empty($data['cancha_id'])) {
+            $cancha = Cancha::query()->find((int) $data['cancha_id']);
+            abort_if(!$cancha, 422, 'La cancha no existe.');
+            $data['field_id'] = (int) ($data['field_id'] ?? $cancha->id_polideportivo);
+        }
+
+        $maxDegree = (int) ($club->audience_max_degree ?? 1);
+        $notifyDegree = min(max((int) ($data['notify_degree'] ?? 1), 1), max(1, $maxDegree));
+        $allowExternal = (bool) ($data['allow_external_requests'] ?? ($notifyDegree > 1));
+        $matchFormat = (string) ($data['match_format'] ?? 'versus');
+        $teamCount = $this->teamCountFromFormat($matchFormat);
+
+        $playersPerTeam = null;
+        if (array_key_exists('players_per_team', $data) && $data['players_per_team'] !== null) {
+            $playersPerTeam = (int) $data['players_per_team'];
+        } elseif (!empty($data['capacity'])) {
+            // Compat temporal para clientes viejos que aún envían "capacity".
+            $playersPerTeam = (int) ceil(((int) $data['capacity']) / $teamCount);
+            $playersPerTeam = max(5, min(11, $playersPerTeam));
+        } else {
+            $playersPerTeam = 7;
+        }
+        abort_if($playersPerTeam === null || $playersPerTeam < 5 || $playersPerTeam > 11, 422, 'Jugadores por equipo inválido (5-11).');
+
+        $capacity = $teamCount * $playersPerTeam;
+
+        $payload = array_merge($data, [
+            'club_id' => $club->id,
+            'created_by_user_id' => $auth->id,
+            'notify_degree' => $notifyDegree,
+            'allow_external_requests' => $allowExternal,
+            'match_format' => $matchFormat,
+            'team_count' => $teamCount,
+            'players_per_team' => $playersPerTeam,
+            'capacity' => $capacity,
+            'status' => $data['status'] ?? 'published',
+            'confirmation_mode' => $data['confirmation_mode'] ?? 'auto_by_capacity',
+            'is_open' => (bool) ($data['is_open'] ?? false),
+            'auto_reminder_enabled' => (bool) ($data['auto_reminder_enabled'] ?? ($club->auto_reminder_enabled ?? true)),
+        ]);
+        $payload = $this->filterPayloadByTableColumns('group_pichangas', $payload);
+
+        $pichanga = GroupPichanga::create($payload);
+
+        $audience = $this->audienceService->resolveAudience($pichanga);
+        $targetIds = collect($audience['target_user_ids'])->map(fn($id) => (int) $id)->unique()->values();
+        $notMuted = $this->muteService->filterNotMutedUserIds($targetIds, (int) $club->id);
+        $mutedSkipped = $targetIds->count() - $notMuted->count();
+
+        $sent = $this->pushNotificationService->createForUsers($notMuted->all(), [
+            'club_id' => $club->id,
+            'group_pichanga_id' => $pichanga->id,
+            'type' => 'pichanga_created',
+            'title' => 'Nueva pichanga',
+            'body' => (string) ($pichanga->title ?: 'Se creó una pichanga en tu grupo'),
+            'data_json' => ['pichanga_id' => $pichanga->id, 'club_id' => $club->id],
+        ]);
+
+        GroupPichangaNotificationBatch::create([
+            'pichanga_id' => $pichanga->id,
+            'triggered_by_user_id' => $auth->id,
+            'batch_type' => 'initial',
+            'target_degree' => (int) $audience['target_degree'],
+            'filters_json' => $audience['filters'],
+            'target_count' => $targetIds->count(),
+            'muted_skipped_count' => $mutedSkipped,
+            'sent_count' => $sent,
+        ]);
+
+        $this->refreshAutoStatus($pichanga);
+        $this->eventService->track('pichanga_created', (int) $auth->id, (int) $club->id, (int) $pichanga->id, [
+            'notify_degree' => (int) $pichanga->notify_degree,
+            'capacity' => (int) $pichanga->capacity,
+        ]);
+
+        return response()->json([
+            'message' => 'Pichanga creada.',
+            'pichanga' => $this->serializePichanga($pichanga->fresh()),
+        ], 201);
+    }
+
+    public function show(Request $request, GroupPichanga $pichanga)
+    {
+        $auth = $request->user() ?? abort(401);
+        $userClubIds = ClubUser::where('user_id', $auth->id)->pluck('club_id')->map(fn($i) => (int) $i)->all();
+        $isMember = $this->isMemberOfPichanga($pichanga, $userClubIds);
+        $isAdmin = $this->isClubAdminForPichanga($pichanga, (int) $auth->id) || (bool) $auth->is_superadmin;
+
+        $allowed = $isMember;
+        if (!$allowed && ($pichanga->is_open || $pichanga->allow_external_requests)) {
+            $allowed = $this->audienceService->externalEligibility($pichanga, (int) $auth->id)['eligible'];
+        }
+        abort_unless($allowed || $isAdmin, 403);
+
+        $meParticipant = GroupPichangaParticipant::where('pichanga_id', $pichanga->id)->where('user_id', $auth->id)->first();
+        $meRequest = GroupPichangaExternalRequest::where('pichanga_id', $pichanga->id)->where('user_id', $auth->id)->first();
+
+        return response()->json([
+            'pichanga' => $this->serializePichanga($pichanga, [
+                '_me_user_id' => (int) $auth->id,
+            ]),
+            'me' => [
+                'is_member' => $isMember,
+                'is_admin' => $isAdmin,
+                'participant_status' => $meParticipant?->status,
+                'participant_team_code' => Schema::hasColumn('group_pichanga_participants', 'team_code') ? $meParticipant?->team_code : null,
+                'participant_team_slot' => Schema::hasColumn('group_pichanga_participants', 'team_slot') ? $meParticipant?->team_slot : null,
+                'external_request_status' => $meRequest?->status,
+            ],
+        ]);
+    }
+
+    public function updateAudience(Request $request, GroupPichanga $pichanga)
+    {
+        $auth = $request->user() ?? abort(401);
+        abort_unless($this->isClubAdmin((int) $pichanga->club_id, (int) $auth->id) || (bool) $auth->is_superadmin, 403);
+
+        $data = $request->validate([
+            'notify_degree' => ['sometimes', 'integer', 'min:1', 'max:3'],
+            'allow_external_requests' => ['sometimes', 'boolean'],
+            'is_open' => ['sometimes', 'boolean'],
+            'auto_reminder_enabled' => ['sometimes', 'boolean'],
+            'audience_sex' => ['sometimes', 'nullable', Rule::in(['M', 'F'])],
+            'audience_age_min' => ['sometimes', 'nullable', 'integer', 'min:14', 'max:80'],
+            'audience_age_max' => ['sometimes', 'nullable', 'integer', 'min:14', 'max:80'],
+            'skill_fisico_min' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:10'],
+            'skill_arquero_min' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:10'],
+            'skill_delantero_min' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:10'],
+            'skill_mediocampo_min' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:10'],
+            'skill_defensa_min' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:10'],
+        ]);
+
+        if (array_key_exists('notify_degree', $data)) {
+            $maxDegree = (int) ($pichanga->club->audience_max_degree ?? 1);
+            $data['notify_degree'] = min(max((int) $data['notify_degree'], 1), max(1, $maxDegree));
+        }
+
+        if (!empty($data['audience_age_min']) && !empty($data['audience_age_max'])) {
+            abort_if((int) $data['audience_age_min'] > (int) $data['audience_age_max'], 422, 'Rango de edad inválido.');
+        }
+
+        $payload = $this->filterPayloadByTableColumns('group_pichangas', $data);
+        $pichanga->update($payload);
+
+        $this->eventService->track(
+            'pichanga_audience_updated',
+            (int) $auth->id,
+            (int) $pichanga->club_id,
+            (int) $pichanga->id,
+            [
+                'notify_degree' => $payload['notify_degree'] ?? $pichanga->notify_degree,
+            ]
+        );
+
+        return response()->json([
+            'message' => 'Audiencia actualizada.',
+            'pichanga' => $this->serializePichanga($pichanga->fresh()),
+        ]);
+    }
+
+    public function confirm(Request $request, GroupPichanga $pichanga)
+    {
+        $auth = $request->user() ?? abort(401);
+        $userClubIds = ClubUser::where('user_id', $auth->id)->pluck('club_id')->map(fn($i) => (int) $i)->all();
+        abort_unless($this->isMemberOfPichanga($pichanga, $userClubIds), 403, 'Solo miembros de los grupos participantes pueden confirmar directo.');
+        abort_if(in_array($pichanga->status, ['cancelled', 'completed'], true), 422, 'La pichanga no permite confirmaciones.');
+        abort_if(now()->greaterThanOrEqualTo($pichanga->starts_at), 422, 'La pichanga ya empezó.');
+
+        $teamCount = $this->resolveTeamCount($pichanga);
+        $allowedTeamCodes = $this->allowedTeamCodes($teamCount);
+        $data = $request->validate([
+            'team_code' => ['required', Rule::in($allowedTeamCodes)],
+        ]);
+
+        $teamCode = strtoupper((string) $data['team_code']);
+
+        DB::transaction(function () use ($pichanga, $auth, $teamCode) {
+            $participant = GroupPichangaParticipant::query()
+                ->where('pichanga_id', $pichanga->id)
+                ->where('user_id', $auth->id)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$participant || $participant->status !== 'confirmed') {
+                $confirmedCount = $this->confirmedParticipantsCount((int) $pichanga->id);
+                abort_if($confirmedCount >= (int) $pichanga->capacity, 422, 'No hay cupos disponibles.');
+            }
+
+            $nextSlot = $this->nextTeamSlot((int) $pichanga->id, $teamCode);
+            $payload = $this->filterPayloadByTableColumns('group_pichanga_participants', [
+                'origin' => 'member',
+                'status' => 'confirmed',
+                'confirmed_at' => $participant?->confirmed_at ?? now(),
+                'withdrawn_at' => null,
+                'team_code' => $teamCode,
+                'team_slot' => $nextSlot,
+            ]);
+
+            if ($participant) {
+                $participant->update($payload);
+            } else {
+                GroupPichangaParticipant::create(array_merge(
+                    ['pichanga_id' => $pichanga->id, 'user_id' => $auth->id],
+                    $payload
+                ));
+            }
+        });
+
+        $this->refreshAutoStatus($pichanga->fresh());
+        $this->eventService->track('pichanga_confirmed', (int) $auth->id, (int) $pichanga->club_id, (int) $pichanga->id, [
+            'team_code' => $teamCode,
+        ]);
+
+        return response()->json(['message' => "Asistencia confirmada en equipo {$teamCode}."]);
+    }
+
+    public function withdraw(Request $request, GroupPichanga $pichanga)
+    {
+        $auth = $request->user() ?? abort(401);
+        $participant = GroupPichangaParticipant::where('pichanga_id', $pichanga->id)
+            ->where('user_id', $auth->id)
+            ->first();
+        abort_unless($participant && $participant->status === 'confirmed', 422, 'No tienes asistencia confirmada.');
+
+        if ($pichanga->withdraw_until && now()->greaterThan($pichanga->withdraw_until)) {
+            abort(422, 'Ya venció el plazo para darse de baja.');
+        }
+
+        $payload = $this->filterPayloadByTableColumns('group_pichanga_participants', [
+            'status' => 'withdrawn',
+            'withdrawn_at' => now(),
+            'team_code' => null,
+            'team_slot' => null,
+        ]);
+        $participant->update($payload);
+        $this->eventService->track('pichanga_withdrawn', (int) $auth->id, (int) $pichanga->club_id, (int) $pichanga->id);
+
+        return response()->json(['message' => 'Te diste de baja de la pichanga.']);
+    }
+
+    public function setStatus(Request $request, GroupPichanga $pichanga)
+    {
+        $auth = $request->user() ?? abort(401);
+        abort_unless($this->isClubAdminForPichanga($pichanga, (int) $auth->id) || (bool) $auth->is_superadmin, 403);
+
+        $data = $request->validate([
+            'status' => ['required', Rule::in(['published', 'confirmed', 'cancelled', 'completed'])],
+        ]);
+
+        $pichanga->update(['status' => $data['status']]);
+
+        $this->eventService->track(
+            'pichanga_status_updated',
+            (int) $auth->id,
+            (int) $pichanga->club_id,
+            (int) $pichanga->id,
+            ['status' => (string) $data['status']]
+        );
+
+        return response()->json([
+            'message' => 'Estado actualizado.',
+            'status' => $pichanga->status,
+        ]);
+    }
+
+    public function createExternalRequest(Request $request, GroupPichanga $pichanga)
+    {
+        $auth = $request->user() ?? abort(401);
+        abort_if((string) ($pichanga->match_context ?? 'regular') === 'club_challenge', 422, 'Las pichangas por reto no aceptan solicitudes externas.');
+        abort_if($this->isMember((int) $pichanga->club_id, (int) $auth->id), 422, 'Ya eres miembro del grupo, confirma directo.');
+        abort_if(!$pichanga->allow_external_requests, 422, 'Esta pichanga no recibe solicitudes externas.');
+        abort_if(now()->greaterThanOrEqualTo($pichanga->starts_at), 422, 'La pichanga ya empezó.');
+
+        $this->expirePendingExternalRequests($pichanga);
+
+        $eligibility = $this->audienceService->externalEligibility($pichanga, (int) $auth->id);
+        abort_unless($eligibility['eligible'], 403, 'No estás dentro de la audiencia objetivo.');
+
+        $existing = GroupPichangaExternalRequest::where('pichanga_id', $pichanga->id)
+            ->where('user_id', $auth->id)
+            ->first();
+        if ($existing && $existing->status === 'pending') {
+            return response()->json(['message' => 'Ya tienes una solicitud pendiente.']);
+        }
+
+        GroupPichangaExternalRequest::updateOrCreate(
+            ['pichanga_id' => $pichanga->id, 'user_id' => $auth->id],
+            [
+                'status' => 'pending',
+                'origin_degree' => $eligibility['degree'],
+                'requested_at' => now(),
+                'decided_at' => null,
+                'decided_by_user_id' => null,
+            ]
+        );
+
+        $this->eventService->track(
+            'pichanga_external_request_created',
+            (int) $auth->id,
+            (int) $pichanga->club_id,
+            (int) $pichanga->id,
+            ['degree' => $eligibility['degree']]
+        );
+
+        return response()->json(['message' => 'Solicitud enviada al administrador.'], 201);
+    }
+
+    public function listExternalRequests(Request $request, GroupPichanga $pichanga)
+    {
+        $auth = $request->user() ?? abort(401);
+        abort_unless($this->isClubAdmin((int) $pichanga->club_id, (int) $auth->id) || (bool) $auth->is_superadmin, 403);
+        $this->expirePendingExternalRequests($pichanga);
+
+        $items = GroupPichangaExternalRequest::query()
+            ->where('pichanga_id', $pichanga->id)
+            ->with('user:id,name,nick,email,sexo,fec_nac')
+            ->orderByRaw("CASE WHEN status='pending' THEN 0 ELSE 1 END")
+            ->orderByDesc('requested_at')
+            ->get()
+            ->map(function (GroupPichangaExternalRequest $row) {
+                return [
+                    'id' => $row->id,
+                    'user_id' => $row->user_id,
+                    'status' => $row->status,
+                    'origin_degree' => $row->origin_degree,
+                    'requested_at' => optional($row->requested_at)->toISOString(),
+                    'decided_at' => optional($row->decided_at)->toISOString(),
+                    'note' => $row->note,
+                    'user' => $row->user,
+                ];
+            })->values();
+
+        return response()->json(['items' => $items]);
+    }
+
+    public function decideExternalRequest(Request $request, GroupPichanga $pichanga, GroupPichangaExternalRequest $externalRequest)
+    {
+        $auth = $request->user() ?? abort(401);
+        abort_unless((int) $externalRequest->pichanga_id === (int) $pichanga->id, 404);
+        abort_unless($this->isClubAdmin((int) $pichanga->club_id, (int) $auth->id) || (bool) $auth->is_superadmin, 403);
+        $this->expirePendingExternalRequests($pichanga);
+
+        $data = $request->validate([
+            'action' => ['required', Rule::in(['accept', 'reject'])],
+            'note' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        abort_if($externalRequest->status !== 'pending', 422, 'La solicitud ya fue resuelta.');
+
+        if ($data['action'] === 'reject') {
+            $externalRequest->update([
+                'status' => 'rejected',
+                'decided_at' => now(),
+                'decided_by_user_id' => $auth->id,
+                'note' => $data['note'] ?? null,
+            ]);
+
+            $this->eventService->track(
+                'pichanga_external_request_rejected',
+                (int) $auth->id,
+                (int) $pichanga->club_id,
+                (int) $pichanga->id,
+                ['external_request_id' => (int) $externalRequest->id, 'user_id' => (int) $externalRequest->user_id]
+            );
+            return response()->json(['message' => 'Solicitud rechazada.']);
+        }
+
+        $confirmedCount = $this->confirmedParticipantsCount($pichanga->id);
+        abort_if($confirmedCount >= (int) $pichanga->capacity, 422, 'No hay cupos disponibles.');
+
+        DB::transaction(function () use ($externalRequest, $auth, $pichanga, $data) {
+            $externalRequest->update([
+                'status' => 'accepted',
+                'decided_at' => now(),
+                'decided_by_user_id' => $auth->id,
+                'note' => $data['note'] ?? null,
+            ]);
+
+            $teamCode = $this->pickLeastLoadedTeamCode($pichanga);
+            $nextSlot = $this->nextTeamSlot((int) $pichanga->id, $teamCode);
+            $participantPayload = $this->filterPayloadByTableColumns('group_pichanga_participants', [
+                'origin' => 'external',
+                'status' => 'confirmed',
+                'confirmed_at' => now(),
+                'withdrawn_at' => null,
+                'team_code' => $teamCode,
+                'team_slot' => $nextSlot,
+            ]);
+
+            GroupPichangaParticipant::updateOrCreate(
+                ['pichanga_id' => $pichanga->id, 'user_id' => $externalRequest->user_id],
+                $participantPayload
+            );
+        });
+
+        $this->refreshAutoStatus($pichanga->fresh());
+        $this->eventService->track(
+            'pichanga_external_request_accepted',
+            (int) $auth->id,
+            (int) $pichanga->club_id,
+            (int) $pichanga->id,
+            ['external_request_id' => (int) $externalRequest->id, 'user_id' => (int) $externalRequest->user_id]
+        );
+
+        return response()->json(['message' => 'Solicitud aceptada y asistencia confirmada.']);
+    }
+
+    public function renotifyPreview(Request $request, GroupPichanga $pichanga)
+    {
+        $auth = $request->user() ?? abort(401);
+        abort_unless($this->canRenotify($pichanga, $auth->id, (bool) $auth->is_superadmin), 403);
+
+        $overrides = $this->validateAudienceOverrides($request);
+        $audience = $this->audienceService->resolveAudience($pichanga, $overrides);
+        $targetIds = collect($audience['target_user_ids'])->map(fn($id) => (int) $id)->values();
+
+        $notMuted = $this->muteService->filterNotMutedUserIds($targetIds, (int) $pichanga->club_id);
+        $mutedSkipped = $targetIds->count() - $notMuted->count();
+
+        return response()->json([
+            'message' => "Con estos filtros se invitaría a {$targetIds->count()} personas.",
+            'target_count' => $targetIds->count(),
+            'sendable_count' => $notMuted->count(),
+            'muted_skipped_count' => $mutedSkipped,
+            'by_degree' => collect($audience['by_degree'])->map(fn($row) => [
+                'pool' => $row['pool'],
+                'eligible' => $row['eligible'],
+            ])->all(),
+            'filters' => $audience['filters'],
+            'target_degree' => $audience['target_degree'],
+        ]);
+    }
+
+    public function renotifySend(Request $request, GroupPichanga $pichanga)
+    {
+        $auth = $request->user() ?? abort(401);
+        abort_unless($this->canRenotify($pichanga, $auth->id, (bool) $auth->is_superadmin), 403);
+
+        $club = $pichanga->club;
+        $cooldown = max(1, (int) ($club->renotify_cooldown_minutes ?? 30));
+        $maxPerPichanga = max(1, (int) ($club->renotify_max_per_pichanga ?? 5));
+
+        if ((int) ($pichanga->renotify_sent_count ?? 0) >= $maxPerPichanga) {
+            abort(422, 'Ya alcanzaste el máximo de re-avisos para esta pichanga.');
+        }
+        if ($pichanga->last_renotify_at && now()->lt($pichanga->last_renotify_at->copy()->addMinutes($cooldown))) {
+            $remaining = now()->diffInSeconds($pichanga->last_renotify_at->copy()->addMinutes($cooldown), false);
+            abort(422, "Debes esperar {$remaining} segundos para volver a avisar.");
+        }
+
+        $overrides = $this->validateAudienceOverrides($request);
+        $audience = $this->audienceService->resolveAudience($pichanga, $overrides);
+        $targetIds = collect($audience['target_user_ids'])->map(fn($id) => (int) $id)->values();
+
+        $notMuted = $this->muteService->filterNotMutedUserIds($targetIds, (int) $pichanga->club_id);
+        $mutedSkipped = $targetIds->count() - $notMuted->count();
+
+        GroupPichangaNotificationBatch::create([
+            'pichanga_id' => $pichanga->id,
+            'triggered_by_user_id' => $auth->id,
+            'batch_type' => 'manual_renotify',
+            'target_degree' => (int) $audience['target_degree'],
+            'filters_json' => $audience['filters'],
+            'target_count' => $targetIds->count(),
+            'muted_skipped_count' => $mutedSkipped,
+            'sent_count' => 0,
+        ]);
+
+        $sent = $this->pushNotificationService->createForUsers($notMuted->all(), [
+            'club_id' => $pichanga->club_id,
+            'group_pichanga_id' => $pichanga->id,
+            'type' => 'pichanga_renotify',
+            'title' => 'Recordatorio de pichanga',
+            'body' => (string) ($pichanga->title ?: 'Revisa la pichanga y confirma tu asistencia'),
+            'data_json' => ['pichanga_id' => $pichanga->id, 'club_id' => $pichanga->club_id],
+        ]);
+
+        GroupPichangaNotificationBatch::where('pichanga_id', $pichanga->id)
+            ->where('triggered_by_user_id', $auth->id)
+            ->latest('id')
+            ->limit(1)
+            ->update(['sent_count' => $sent]);
+
+        $pichanga->update([
+            'last_renotify_at' => now(),
+            'renotify_sent_count' => (int) ($pichanga->renotify_sent_count ?? 0) + 1,
+        ]);
+
+        $this->eventService->track(
+            'pichanga_renotify_sent',
+            (int) $auth->id,
+            (int) $pichanga->club_id,
+            (int) $pichanga->id,
+            [
+                'target_count' => $targetIds->count(),
+                'sent_count' => $sent,
+                'muted_skipped_count' => $mutedSkipped,
+                'target_degree' => (int) $audience['target_degree'],
+            ]
+        );
+
+        // TODO: enqueue real push notifications; this release stores auditable batches.
+        return response()->json([
+            'message' => 'Re-aviso registrado.',
+            'target_count' => $targetIds->count(),
+            'sendable_count' => $sent,
+            'muted_skipped_count' => $mutedSkipped,
+            'renotify_sent_count' => (int) $pichanga->fresh()->renotify_sent_count,
+        ]);
+    }
+
+    private function validateAudienceOverrides(Request $request): array
+    {
+        return $request->validate([
+            'target_degree' => ['nullable', 'integer', 'min:1', 'max:3'],
+            'audience_sex' => ['nullable', Rule::in(['M', 'F'])],
+            'audience_age_min' => ['nullable', 'integer', 'min:14', 'max:80'],
+            'audience_age_max' => ['nullable', 'integer', 'min:14', 'max:80'],
+            'skill_fisico_min' => ['nullable', 'integer', 'min:1', 'max:10'],
+            'skill_arquero_min' => ['nullable', 'integer', 'min:1', 'max:10'],
+            'skill_delantero_min' => ['nullable', 'integer', 'min:1', 'max:10'],
+            'skill_mediocampo_min' => ['nullable', 'integer', 'min:1', 'max:10'],
+            'skill_defensa_min' => ['nullable', 'integer', 'min:1', 'max:10'],
+        ]);
+    }
+
+    private function refreshAutoStatus(GroupPichanga $pichanga): void
+    {
+        if ($pichanga->confirmation_mode !== 'auto_by_capacity') {
+            return;
+        }
+
+        if ($pichanga->status !== 'published') {
+            return;
+        }
+
+        $confirmed = $this->confirmedParticipantsCount($pichanga->id);
+        if ($confirmed >= (int) $pichanga->capacity) {
+            $pichanga->update(['status' => 'confirmed']);
+        }
+    }
+
+    private function confirmedParticipantsCount(int $pichangaId): int
+    {
+        return GroupPichangaParticipant::where('pichanga_id', $pichangaId)
+            ->where('status', 'confirmed')
+            ->count();
+    }
+
+    private function monthlyPlayedCount(int $userId, \Illuminate\Support\Carbon $now): int
+    {
+        $monthStart = $now->copy()->startOfMonth();
+        $monthEnd = $now->copy()->endOfMonth();
+        $windowStart = $monthStart->copy()->subDay();
+
+        $participants = GroupPichangaParticipant::query()
+            ->where('user_id', $userId)
+            ->where('status', 'confirmed')
+            ->whereHas('pichanga', function ($query) use ($windowStart, $monthEnd) {
+                $query
+                    ->where('starts_at', '>=', $windowStart)
+                    ->where('starts_at', '<=', $monthEnd)
+                    ->whereNotIn('status', ['cancelled']);
+            })
+            ->with(['pichanga:id,starts_at,duration_minutes,status'])
+            ->get();
+
+        return $participants->filter(function (GroupPichangaParticipant $participant) use ($monthStart, $monthEnd, $now) {
+            $startsAt = $participant->pichanga?->starts_at;
+            if ($startsAt === null) {
+                return false;
+            }
+
+            $durationMinutes = max(0, (int) ($participant->pichanga?->duration_minutes ?? 0));
+            $endsAt = $startsAt->copy()->addMinutes($durationMinutes);
+
+            return $endsAt->gte($monthStart)
+                && $endsAt->lte($monthEnd)
+                && $endsAt->lte($now);
+        })->count();
+    }
+
+    private function expirePendingExternalRequests(GroupPichanga $pichanga): void
+    {
+        if (now()->lt($pichanga->starts_at)) {
+            return;
+        }
+
+        GroupPichangaExternalRequest::where('pichanga_id', $pichanga->id)
+            ->where('status', 'pending')
+            ->update(['status' => 'expired', 'decided_at' => now()]);
+    }
+
+    private function isMember(int $clubId, int $userId): bool
+    {
+        return ClubUser::where('club_id', $clubId)->where('user_id', $userId)->exists();
+    }
+
+    private function isClubAdmin(int $clubId, int $userId): bool
+    {
+        return ClubUser::where('club_id', $clubId)->where('user_id', $userId)->where('rol', 'admin')->exists();
+    }
+
+    private function canCreatePichanga(Club $club, int $userId, bool $isSuper): bool
+    {
+        if ($isSuper) {
+            return true;
+        }
+        if (!$this->isMember((int) $club->id, $userId)) {
+            return false;
+        }
+
+        $scope = $club->pichanga_create_scope ?? 'admins';
+        if ($scope === 'members') {
+            return true;
+        }
+
+        return $this->isClubAdmin((int) $club->id, $userId);
+    }
+
+    private function canRenotify(GroupPichanga $pichanga, int $userId, bool $isSuper): bool
+    {
+        if ($isSuper) {
+            return true;
+        }
+        if (!$this->isMemberOfPichanga($pichanga, ClubUser::where('user_id', $userId)->pluck('club_id')->map(fn($i) => (int) $i)->all())) {
+            return false;
+        }
+
+        if ((string) ($pichanga->match_context ?? 'regular') === 'club_challenge') {
+            return $this->isClubAdminForPichanga($pichanga, $userId);
+        }
+
+        $scope = $pichanga->club->renotify_scope ?? 'admins';
+        if ($scope === 'members') {
+            return true;
+        }
+
+        return $this->isClubAdmin((int) $pichanga->club_id, $userId);
+    }
+
+    /**
+     * @param array<string,mixed> $extra
+     * @return array<string,mixed>
+     */
+    private function serializePichanga(GroupPichanga $pichanga, array $extra = []): array
+    {
+        $confirmed = array_key_exists('_confirmed_count', $extra)
+            ? (int) $extra['_confirmed_count']
+            : $this->confirmedParticipantsCount((int) $pichanga->id);
+        unset($extra['_confirmed_count']);
+        $meUserId = array_key_exists('_me_user_id', $extra) ? (int) $extra['_me_user_id'] : null;
+        unset($extra['_me_user_id']);
+
+        $teamCount = $this->resolveTeamCount($pichanga);
+        $playersPerTeam = $this->resolvePlayersPerTeam($pichanga, $teamCount);
+        $matchFormat = $this->resolveMatchFormat($pichanga, $teamCount);
+        $teams = $this->buildTeamsBoard($pichanga, $teamCount, $playersPerTeam, $meUserId);
+
+        return array_merge([
+            'id' => $pichanga->id,
+            'club_id' => $pichanga->club_id,
+            'rival_club_id' => Schema::hasColumn('group_pichangas', 'rival_club_id') ? $pichanga->rival_club_id : null,
+            'challenge_id' => Schema::hasColumn('group_pichangas', 'challenge_id') ? $pichanga->challenge_id : null,
+            'match_context' => Schema::hasColumn('group_pichangas', 'match_context') ? ($pichanga->match_context ?? 'regular') : 'regular',
+            'created_by_user_id' => $pichanga->created_by_user_id,
+            'title' => $pichanga->title,
+            'description' => $pichanga->description,
+            'field_id' => $pichanga->field_id,
+            'cancha_id' => Schema::hasColumn('group_pichangas', 'cancha_id') ? $pichanga->cancha_id : null,
+            'address' => $pichanga->address,
+            'starts_at' => optional($pichanga->starts_at)->toISOString(),
+            'duration_minutes' => (int) $pichanga->duration_minutes,
+            'capacity' => (int) $pichanga->capacity,
+            'match_format' => $matchFormat,
+            'team_count' => $teamCount,
+            'players_per_team' => $playersPerTeam,
+            'confirmed_count' => $confirmed,
+            'spots_left' => max(0, (int) $pichanga->capacity - $confirmed),
+            'status' => $pichanga->status,
+            'confirmation_mode' => $pichanga->confirmation_mode,
+            'is_open' => (bool) $pichanga->is_open,
+            'notify_degree' => (int) $pichanga->notify_degree,
+            'allow_external_requests' => (bool) $pichanga->allow_external_requests,
+            'invited_link_enabled' => Schema::hasColumn('group_pichangas', 'invited_link_enabled') ? (bool) ($pichanga->invited_link_enabled ?? false) : false,
+            'invited_link_code' => Schema::hasColumn('group_pichangas', 'invited_link_code') ? $pichanga->invited_link_code : null,
+            'auto_reminder_enabled' => (bool) ($pichanga->auto_reminder_enabled ?? true),
+            'auto_reminder_48h_sent_at' => optional($pichanga->auto_reminder_48h_sent_at)->toISOString(),
+            'auto_reminder_24h_sent_at' => optional($pichanga->auto_reminder_24h_sent_at)->toISOString(),
+            'withdraw_until' => optional($pichanga->withdraw_until)->toISOString(),
+            'audience_filters' => [
+                'sex' => $pichanga->audience_sex,
+                'age_min' => $pichanga->audience_age_min,
+                'age_max' => $pichanga->audience_age_max,
+                'fisico_min' => $pichanga->skill_fisico_min,
+                'arquero_min' => $pichanga->skill_arquero_min,
+                'delantero_min' => $pichanga->skill_delantero_min,
+                'mediocampo_min' => $pichanga->skill_mediocampo_min,
+                'defensa_min' => $pichanga->skill_defensa_min,
+            ],
+            'renotify_sent_count' => (int) ($pichanga->renotify_sent_count ?? 0),
+            'last_renotify_at' => optional($pichanga->last_renotify_at)->toISOString(),
+            'share_url' => $this->buildPichangaShareUrl((int) $pichanga->id),
+            'teams' => $teams,
+        ], $extra);
+    }
+
+    private function resolveMatchFormat(GroupPichanga $pichanga, int $teamCount): string
+    {
+        if (Schema::hasColumn('group_pichangas', 'match_format')) {
+            $value = (string) ($pichanga->match_format ?? '');
+            if (in_array($value, ['versus', 'triangular', 'cuadrangular'], true)) {
+                return $value;
+            }
+        }
+
+        return match ($teamCount) {
+            3 => 'triangular',
+            4 => 'cuadrangular',
+            default => 'versus',
+        };
+    }
+
+    private function teamCountFromFormat(string $matchFormat): int
+    {
+        return match ($matchFormat) {
+            'triangular' => 3,
+            'cuadrangular' => 4,
+            default => 2,
+        };
+    }
+
+    private function resolveTeamCount(GroupPichanga $pichanga): int
+    {
+        if (Schema::hasColumn('group_pichangas', 'team_count')) {
+            $value = (int) ($pichanga->team_count ?? 0);
+            if (in_array($value, [2, 3, 4], true)) {
+                return $value;
+            }
+        }
+
+        if (Schema::hasColumn('group_pichangas', 'match_format')) {
+            return $this->teamCountFromFormat((string) ($pichanga->match_format ?? 'versus'));
+        }
+
+        return 2;
+    }
+
+    private function resolvePlayersPerTeam(GroupPichanga $pichanga, int $teamCount): int
+    {
+        if (Schema::hasColumn('group_pichangas', 'players_per_team')) {
+            $value = (int) ($pichanga->players_per_team ?? 0);
+            if ($value > 0) {
+                return $value;
+            }
+        }
+
+        $capacity = max(1, (int) $pichanga->capacity);
+        return max(1, (int) ceil($capacity / max(1, $teamCount)));
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function allowedTeamCodes(int $teamCount): array
+    {
+        return array_slice(['A', 'B', 'C', 'D'], 0, max(2, min(4, $teamCount)));
+    }
+
+    private function nextTeamSlot(int $pichangaId, string $teamCode): int
+    {
+        if (!Schema::hasColumn('group_pichanga_participants', 'team_slot') || !Schema::hasColumn('group_pichanga_participants', 'team_code')) {
+            return 1;
+        }
+
+        $slots = GroupPichangaParticipant::query()
+            ->where('pichanga_id', $pichangaId)
+            ->where('status', 'confirmed')
+            ->where('team_code', $teamCode)
+            ->lockForUpdate()
+            ->pluck('team_slot')
+            ->filter(fn($slot) => $slot !== null)
+            ->map(fn($slot) => (int) $slot)
+            ->all();
+
+        $max = empty($slots) ? 0 : max($slots);
+        return $max + 1;
+    }
+
+    private function pickLeastLoadedTeamCode(GroupPichanga $pichanga): string
+    {
+        $teamCount = $this->resolveTeamCount($pichanga);
+        $teamCodes = $this->allowedTeamCodes($teamCount);
+        if (!Schema::hasColumn('group_pichanga_participants', 'team_code')) {
+            return $teamCodes[0];
+        }
+
+        $counts = GroupPichangaParticipant::query()
+            ->selectRaw('team_code, COUNT(*) as total')
+            ->where('pichanga_id', $pichanga->id)
+            ->where('status', 'confirmed')
+            ->whereIn('team_code', $teamCodes)
+            ->groupBy('team_code')
+            ->pluck('total', 'team_code');
+
+        $bestCode = $teamCodes[0];
+        $bestCount = PHP_INT_MAX;
+        foreach ($teamCodes as $code) {
+            $count = (int) ($counts[$code] ?? 0);
+            if ($count < $bestCount) {
+                $bestCount = $count;
+                $bestCode = $code;
+            }
+        }
+
+        return $bestCode;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildTeamsBoard(GroupPichanga $pichanga, int $teamCount, int $playersPerTeam, ?int $meUserId): array
+    {
+        $teamCodes = $this->allowedTeamCodes($teamCount);
+        $hasTeamColumns = Schema::hasColumn('group_pichanga_participants', 'team_code')
+            && Schema::hasColumn('group_pichanga_participants', 'team_slot');
+
+        $rows = GroupPichangaParticipant::query()
+            ->where('pichanga_id', $pichanga->id)
+            ->where('status', 'confirmed')
+            ->with(['user:id,name,nick,avatar_url'])
+            ->orderByRaw('COALESCE(confirmed_at, created_at) asc')
+            ->orderBy('id')
+            ->get();
+
+        $assigned = [];
+        if ($hasTeamColumns) {
+            foreach ($rows as $row) {
+                $code = strtoupper((string) ($row->team_code ?? ''));
+                if (!in_array($code, $teamCodes, true)) {
+                    continue;
+                }
+                $slot = max(1, (int) ($row->team_slot ?? 1));
+                $assigned[$code][$slot] = $row;
+            }
+        } else {
+            $i = 0;
+            foreach ($rows as $row) {
+                $code = $teamCodes[$i % $teamCount];
+                $slot = intdiv($i, $teamCount) + 1;
+                $assigned[$code][$slot] = $row;
+                $i++;
+            }
+        }
+
+        $allUserIds = collect($rows)->pluck('user_id')->map(fn($id) => (int) $id)->unique()->values();
+        $skillRows = $this->combinedSkillRatings->averagesByUserIds($allUserIds, null);
+
+        $teams = [];
+        foreach ($teamCodes as $code) {
+            /** @var array<int, GroupPichangaParticipant> $teamSlots */
+            $teamSlots = $assigned[$code] ?? [];
+            $maxSlot = empty($teamSlots) ? $playersPerTeam : max($playersPerTeam, max(array_keys($teamSlots)));
+            $orderedSlots = [];
+            $teamUserIds = [];
+
+            for ($slot = 1; $slot <= $maxSlot; $slot++) {
+                $participant = $teamSlots[$slot] ?? null;
+                if ($participant) {
+                    $user = $participant->user;
+                    $teamUserIds[] = (int) $participant->user_id;
+                    $orderedSlots[] = [
+                        'slot' => $slot,
+                        'user' => [
+                            'id' => (int) $participant->user_id,
+                            'nick' => $user?->nick,
+                            'name' => $user?->name,
+                            'avatar_url' => $user?->avatar_url,
+                            'is_me' => $meUserId !== null && (int) $participant->user_id === $meUserId,
+                        ],
+                    ];
+                } else {
+                    $orderedSlots[] = [
+                        'slot' => $slot,
+                        'user' => null,
+                    ];
+                }
+            }
+
+            $teams[] = [
+                'code' => $code,
+                'label' => "Equipo {$code}",
+                'base_size' => $playersPerTeam,
+                'confirmed_count' => count($teamSlots),
+                'next_slot' => empty($teamSlots) ? 1 : (max(array_keys($teamSlots)) + 1),
+                'avg_rating' => $this->teamOverallAverage($teamUserIds, $skillRows),
+                'slots' => $orderedSlots,
+            ];
+        }
+
+        return $teams;
+    }
+
+    private function teamOverallAverage(array $userIds, \Illuminate\Support\Collection $skillRows): ?float
+    {
+        if (empty($userIds)) {
+            return null;
+        }
+
+        $scores = [];
+        foreach ($userIds as $userId) {
+            $row = $skillRows->get((int) $userId);
+            if (!$row) {
+                continue;
+            }
+
+            $values = array_filter([
+                $row->fisico ?? null,
+                $row->arquero ?? null,
+                $row->delantero ?? null,
+                $row->mediocampo ?? null,
+                $row->defensa ?? null,
+            ], fn($value) => $value !== null);
+
+            if (empty($values)) {
+                continue;
+            }
+
+            $scores[] = array_sum($values) / count($values);
+        }
+
+        if (empty($scores)) {
+            return null;
+        }
+
+        return round(array_sum($scores) / count($scores), 1);
+    }
+
+    private function filterPayloadByTableColumns(string $table, array $payload): array
+    {
+        return collect($payload)
+            ->filter(fn($_, $key) => Schema::hasColumn($table, (string) $key))
+            ->all();
+    }
+
+    private function buildPichangaShareUrl(int $pichangaId): string
+    {
+        $base = rtrim((string) config('services.app_links.base_url', config('app.url')), '/');
+        return $base . '/pichanga/' . $pichangaId;
+    }
+
+    /**
+     * @param array<int> $userClubIds
+     */
+    private function isMemberOfPichanga(GroupPichanga $pichanga, array $userClubIds): bool
+    {
+        if (in_array((int) $pichanga->club_id, $userClubIds, true)) {
+            return true;
+        }
+
+        if ((string) ($pichanga->match_context ?? 'regular') === 'club_challenge') {
+            $rivalClubId = (int) ($pichanga->rival_club_id ?? 0);
+            if ($rivalClubId > 0 && in_array($rivalClubId, $userClubIds, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function isClubAdminForPichanga(GroupPichanga $pichanga, int $userId): bool
+    {
+        if ($this->isClubAdmin((int) $pichanga->club_id, $userId)) {
+            return true;
+        }
+
+        if ((string) ($pichanga->match_context ?? 'regular') === 'club_challenge') {
+            $rivalClubId = (int) ($pichanga->rival_club_id ?? 0);
+            if ($rivalClubId > 0 && $this->isClubAdmin($rivalClubId, $userId)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}

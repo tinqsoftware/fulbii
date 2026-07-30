@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "706272816323",
+    "project_id": "fulbii",
+    "storage_bucket": "fulbii.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:706272816323:android:56a63c32ea035718f48676",
+        "android_client_info": {
+          "package_name": "com.fulbii.fulbii_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBv-XWZDj-KfKBjLmP4yEqoDXGbBuoTThs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,154 @@
+<?php
+
+namespace App\Http\Controllers\Api\V1;
+
+use App\Http\Controllers\Controller;
+use App\Models\FieldSubmission;
+use App\Models\FieldSubmissionPhoto;
+use App\Services\ProductEventService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
+
+class FieldSubmissionController extends Controller
+{
+    public function __construct(private readonly ProductEventService $eventService)
+    {
+    }
+
+    public function indexMine(Request $request)
+    {
+        $user = $request->user() ?? abort(401);
+
+        $items = FieldSubmission::query()
+            ->where('user_id', $user->id)
+            ->with('photos')
+            ->orderByDesc('id')
+            ->limit(100)
+            ->get();
+
+        return response()->json(['items' => $items]);
+    }
+
+    public function store(Request $request)
+    {
+        $user = $request->user() ?? abort(401);
+
+        $data = $request->validate([
+            'nombre' => ['required', 'string', 'max:250'],
+            'submission_type' => ['nullable', Rule::in(['new_polideportivo', 'existing_polideportivo'])],
+            'direccion' => ['nullable', 'string', 'max:255'],
+            'x' => ['nullable', 'string', 'max:50'],
+            'y' => ['nullable', 'string', 'max:50'],
+            'celular' => ['nullable', 'string', 'max:20'],
+            'wsp' => ['nullable', 'boolean'],
+            'id_distrito' => ['nullable', 'integer', 'min:1'],
+            'descripcion' => ['nullable', 'string', 'max:300'],
+            'precio_desde' => ['nullable', 'string', 'max:10'],
+            'source_type' => ['nullable', Rule::in(['gps', 'manual_map'])],
+            'existing_polideportivo_id' => [
+                'nullable',
+                'required_if:submission_type,existing_polideportivo',
+                'integer',
+                'min:1',
+            ],
+            'cancha_nombre' => ['nullable', 'string', 'max:250'],
+            'cancha_equiposvs' => ['nullable', Rule::in(['5', '6', '7', '8', '9', '11'])],
+            'cancha_tipo_superficie' => ['nullable', Rule::in(['losa', 'sintetico', 'artificial'])],
+            'cancha_anchom2' => ['nullable', 'numeric', 'min:1', 'max:200'],
+            'cancha_largom2' => ['nullable', 'numeric', 'min:1', 'max:300'],
+            'create_default_cancha' => ['nullable', 'boolean'],
+            'canchas' => ['nullable', 'array', 'max:12'],
+            'canchas.*.nombre' => ['required_with:canchas', 'string', 'max:250'],
+            'canchas.*.anchom2' => ['nullable', 'numeric', 'min:1', 'max:200'],
+            'canchas.*.largom2' => ['nullable', 'numeric', 'min:1', 'max:300'],
+            'photos' => ['nullable', 'array', 'max:8'],
+            'photos.*' => ['string', 'max:500'],
+            'photo_files' => ['nullable', 'array', 'max:8'],
+            'photo_files.*' => ['file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+        ]);
+
+        // A selected centre is authoritative. This also protects submissions
+        // from older mobile builds that sent the ID but omitted the new type.
+        $data['submission_type'] = !empty($data['existing_polideportivo_id'])
+            ? 'existing_polideportivo'
+            : ($data['submission_type'] ?? 'new_polideportivo');
+
+        if ($data['submission_type'] === 'existing_polideportivo') {
+            abort_unless(!empty($data['existing_polideportivo_id']) && \App\Models\Polideportivo::query()->whereKey($data['existing_polideportivo_id'])->exists(), 422, 'El polideportivo seleccionado ya no existe.');
+        }
+
+        $submission = DB::transaction(function () use ($data, $user, $request) {
+            $submission = FieldSubmission::create([
+                'user_id' => $user->id,
+                'status' => 'pending',
+                'submission_type' => $data['submission_type'],
+                'nombre' => trim((string) $data['nombre']),
+                'direccion' => $data['direccion'] ?? null,
+                'x' => $data['x'] ?? null,
+                'y' => $data['y'] ?? null,
+                'celular' => $data['celular'] ?? null,
+                'wsp' => (bool) ($data['wsp'] ?? false),
+                'id_distrito' => $data['id_distrito'] ?? null,
+                'descripcion' => $data['descripcion'] ?? null,
+                'precio_desde' => $data['precio_desde'] ?? null,
+                'source_type' => $data['source_type'] ?? 'gps',
+                'existing_polideportivo_id' => $data['existing_polideportivo_id'] ?? null,
+                'cancha_nombre' => $data['cancha_nombre'] ?? null,
+                'cancha_equiposvs' => $data['cancha_equiposvs'] ?? null,
+                'cancha_tipo_superficie' => $data['cancha_tipo_superficie'] ?? null,
+                'cancha_anchom2' => $data['cancha_anchom2'] ?? null,
+                'cancha_largom2' => $data['cancha_largom2'] ?? null,
+                'metadata_json' => [
+                    'existing_polideportivo_id' => $data['existing_polideportivo_id'] ?? null,
+                    'create_default_cancha' => (bool) ($data['create_default_cancha'] ?? true),
+                    'canchas' => $data['canchas'] ?? [],
+                ],
+            ]);
+
+            foreach (($data['photos'] ?? []) as $photoUrl) {
+                FieldSubmissionPhoto::create([
+                    'field_submission_id' => $submission->id,
+                    'photo_url' => $photoUrl,
+                    'status' => 'active',
+                ]);
+            }
+            foreach ($request->file('photo_files', []) as $photo) {
+                $path = $photo->store('field-submissions/' . $user->id, 'public');
+                FieldSubmissionPhoto::create([
+                    'field_submission_id' => $submission->id,
+                    'photo_url' => Storage::disk('public')->url($path),
+                    'status' => 'active',
+                ]);
+            }
+
+            return $submission;
+        });
+
+        $this->eventService->track(
+            'field_submission_created',
+            (int) $user->id,
+            null,
+            null,
+            [
+                'submission_id' => (int) $submission->id,
+                'photos_count' => (int) $submission->photos()->count(),
+            ]
+        );
+
+        if (app()->environment('local')) {
+            Log::debug('Field submission created.', [
+                'submission_id' => (int) $submission->id,
+                'submission_type' => $submission->submission_type,
+                'existing_polideportivo_id' => $submission->existing_polideportivo_id,
+            ]);
+        }
+
+        return response()->json([
+            'message' => 'Solicitud de cancha enviada.',
+            'submission' => $submission->load('photos'),
+        ], 201);
+    }
+}

@@ -590,7 +590,7 @@
     if (reason === 'auth'){ text = 'Debes iniciar sesión para calificar.'; need?.classList.remove('d-none'); }
     else if (reason === 'no-member'){ text = 'Debes pertenecer a este club para calificar.'; }
     else if (reason === 'self-exists'){ text = 'Ya te calificaste pichanguero.'; }
-    else if (reason === 'already-today'){ text = 'Ya calificaste hoy a este pichanguero.'; }
+    else if (reason === 'already-this-week' || reason === 'already-today'){ text = 'Ya calificaste esta semana a este pichanguero.'; }
 
     form?.classList.add('d-none');
     if (msg){ msg.textContent = text; msg.classList.remove('d-none'); }

@@ -12,7 +12,18 @@ class User extends Authenticatable
     use HasApiTokens, HasFactory, Notifiable;
 
     protected $fillable = [
-        'name','email','password', 'nick',
+        'name',
+        'email',
+        'password',
+        'nick',
+        'sexo',
+        'fec_nac',
+        'altura_cm',
+        'avatar_url',
+        'auth_provider',
+        'provider_uid',
+        'suspended_until',
+        'suspension_reason',
     ];
 
     protected $hidden = [
@@ -22,6 +33,9 @@ class User extends Authenticatable
     protected $casts = [
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
+        'fec_nac' => 'date',
+        'altura_cm' => 'integer',
+        'suspended_until' => 'datetime',
     ];
 
     /** ---------------------------
@@ -64,12 +78,123 @@ class User extends Authenticatable
         return $this->hasMany(Pichanga::class, 'id_user_asistente');
     }
 
+    public function groupNotificationPrefs()
+    {
+        return $this->hasMany(UserGroupNotificationPref::class, 'user_id');
+    }
+
+    public function isPushMutedInClub(int $clubId): bool
+    {
+        $pref = $this->groupNotificationPrefs()
+            ->where('club_id', $clubId)
+            ->first();
+
+        return $pref ? $pref->isMuted() : false;
+    }
+
+    public function createdGroupPichangas()
+    {
+        return $this->hasMany(GroupPichanga::class, 'created_by_user_id');
+    }
+
+    public function devices()
+    {
+        return $this->hasMany(UserDevice::class, 'user_id');
+    }
+
+    public function pushNotifications()
+    {
+        return $this->hasMany(PushNotification::class, 'user_id');
+    }
+
+    public function reports()
+    {
+        return $this->hasMany(Report::class, 'reporter_user_id');
+    }
+
+    public function strikes()
+    {
+        return $this->hasMany(Strike::class, 'user_id');
+    }
+
+    public function favoriteFields()
+    {
+        return $this->hasMany(UserFavoriteField::class, 'user_id');
+    }
+
+    public function pichangaPosts()
+    {
+        return $this->hasMany(GroupPichangaPost::class, 'user_id');
+    }
+
+    public function pichangaRatingsGiven()
+    {
+        return $this->hasMany(GroupPichangaRating::class, 'rater_user_id');
+    }
+
+    public function pichangaRatingsReceived()
+    {
+        return $this->hasMany(GroupPichangaRating::class, 'rated_user_id');
+    }
+
+    public function createdChallenges()
+    {
+        return $this->hasMany(ClubChallenge::class, 'created_by_user_id');
+    }
+
+    public function challengeMessages()
+    {
+        return $this->hasMany(ClubChallengeMessage::class, 'sender_user_id');
+    }
+
+    public function chatPresence()
+    {
+        return $this->hasOne(UserChatPresence::class, 'user_id');
+    }
+
+    public function profileClips()
+    {
+        return $this->hasMany(UserProfileClip::class, 'user_id');
+    }
+
+    public function isSuspended(): bool
+    {
+        return $this->suspended_until && $this->suspended_until->isFuture();
+    }
+
+    public function hasProfile(string $profileName): bool
+    {
+        if ($this->relationLoaded('perfiles')) {
+            return $this->perfiles->contains(
+                fn ($perfil) => strcasecmp((string) $perfil->nombre, $profileName) === 0
+            );
+        }
+
+        return $this->perfiles()
+            ->whereRaw('LOWER(nombre) = ?', [mb_strtolower($profileName)])
+            ->exists();
+    }
+
     /** Helpers */
     public function getIsSuperadminAttribute(): bool
     {
-        // Si no está cargado, hará 1 query; si ya está, usa colección en memoria
-        return $this->perfiles()->where('nombre','superadmin')->exists();
+        return $this->hasProfile('superadmin');
     }
 
-    protected $appends = ['is_superadmin'];
+    public function getIsStaffAdminAttribute(): bool
+    {
+        return $this->hasProfile('staff_admin');
+    }
+
+    public function canAccessBackoffice(): bool
+    {
+        return $this->is_superadmin || $this->is_staff_admin;
+    }
+
+    public function canPerformCriticalAdminActions(): bool
+    {
+        return $this->is_superadmin;
+    }
+
+    protected $appends = ['is_superadmin', 'is_staff_admin'];
 }

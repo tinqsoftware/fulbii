@@ -23,25 +23,26 @@ class CalificacionController extends Controller
 
         $data = $r->validate([
             'user_calificado_id' => 'required|exists:users,id',
-            'fisico'     => 'required|integer|min:1|max:5',
-            'arquero'    => 'required|integer|min:1|max:5',
-            'delantero'  => 'required|integer|min:1|max:5',
-            'mediocampo' => 'required|integer|min:1|max:5',
-            'defensa'    => 'required|integer|min:1|max:5',
+            'fisico'     => 'required|numeric|min:0|max:10|decimal:0,1',
+            'arquero'    => 'required|numeric|min:0|max:10|decimal:0,1',
+            'delantero'  => 'required|numeric|min:0|max:10|decimal:0,1',
+            'mediocampo' => 'required|numeric|min:0|max:10|decimal:0,1',
+            'defensa'    => 'required|numeric|min:0|max:10|decimal:0,1',
             'comentario' => 'nullable|string|max:500',
         ]);
 
         // el calificado también debe ser miembro del club
         abort_unless($this->esMiembro($club, $data['user_calificado_id']), 403);
 
-        // regla: una calificación por día por par (calificador -> calificado) en este club
+        // regla: una calificación libre por semana ISO por par (calificador -> calificado) en este club
+        [$weekStart, $weekEnd] = $this->currentIsoWeekBounds();
         $yaExiste = Calificacion::where('club_id', $club->id)
             ->where('user_calificador_id', $u->id)
             ->where('user_calificado_id', $data['user_calificado_id'])
-            ->whereDate('created_at', Carbon::now()->toDateString())
+            ->whereBetween('created_at', [$weekStart, $weekEnd])
             ->exists();
         if ($yaExiste) {
-            return response('Ya calificaste hoy a este pichanguero.', 422);
+            return response('Ya calificaste esta semana a este pichanguero.', 422);
         }
 
         // regla adicional: autocalificación solo una vez (podrá editarla nuevamente)
@@ -131,17 +132,30 @@ class CalificacionController extends Controller
             return response()->json(['allow' => true]);
         }
 
-        // Otros: solo 1 por día
+        // Otros: solo 1 por semana ISO
+        [$weekStart, $weekEnd] = $this->currentIsoWeekBounds();
         $yaHoy = Calificacion::where('club_id', $club->id)
             ->where('user_calificador_id', $u->id)
             ->where('user_calificado_id', $user->id)
-            ->whereDate('created_at', now()->toDateString())
+            ->whereBetween('created_at', [$weekStart, $weekEnd])
             ->exists();
 
         if ($yaHoy) {
-            return response()->json(['allow' => false, 'reason' => 'already-today']);
+            return response()->json(['allow' => false, 'reason' => 'already-this-week']);
         }
         return response()->json(['allow' => true]);
+    }
+
+    /**
+     * @return array{0:\Carbon\Carbon,1:\Carbon\Carbon}
+     */
+    private function currentIsoWeekBounds(): array
+    {
+        $now = Carbon::now();
+        $start = $now->copy()->startOfWeek(Carbon::MONDAY)->startOfDay();
+        $end = $now->copy()->endOfWeek(Carbon::SUNDAY)->endOfDay();
+
+        return [$start, $end];
     }
 
 }

@@ -11,6 +11,11 @@ class Calificacion extends Model
 
     protected $casts = [
         'es_autocalificacion' => 'boolean',
+        'fisico' => 'float',
+        'arquero' => 'float',
+        'delantero' => 'float',
+        'mediocampo' => 'float',
+        'defensa' => 'float',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];

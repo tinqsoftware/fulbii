@@ -1,0 +1,22 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class UserFavoriteField extends Model
+{
+    protected $table = 'user_favorite_fields';
+
+    protected $guarded = ['id'];
+
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function field()
+    {
+        return $this->belongsTo(Polideportivo::class, 'polideportivo_id');
+    }
+}
