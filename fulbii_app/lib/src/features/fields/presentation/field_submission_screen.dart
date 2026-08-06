@@ -10,6 +10,8 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../core/network/api_error.dart';
+import '../../auth/presentation/login_required_sheet.dart';
+import '../../auth/session_controller.dart';
 import '../data/fields_repository.dart';
 import '../domain/field_cluster.dart';
 import '../domain/field_model.dart';
@@ -55,7 +57,7 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
   int _dragRevision = 0;
   int _searchRevision = 0;
   bool _hasSelectedLocation = false;
-  List<File> _photos = const [];
+  File? _photo;
   String _surface = 'sintetico';
   String _capacity = '7';
   bool _addDimensions = false;
@@ -252,7 +254,9 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
                     unawaited(_focusSelectedLocation(zoom: 16));
                   }
                 },
-                style: _darkMapStyle,
+                style: Theme.of(context).brightness == Brightness.dark
+                    ? _darkMapStyle
+                    : null,
                 markers: snapshot.data ?? const <Marker>{},
                 myLocationButtonEnabled: false,
                 rotateGesturesEnabled: true,
@@ -357,14 +361,14 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
       Wrap(
         spacing: 8,
         runSpacing: 8,
-        children: ['sintetico', 'artificial', 'losa']
+        children: ['sintetico', 'natural', 'losa']
             .map(
               (v) => ChoiceChip(
                 label: Text(
                   v == 'sintetico'
                       ? 'Grass sintético'
-                      : v == 'artificial'
-                      ? 'Grass artificial'
+                      : v == 'natural'
+                      ? 'Grass natural'
                       : 'Losa',
                 ),
                 selected: _surface == v,
@@ -480,35 +484,36 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
         style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
       ),
       const SizedBox(height: 8),
-      const Text('Máximo 8 fotos. Se comprimen antes de subir.'),
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          for (final file in _photos)
-            Stack(
-              children: [
-                Image.file(file, width: 100, height: 80, fit: BoxFit.cover),
-                Positioned(
-                  right: 0,
-                  child: IconButton(
-                    onPressed: () => setState(
-                      () => _photos = _photos
-                          .where((p) => p.path != file.path)
-                          .toList(),
-                    ),
-                    icon: const Icon(Icons.close),
-                  ),
-                ),
-              ],
+      const Text('Adjunta una foto de la cancha. Se comprime antes de subir.'),
+      const SizedBox(height: 12),
+      if (_photo != null)
+        Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Image.file(
+                _photo!,
+                width: double.infinity,
+                height: 190,
+                fit: BoxFit.cover,
+              ),
             ),
-          if (_photos.length < 8)
-            OutlinedButton.icon(
-              onPressed: _pickPhoto,
-              icon: const Icon(Icons.add_a_photo),
-              label: const Text('Agregar foto'),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: IconButton.filled(
+                tooltip: 'Eliminar foto',
+                onPressed: () => setState(() => _photo = null),
+                icon: const Icon(Icons.close),
+              ),
             ),
-        ],
+          ],
+        ),
+      const SizedBox(height: 12),
+      OutlinedButton.icon(
+        onPressed: _pickPhoto,
+        icon: Icon(_photo == null ? Icons.add_a_photo : Icons.refresh),
+        label: Text(_photo == null ? 'Agregar foto' : 'Reemplazar foto'),
       ),
     ],
   );
@@ -527,7 +532,9 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
           height: 150,
           child: GoogleMap(
             initialCameraPosition: CameraPosition(target: _pin, zoom: 16),
-            style: _darkMapStyle,
+            style: Theme.of(context).brightness == Brightness.dark
+                ? _darkMapStyle
+                : null,
             mapToolbarEnabled: false,
             myLocationButtonEnabled: false,
             zoomControlsEnabled: false,
@@ -584,7 +591,7 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
         title: Text(_courtName.text),
         subtitle: Text('${_capacity}v$_capacity · $_surface'),
       ),
-      Text('${_photos.length} fotos adjuntas'),
+      Text(_photo == null ? 'Sin foto adjunta' : '1 foto adjunta'),
       const SizedBox(height: 12),
       const Text(
         'Tu aporte será revisado antes de publicarse.',
@@ -1299,7 +1306,7 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
     }
     final compressed = await _compressPhoto(image);
     if (compressed != null && mounted) {
-      setState(() => _photos = [..._photos, compressed]);
+      setState(() => _photo = compressed);
     }
   }
 
@@ -1368,9 +1375,16 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
     try {
       final existingPolideportivoId = _confirmedPolideportivoId;
       if (_hasExistingPolideportivo &&
-          (existingPolideportivoId == null ||
-              existingPolideportivoId <= 0)) {
+          (existingPolideportivoId == null || existingPolideportivoId <= 0)) {
         throw const _ExistingPolideportivoSelectionException();
+      }
+      if (!ref.read(sessionControllerProvider).isAuthenticated) {
+        final signedIn = await requireSignIn(
+          context,
+          ref,
+          action: 'enviar tu aporte de cancha',
+        );
+        if (!signedIn) return;
       }
       await ref
           .read(fieldsRepositoryProvider)
@@ -1396,7 +1410,7 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
             precioDesde: _hasExistingPolideportivo ? '' : _price.text.trim(),
             canchaAncho: _addDimensions ? _width.text.trim() : '',
             canchaLargo: _addDimensions ? _length.text.trim() : '',
-            photoFiles: _photos,
+            photoFile: _photo,
           );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

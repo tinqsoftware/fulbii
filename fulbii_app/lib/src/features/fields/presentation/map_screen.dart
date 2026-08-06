@@ -2,11 +2,14 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../profile/data/profile_repository.dart';
+import '../../auth/presentation/login_required_sheet.dart';
+import '../../auth/session_controller.dart';
 import '../data/fields_repository.dart';
 import '../domain/field_cluster.dart';
 import '../domain/field_model.dart';
@@ -46,12 +49,13 @@ class _FieldPlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
-      color: const Color(0xFF18211B),
-      child: const Center(
+      color: colorScheme.surfaceContainerHighest,
+      child: Center(
         child: Icon(
           Icons.sports_soccer_outlined,
-          color: Color(0xFF38D430),
+          color: colorScheme.primary,
           size: 36,
         ),
       ),
@@ -66,6 +70,7 @@ class _FilterChoice extends StatelessWidget {
     required this.onTap,
     this.fontSize = 13,
     this.maxLines = 1,
+    this.padding = const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
   });
 
   final String label;
@@ -73,23 +78,25 @@ class _FilterChoice extends StatelessWidget {
   final VoidCallback onTap;
   final double fontSize;
   final int maxLines;
+  final EdgeInsetsGeometry padding;
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Material(
-      color: selected ? const Color(0xFF1B8F24) : const Color(0xFF111613),
+      color: selected ? const Color(0xFF1B8F24) : colorScheme.surface,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+          padding: padding,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: selected
                   ? const Color(0xFF38D430)
-                  : const Color(0xFF344139),
+                  : colorScheme.outlineVariant,
               width: selected ? 1.5 : 1,
             ),
           ),
@@ -100,7 +107,7 @@ class _FilterChoice extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: selected ? Colors.white : Colors.white70,
+              color: selected ? Colors.white : colorScheme.onSurface,
               fontWeight: FontWeight.w700,
               fontSize: fontSize,
             ),
@@ -169,9 +176,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   GoogleMapController? _mapController;
   StreamSubscription<Position>? _locationSubscription;
   bool _myLocationEnabled = false;
+  bool _didAutoCenterOnLocation = false;
+  LatLng? _pendingInitialUserLocation;
   double _cameraZoom = 13;
   int _cameraRevision = 0;
+  int _filterRequestId = 0;
   List<FieldModel> _lastMapFields = const [];
+  bool _fitResultsAfterApplyingFilters = false;
 
   Future<Set<Marker>>? _markersFuture;
   String _lastMarkersKey = '';
@@ -179,7 +190,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   static const List<String> _surfaceTypeOptions = [
     'losa',
     'sintetico',
-    'artificial',
+    'natural',
   ];
   static const String _mapStyle = '''
 [
@@ -260,6 +271,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             : const LatLng(-12.0464, -77.0428);
 
         _ensureMarkersFuture(validFields);
+        _scheduleResultsFit(validFields);
 
         return Column(
           children: [
@@ -283,45 +295,54 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 _priceMaxController.text.isNotEmpty
             ? 1
             : 0);
-    return SafeArea(
-      bottom: false,
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
+    final headerColor = isDark ? const Color(0xFF080C0A) : colorScheme.surface;
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: (isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
+          .copyWith(statusBarColor: headerColor),
       child: Container(
-        color: const Color(0xFF080C0A),
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-        child: Row(
-          children: [
-            OutlinedButton.icon(
-              onPressed: _openFiltersSheet,
-              icon: const Icon(Icons.tune, size: 17),
-              label: Text(
-                activeFilters == 0 ? 'Filtros' : 'Filtros $activeFilters',
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: SegmentedButton<bool>(
-                showSelectedIcon: false,
-                style: const ButtonStyle(
-                  visualDensity: VisualDensity.compact,
-                  padding: WidgetStatePropertyAll(
-                    EdgeInsets.symmetric(horizontal: 10),
+        color: headerColor,
+        child: SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            child: Row(
+              children: [
+                OutlinedButton.icon(
+                  onPressed: _openFiltersSheet,
+                  icon: const Icon(Icons.tune, size: 17),
+                  label: Text(
+                    activeFilters == 0 ? 'Filtros' : 'Filtros $activeFilters',
                   ),
                 ),
-                segments: const [
-                  ButtonSegment(value: false, label: Text('Mapa')),
-                  ButtonSegment(value: true, label: Text('Lista')),
-                ],
-                selected: {_showList},
-                onSelectionChanged: (value) =>
-                    setState(() => _showList = value.first),
-              ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: SegmentedButton<bool>(
+                    showSelectedIcon: false,
+                    style: const ButtonStyle(
+                      visualDensity: VisualDensity.compact,
+                      padding: WidgetStatePropertyAll(
+                        EdgeInsets.symmetric(horizontal: 10),
+                      ),
+                    ),
+                    segments: const [
+                      ButtonSegment(value: false, label: Text('Mapa')),
+                      ButtonSegment(value: true, label: Text('Lista')),
+                    ],
+                    selected: {_showList},
+                    onSelectionChanged: (value) =>
+                        setState(() => _showList = value.first),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: widget.onOpenInbox,
+                  icon: const Icon(Icons.notifications_none),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            IconButton(
-              onPressed: widget.onOpenInbox,
-              icon: const Icon(Icons.notifications_none),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -360,16 +381,24 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           builder: (context, snapshot) => GoogleMap(
             initialCameraPosition: CameraPosition(target: initial, zoom: 13),
             markers: snapshot.data ?? <Marker>{},
-            style: _mapStyle,
+            style: Theme.of(context).brightness == Brightness.dark
+                ? _mapStyle
+                : null,
             myLocationEnabled: _myLocationEnabled,
             myLocationButtonEnabled: false,
             mapToolbarEnabled: true,
-            onMapCreated: (controller) => _mapController = controller,
+            onMapCreated: _onMapCreated,
             onCameraMove: (position) => _cameraZoom = position.zoom,
             onCameraIdle: _handleCameraIdle,
             onTap: (_) => _clearSelectedField(),
           ),
         ),
+        if (_hasActiveFilters)
+          Positioned(
+            top: 12,
+            left: 12,
+            child: _buildResultsBadge(fields.length),
+          ),
         if (_selectedField != null)
           Positioned(
             left: 12,
@@ -402,6 +431,61 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     );
   }
 
+  bool get _hasActiveFilters =>
+      _selectedSurfaceTypes.isNotEmpty ||
+      _selectedVsFormats.isNotEmpty ||
+      _priceMinController.text.isNotEmpty ||
+      _priceMaxController.text.isNotEmpty;
+
+  Widget _buildResultsBadge(int resultCount) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Material(
+      color: colorScheme.surface,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: _openFiltersSheet,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.only(left: 12, right: 3, top: 4, bottom: 4),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: colorScheme.primary),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.sports_soccer_outlined,
+                size: 17,
+                color: colorScheme.primary,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '$resultCount ${resultCount == 1 ? 'cancha' : 'canchas'}',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+              IconButton(
+                onPressed: _clearFilters,
+                tooltip: 'Limpiar filtros',
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(
+                  width: 30,
+                  height: 30,
+                ),
+                icon: const Icon(Icons.close, size: 17),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildListView(List<FieldModel> fields) {
     if (fields.isEmpty) {
       return const Center(
@@ -420,8 +504,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   Widget _buildFieldCard(FieldModel field) {
-    final favoriteIds =
-        ref.watch(favoriteFieldIdsProvider).valueOrNull ?? const <int>{};
+    final isAuthenticated = ref
+        .watch(sessionControllerProvider)
+        .isAuthenticated;
+    final favoriteIds = isAuthenticated
+        ? ref.watch(favoriteFieldIdsProvider).valueOrNull ?? const <int>{}
+        : const <int>{};
     final isFavorite = favoriteIds.contains(field.id);
     final image = (field.urlFoto ?? '').trim();
     final summary = _courtSummary(field);
@@ -470,7 +558,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                             isFavorite ? Icons.favorite : Icons.favorite_border,
                             color: isFavorite
                                 ? const Color(0xFF38D430)
-                                : Colors.white70,
+                                : Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
                           ),
                         ),
                       ],
@@ -479,7 +569,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       Text(
                         summary,
                         style: const TextStyle(
-                          color: Color(0xFF9BE594),
+                          color: Color(0xFF249D31),
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -488,7 +578,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         field.direccion!,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Colors.white54),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     if (_priceLabel(field) != null)
                       Align(
@@ -579,7 +671,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                             field.direccion!,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(color: Colors.white60),
+                            style: TextStyle(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                            ),
                           ),
                         ],
                         if (price != null || summary != null) ...[
@@ -588,8 +684,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                             [price, summary].whereType<String>().join('  ·  '),
                             style: TextStyle(
                               color: price != null
-                                  ? const Color(0xFF38D430)
-                                  : Colors.white70,
+                                  ? const Color(0xFF249D31)
+                                  : Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -648,13 +746,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       _surfaceTypeLabel(court.surfaceType ?? ''),
     ].whereType<String>().where((value) => value.trim().isNotEmpty).join(' · ');
 
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       width: 152,
       padding: const EdgeInsets.all(7),
       decoration: BoxDecoration(
-        color: const Color(0xFF111613),
+        color: colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFF2B3931)),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Row(
         children: [
@@ -686,7 +785,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     details,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.white60, fontSize: 11),
+                    style: TextStyle(
+                      color: colorScheme.onSurfaceVariant,
+                      fontSize: 11,
+                    ),
                   ),
               ],
             ),
@@ -921,6 +1023,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     return _FilterChoice(
       label: 'S/ $label',
       selected: current == value,
+      fontSize: 10.5,
+      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
       onTap: () => setSheetState(() => onSelected(value)),
     );
   }
@@ -929,6 +1033,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       value % 1 == 0 ? value.toStringAsFixed(0) : value.toStringAsFixed(1);
 
   Future<void> _applyFilters() async {
+    final requestId = ++_filterRequestId;
     final min = _parsePrice(_priceMinController.text);
     final max = _parsePrice(_priceMaxController.text);
     if (min != null && max != null && min > max) {
@@ -940,6 +1045,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       return;
     }
 
+    _fitResultsAfterApplyingFilters = true;
     _clearSelectedField();
     ref.read(mapFilterStateProvider.notifier).state = MapFilterState(
       priceMin: min,
@@ -947,9 +1053,42 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       surfaceTypes: _selectedSurfaceTypes.toList(),
       vsFormats: _selectedVsFormats.toList(),
     );
+
+    // Esperamos la respuesta ya filtrada para encuadrar exactamente esos
+    // polideportivos, sin depender de que ocurra otro renderizado del mapa.
+    try {
+      ref.invalidate(fieldsProvider);
+      final fields = await ref.read(fieldsProvider.future);
+      if (!mounted || requestId != _filterRequestId) return;
+      final validFields = fields
+          .where(
+            (field) =>
+                field.x != 0 &&
+                field.y != 0 &&
+                field.x.abs() <= 90 &&
+                field.y.abs() <= 180,
+          )
+          .toList();
+      _lastMapFields = validFields;
+      if (validFields.isNotEmpty) {
+        // The provider can finish before Google Maps has laid out its new
+        // viewport. Wait for that frame so bounds are calculated from the
+        // actual map size, not the previous partial layout.
+        await WidgetsBinding.instance.endOfFrame;
+        await _fitCameraToResults(validFields);
+      } else {
+        _fitResultsAfterApplyingFilters = false;
+      }
+    } catch (_) {
+      // El estado de error del proveedor ya informa el fallo de la consulta.
+      _fitResultsAfterApplyingFilters = false;
+    }
   }
 
   void _clearFilters() {
+    // Clearing filters intentionally preserves the camera the user chose.
+    _filterRequestId++;
+    _fitResultsAfterApplyingFilters = false;
     _priceMinController.clear();
     _priceMaxController.clear();
     setState(() {
@@ -959,6 +1098,60 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       _selectedFieldDetail = null;
     });
     ref.read(mapFilterStateProvider.notifier).state = const MapFilterState();
+  }
+
+  void _scheduleResultsFit(List<FieldModel> fields) {
+    if (!_fitResultsAfterApplyingFilters) return;
+    if (fields.isEmpty) {
+      _fitResultsAfterApplyingFilters = false;
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        unawaited(_fitCameraToResults(fields));
+      }
+    });
+  }
+
+  Future<void> _fitCameraToResults(List<FieldModel> fields) async {
+    if (!_fitResultsAfterApplyingFilters) return;
+    await WidgetsBinding.instance.endOfFrame;
+    final controller = _mapController;
+    if (controller == null) return;
+
+    try {
+      if (fields.length == 1) {
+        final field = fields.single;
+        await controller.animateCamera(
+          CameraUpdate.newLatLngZoom(LatLng(field.x, field.y), 15),
+        );
+      } else {
+        final latitudes = fields.map((field) => field.x).toList()..sort();
+        final longitudes = fields.map((field) => field.y).toList()..sort();
+        final southwest = LatLng(latitudes.first, longitudes.first);
+        final northeast = LatLng(latitudes.last, longitudes.last);
+
+        // Bounds rejects a zero-area rectangle. If all results share one
+        // coordinate, center that point instead of losing the fit request.
+        if (southwest == northeast) {
+          await controller.animateCamera(
+            CameraUpdate.newLatLngZoom(southwest, 15),
+          );
+        } else {
+          await controller.animateCamera(
+            CameraUpdate.newLatLngBounds(
+              LatLngBounds(southwest: southwest, northeast: northeast),
+              52,
+            ),
+          );
+        }
+      }
+      _fitResultsAfterApplyingFilters = false;
+    } on PlatformException {
+      // Keep the request pending so onMapCreated/onCameraIdle can retry once
+      // Google Maps has completed its layout.
+    }
   }
 
   double? _parsePrice(String value) {
@@ -1273,11 +1466,57 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) return;
 
-    final permission = await Geolocator.checkPermission();
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+
     if (permission == LocationPermission.always ||
         permission == LocationPermission.whileInUse) {
       _startLocationUpdates();
+      if (_didAutoCenterOnLocation) return;
+
+      try {
+        final position = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+          ),
+        );
+        if (!mounted) return;
+        _didAutoCenterOnLocation = true;
+        await _moveCameraToUserLocation(
+          LatLng(position.latitude, position.longitude),
+        );
+      } catch (_) {
+        // The map remains on its default area when the device has no location.
+      }
     }
+  }
+
+  void _onMapCreated(GoogleMapController controller) {
+    _mapController = controller;
+    if (_fitResultsAfterApplyingFilters && _lastMapFields.isNotEmpty) {
+      unawaited(_fitCameraToResults(_lastMapFields));
+    }
+    final pendingLocation = _pendingInitialUserLocation;
+    if (pendingLocation == null) return;
+
+    _pendingInitialUserLocation = null;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        unawaited(_moveCameraToUserLocation(pendingLocation));
+      }
+    });
+  }
+
+  Future<void> _moveCameraToUserLocation(LatLng location) async {
+    final controller = _mapController;
+    if (controller == null) {
+      _pendingInitialUserLocation = location;
+      return;
+    }
+
+    await controller.animateCamera(CameraUpdate.newLatLngZoom(location, 15.5));
   }
 
   Future<void> _centerOnMyLocation() async {
@@ -1319,15 +1558,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           accuracy: LocationAccuracy.high,
         ),
       );
-      final controller = _mapController;
-      if (controller != null) {
-        await controller.animateCamera(
-          CameraUpdate.newLatLngZoom(
-            LatLng(position.latitude, position.longitude),
-            15.5,
-          ),
-        );
-      }
+      await _moveCameraToUserLocation(
+        LatLng(position.latitude, position.longitude),
+      );
     } on LocationServiceDisabledException {
       _showLocationMessage(
         'Activa la ubicación del dispositivo para ver tu posición.',
@@ -1342,6 +1575,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   void _startLocationUpdates() {
     if (_locationSubscription != null) return;
+    if (!mounted) return;
 
     setState(() => _myLocationEnabled = true);
     _locationSubscription =
@@ -1394,8 +1628,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         return 'Losa';
       case 'sintetico':
         return 'Grass sintético';
+      case 'natural':
+        return 'Grass natural';
       case 'artificial':
-        return 'Grass artificial';
+        return 'Grass sintético';
       default:
         return value;
     }
@@ -1408,11 +1644,20 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       ),
     );
     if (mounted) {
-      ref.invalidate(favoriteFieldIdsProvider);
+      if (ref.read(sessionControllerProvider).isAuthenticated) {
+        ref.invalidate(favoriteFieldIdsProvider);
+      }
     }
   }
 
   Future<void> _toggleFavorite(int fieldId, bool isFavorite) async {
+    if (!await requireSignIn(
+      context,
+      ref,
+      action: 'guardar un polideportivo como favorito',
+    )) {
+      return;
+    }
     final repo = ref.read(profileRepositoryProvider);
     try {
       if (isFavorite) {

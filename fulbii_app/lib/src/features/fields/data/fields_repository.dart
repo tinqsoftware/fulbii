@@ -113,35 +113,33 @@ class FieldsRepository {
     String sourceType = 'manual_map',
     String? canchaAncho,
     String? canchaLargo,
-    List<File> photoFiles = const [],
+    File? photoFile,
   }) async {
-    final form = FormData.fromMap(
-      {
-        'submission_type': submissionType,
-        'nombre': nombre,
-        'direccion': direccion,
-        'x': x?.toStringAsFixed(6),
-        'y': y?.toStringAsFixed(6),
-        'celular': celular,
-        // Multipart values are strings; Laravel's boolean rule accepts 1/0.
-        'wsp': wsp ? '1' : '0',
-        'descripcion': descripcion,
-        'precio_desde': precioDesde,
-        'source_type': sourceType,
-        // Multipart form values must be strings. Keeping the ID explicit
-        // prevents a selected centre from being serialized as an empty value.
-        'existing_polideportivo_id': existingPolideportivoId?.toString(),
-        'cancha_nombre': canchaNombre,
-        'cancha_equiposvs': canchaEquiposvs,
-        'cancha_tipo_superficie': canchaTipoSuperficie,
-        'cancha_anchom2': canchaAncho,
-        'cancha_largom2': canchaLargo,
-        'photo_files[]': [
-          for (final file in photoFiles)
-            await MultipartFile.fromFile(file.path),
-        ],
-      }..removeWhere((_, value) => value == null || value == ''),
-    );
+    final data = <String, dynamic>{
+      'submission_type': submissionType,
+      'nombre': nombre,
+      'direccion': direccion,
+      'x': x?.toStringAsFixed(6),
+      'y': y?.toStringAsFixed(6),
+      'celular': celular,
+      // Multipart values are strings; Laravel's boolean rule accepts 1/0.
+      'wsp': wsp ? '1' : '0',
+      'descripcion': descripcion,
+      'precio_desde': precioDesde,
+      'source_type': sourceType,
+      // Multipart form values must be strings. Keeping the ID explicit
+      // prevents a selected centre from being serialized as an empty value.
+      'existing_polideportivo_id': existingPolideportivoId?.toString(),
+      'cancha_nombre': canchaNombre,
+      'cancha_equiposvs': canchaEquiposvs,
+      'cancha_tipo_superficie': canchaTipoSuperficie,
+      'cancha_anchom2': canchaAncho,
+      'cancha_largom2': canchaLargo,
+    }..removeWhere((_, value) => value == null || value == '');
+    if (photoFile != null) {
+      data['photo_files[]'] = [await MultipartFile.fromFile(photoFile.path)];
+    }
+    final form = FormData.fromMap(data);
     await _api.postMultipartMap('/field-submissions', data: form);
   }
 }

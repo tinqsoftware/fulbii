@@ -2,9 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../core/network/api_error.dart';
 import '../../../services/widget/widget_weekly_service.dart';
+import '../../auth/session_controller.dart';
+import '../../fields/presentation/field_detail_screen.dart';
+import '../../profile/presentation/public_player_profile_screen.dart';
 import '../data/pichangas_repository.dart';
 
 final pichangaDetailProvider = FutureProvider.autoDispose
@@ -55,6 +59,7 @@ class PichangaDetailScreen extends ConsumerStatefulWidget {
 
 class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
   String? _selectedTeamCode;
+  int _activeDetailTab = 0;
   Timer? _watchAutoRefreshTimer;
 
   @override
@@ -79,36 +84,28 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
     final detailAsync = ref.watch(pichangaDetailProvider(widget.pichangaId));
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Detalle pichanga'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              ref.invalidate(pichangaDetailProvider(widget.pichangaId));
-              ref.invalidate(pichangaFeedProvider(widget.pichangaId));
-              ref.invalidate(pichangaRatingsProvider(widget.pichangaId));
-              ref.invalidate(
-                pichangaExternalRequestsProvider(widget.pichangaId),
-              );
-              ref.invalidate(pichangaWatchHeatmapProvider(widget.pichangaId));
-              ref.invalidate(pichangaWatchSessionsProvider(widget.pichangaId));
-            },
-          ),
-        ],
+      bottomNavigationBar: detailAsync.maybeWhen(
+        data: (data) => _buildBottomAction(
+          context,
+          ref,
+          (data['pichanga'] as Map?)?.cast<String, dynamic>() ?? {},
+          (data['me'] as Map?)?.cast<String, dynamic>() ?? {},
+        ),
+        orElse: () => null,
       ),
       body: detailAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) =>
-            Center(child: Text('No se pudo cargar la pichanga: $error')),
+            _DetailLoadError(onRetry: () => _refreshDetail(ref)),
         data: (data) {
           final pichanga =
               (data['pichanga'] as Map?)?.cast<String, dynamic>() ?? {};
+          final isAuthenticated = ref
+              .watch(sessionControllerProvider)
+              .isAuthenticated;
           final me = (data['me'] as Map?)?.cast<String, dynamic>() ?? {};
           final isAdmin = me['is_admin'] == true;
           final isMember = me['is_member'] == true;
-          final participantStatus = me['participant_status']?.toString();
-          final externalStatus = me['external_request_status']?.toString();
           final meTeamCode = me['participant_team_code']?.toString();
           final teamsRaw = pichanga['teams'] is List
               ? (pichanga['teams'] as List).whereType<Map>().toList()
@@ -132,107 +129,365 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
                         ? teams.first['code']?.toString()
                         : null));
 
-          final title = (pichanga['title'] ?? 'Pichanga #${widget.pichangaId}')
-              .toString();
-          final startsAt = _formatLocalDateTime(pichanga['starts_at']);
-          final spotsLeft = pichanga['spots_left']?.toString() ?? '-';
-          final status = (pichanga['status'] ?? '').toString();
-          final autoEnabled = pichanga['auto_reminder_enabled'] == true;
-          final auto48SentAt = (pichanga['auto_reminder_48h_sent_at'] ?? '')
-              .toString();
-          final auto24SentAt = (pichanga['auto_reminder_24h_sent_at'] ?? '')
-              .toString();
-
-          return ListView(
-            padding: const EdgeInsets.all(14),
-            children: [
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      const SizedBox(height: 8),
-                      Text('Inicio: $startsAt'),
-                      Text('Estado: $status'),
-                      Text('Cupos disponibles: $spotsLeft'),
-                      if ((pichanga['match_format'] ?? '')
-                          .toString()
-                          .isNotEmpty)
-                        Text(
-                          'Formato: ${(pichanga['match_format'] ?? '').toString()} '
-                          '• ${pichanga['players_per_team'] ?? '-'} por equipo',
-                        ),
-                      if ((pichanga['address'] ?? '').toString().isNotEmpty)
-                        Text('Dirección: ${pichanga['address']}'),
-                      const SizedBox(height: 12),
-                      _buildTeamBoardCard(
-                        context,
-                        ref,
-                        teams: teams,
-                        participantStatus: participantStatus,
-                        isMember: isMember,
-                        selectedTeamCode: selectedTeamCode,
-                        myTeamCode: meTeamCode,
-                      ),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          OutlinedButton.icon(
-                            onPressed: !isMember && externalStatus != 'pending'
-                                ? () => _requestExternal(context, ref)
-                                : null,
-                            icon: const Icon(Icons.how_to_reg),
-                            label: Text(
-                              externalStatus == 'pending'
-                                  ? 'Solicitud enviada'
-                                  : 'Solicitar cupo',
-                            ),
-                          ),
-                          OutlinedButton.icon(
-                            onPressed: isMember
-                                ? () => _openRenotifyDialog(context, ref)
-                                : null,
-                            icon: const Icon(
-                              Icons.notifications_active_outlined,
-                            ),
-                            label: const Text('Avisar de nuevo'),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Mi estado: ${participantStatus ?? '-'}'
-                        '${meTeamCode != null ? ' • equipo: $meTeamCode' : ''}'
-                        '${externalStatus != null ? ' • solicitud: $externalStatus' : ''}',
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Avisos automáticos: ${autoEnabled ? 'activos' : 'desactivados'}',
-                      ),
-                      Text(
-                        'Ola 48h: ${auto48SentAt.isEmpty ? 'pendiente' : _formatLocalDateTime(auto48SentAt)}',
-                      ),
-                      Text(
-                        'Ola 24h: ${auto24SentAt.isEmpty ? 'pendiente' : _formatLocalDateTime(auto24SentAt)}',
-                      ),
-                    ],
-                  ),
+          final tabCount = isAdmin ? 3 : 2;
+          final activeTab = _activeDetailTab.clamp(0, tabCount - 1);
+          final content = switch (activeTab) {
+            0 => _buildSummaryTab(
+              context,
+              ref,
+              pichanga: pichanga,
+              teams: teams,
+              isMember: isMember,
+              selectedTeamCode: selectedTeamCode,
+              myTeamCode: meTeamCode,
+            ),
+            1 => Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 112),
+              child: Column(
+                children: [
+                  if (isAuthenticated) ...[
+                    _buildWatchActivityCard(context, ref),
+                    _buildFeedCard(context, ref),
+                    _buildRatingsCard(context, ref),
+                  ] else
+                    const _DetailEmptyState(
+                      icon: Icons.lock_outline,
+                      text:
+                          'Inicia sesión para ver la actividad de esta pichanga.',
+                    ),
+                ],
+              ),
+            ),
+            _ => Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 112),
+              child: Column(
+                children: [
+                  _buildManagementCard(context, ref, pichanga),
+                  _buildExternalRequestsCard(context, ref),
+                ],
+              ),
+            ),
+          };
+          return CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(
+                child: _PichangaHero(
+                  pichanga: pichanga,
+                  onBack: () => Navigator.of(context).maybePop(),
+                  onShare: () => _sharePichanga(pichanga),
                 ),
               ),
-              _buildWatchActivityCard(context, ref),
-              if (isAdmin) _buildExternalRequestsCard(context, ref),
-              _buildFeedCard(context, ref),
-              _buildRatingsCard(context, ref),
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: _PichangaTabsHeader(
+                  color: Theme.of(context).colorScheme.surface,
+                  topInset: MediaQuery.paddingOf(context).top,
+                  activeIndex: activeTab,
+                  labels: ['Resumen', 'Actividad', if (isAdmin) 'Gestión'],
+                  onSelected: (index) =>
+                      setState(() => _activeDetailTab = index),
+                  onBack: () => Navigator.of(context).maybePop(),
+                ),
+              ),
+              SliverToBoxAdapter(child: content),
             ],
           );
         },
+      ),
+    );
+  }
+
+  void _refreshDetail(WidgetRef ref) {
+    ref.invalidate(pichangaDetailProvider(widget.pichangaId));
+    ref.invalidate(pichangaFeedProvider(widget.pichangaId));
+    ref.invalidate(pichangaRatingsProvider(widget.pichangaId));
+    ref.invalidate(pichangaExternalRequestsProvider(widget.pichangaId));
+    ref.invalidate(pichangaWatchHeatmapProvider(widget.pichangaId));
+    ref.invalidate(pichangaWatchSessionsProvider(widget.pichangaId));
+  }
+
+  Future<void> _sharePichanga(
+    Map<String, dynamic> pichanga,
+  ) => SharePlus.instance.share(
+    ShareParams(
+      subject: (pichanga['title'] ?? 'Pichanga').toString(),
+      text:
+          'Mira esta pichanga en Fulbii: ${(pichanga['share_url'] ?? '').toString()}',
+    ),
+  );
+
+  Widget _buildSummaryTab(
+    BuildContext context,
+    WidgetRef ref, {
+    required Map<String, dynamic> pichanga,
+    required List<Map<String, dynamic>> teams,
+    required bool isMember,
+    required String? selectedTeamCode,
+    required String? myTeamCode,
+  }) {
+    final address = (pichanga['address'] ?? '').toString().trim();
+    final court = (pichanga['court_name'] ?? '').toString().trim();
+    final field = (pichanga['field_name'] ?? '').toString().trim();
+    final venueFieldId =
+        int.tryParse(
+          (pichanga['venue_field_id'] ?? pichanga['field_id']).toString(),
+        ) ??
+        0;
+    final confirmed = pichanga['confirmed_count'] ?? 0;
+    final capacity = pichanga['capacity'] ?? '-';
+    final spots = pichanga['spots_left'] ?? 0;
+    final startsAt = _formatTextDateTime(pichanga['starts_at']);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 112),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _StatusChip(
+            label: (pichanga['status_label'] ?? 'Abierta').toString(),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            (pichanga['title'] ?? 'Pichanga').toString(),
+            style: Theme.of(
+              context,
+            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 12),
+          _InfoCard(
+            icon: Icons.calendar_month_outlined,
+            title: startsAt,
+            subtitle:
+                '${pichanga['duration_minutes'] ?? 90} min · ${_formatMatchFormat(pichanga)}',
+          ),
+          if (court.isNotEmpty || field.isNotEmpty || address.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _InfoCard(
+              icon: Icons.location_on_outlined,
+              title: court.isNotEmpty
+                  ? court
+                  : (field.isNotEmpty ? field : address),
+              subtitle: [
+                field,
+                address,
+              ].where((value) => value.isNotEmpty).join(' · '),
+              onTap: venueFieldId <= 0
+                  ? null
+                  : () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            FieldDetailScreen(fieldId: venueFieldId),
+                      ),
+                    ),
+              trailing: venueFieldId <= 0
+                  ? null
+                  : const Icon(Icons.chevron_right, size: 22),
+            ),
+          ],
+          const SizedBox(height: 14),
+          _CapacityStrip(
+            confirmed: '$confirmed',
+            capacity: '$capacity',
+            spots: '$spots',
+          ),
+          const SizedBox(height: 24),
+          _buildTeamBoardCard(
+            context,
+            teams: teams,
+            clubId: int.tryParse(pichanga['club_id'].toString()) ?? 0,
+            isMember: isMember,
+            selectedTeamCode: selectedTeamCode,
+            myTeamCode: myTeamCode,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget? _buildBottomAction(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic> pichanga,
+    Map<String, dynamic> me,
+  ) {
+    final teams = pichanga['teams'] is List
+        ? (pichanga['teams'] as List)
+              .whereType<Map>()
+              .map((team) => team.cast<String, dynamic>())
+              .toList()
+        : <Map<String, dynamic>>[];
+    final selected =
+        _selectedTeamCode ??
+        me['participant_team_code']?.toString() ??
+        (teams.isEmpty ? null : teams.first['code']?.toString());
+    final mine = me['participant_team_code']?.toString();
+    final confirmed = me['participant_status']?.toString() == 'confirmed';
+    final canConfirm = me['can_confirm'] == true && selected != null;
+    final canChange =
+        me['can_change_team'] == true && selected != null && selected != mine;
+    final canWithdraw = me['can_withdraw'] == true;
+    final canRequest = me['can_request_external'] == true;
+    final pending = me['external_request_status']?.toString() == 'pending';
+
+    if (!canConfirm &&
+        !canChange &&
+        !canWithdraw &&
+        !canRequest &&
+        !pending &&
+        !confirmed) {
+      return null;
+    }
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          border: Border(
+            top: BorderSide(
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (canConfirm)
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () =>
+                      _confirmInTeam(context, ref, selectedTeamCode: selected),
+                  icon: const Icon(Icons.check_circle_outline),
+                  label: Text('Confirmar en Equipo $selected'),
+                ),
+              )
+            else if (canChange && !canWithdraw)
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () =>
+                      _confirmInTeam(context, ref, selectedTeamCode: selected),
+                  icon: const Icon(Icons.swap_horiz),
+                  label: Text('Cambiar a Equipo $selected'),
+                ),
+              )
+            else if (canRequest)
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () => _requestExternal(context, ref),
+                  icon: const Icon(Icons.person_add_alt_1),
+                  label: const Text('Solicitar cupo'),
+                ),
+              )
+            else if (pending)
+              const _PendingRequestNotice()
+            else if (confirmed)
+              _ConfirmedNotice(teamCode: mine),
+            if (canWithdraw) ...[
+              if (canChange) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: FilledButton.icon(
+                        onPressed: () => _confirmInTeam(
+                          context,
+                          ref,
+                          selectedTeamCode: selected,
+                        ),
+                        icon: const Icon(Icons.swap_horiz),
+                        label: Text('Cambiar a Equipo $selected'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 2,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _confirmWithdraw(context, ref),
+                        icon: const Icon(Icons.logout, size: 18),
+                        label: const Text('Darme de baja'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Theme.of(context).colorScheme.error,
+                          side: BorderSide(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ] else
+                TextButton.icon(
+                  onPressed: () => _confirmWithdraw(context, ref),
+                  icon: const Icon(Icons.logout, size: 18),
+                  label: const Text('Darme de baja'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Theme.of(context).colorScheme.error,
+                  ),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmWithdraw(BuildContext context, WidgetRef ref) async {
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('¿Darte de baja?'),
+        content: const Text('Tu cupo quedará disponible para otro jugador.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Darme de baja'),
+          ),
+        ],
+      ),
+    );
+    if (accepted == true && context.mounted) {
+      await _withdraw(context, ref);
+    }
+  }
+
+  Widget _buildManagementCard(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic> pichanga,
+  ) {
+    final autoEnabled = pichanga['auto_reminder_enabled'] == true;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Gestión de la pichanga',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Avisos automáticos ${autoEnabled ? 'activos' : 'desactivados'}.',
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: () => _openRenotifyDialog(context, ref),
+              icon: const Icon(Icons.notifications_active_outlined),
+              label: const Text('Avisar de nuevo'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -306,7 +561,9 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
                     if (session.isNotEmpty && !hasSamples)
                       const Padding(
                         padding: EdgeInsets.only(top: 6),
-                        child: Text('Sesión recibida, sincronizando recorrido…'),
+                        child: Text(
+                          'Sesión recibida, sincronizando recorrido…',
+                        ),
                       ),
                     const SizedBox(height: 8),
                     _WatchHeatmapMini(points: points),
@@ -327,7 +584,8 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
                           final status = (session['status'] ?? '')
                               .toString()
                               .toLowerCase();
-                          return status == 'finished' || status == 'auto_finished';
+                          return status == 'finished' ||
+                              status == 'auto_finished';
                         }).toList();
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -347,16 +605,20 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
                                 final ended = _formatLocalDateTime(
                                   session['end_time'],
                                 );
-                                final distanceMeters = (session['distance_meters'] ?? 0)
-                                    .toString();
+                                final distanceMeters =
+                                    (session['distance_meters'] ?? 0)
+                                        .toString();
                                 final goalsCount = session['goals_count'] ?? 0;
-                                final assistsCount = session['assists_count'] ?? 0;
+                                final assistsCount =
+                                    session['assists_count'] ?? 0;
                                 return Padding(
                                   padding: const EdgeInsets.only(bottom: 6),
                                   child: Text(
                                     '$started • $distanceMeters m • ⚽ $goalsCount • 🅰️ $assistsCount'
                                     '${ended != '-' ? ' • fin $ended' : ''}',
-                                    style: Theme.of(context).textTheme.bodySmall,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall,
                                   ),
                                 );
                               }),
@@ -375,6 +637,53 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
     );
   }
 
+  String _formatTextDateTime(dynamic raw) {
+    final value = (raw ?? '').toString().trim();
+    if (value.isEmpty) {
+      return '-';
+    }
+    final parsed = DateTime.tryParse(value);
+    if (parsed == null) {
+      return value.replaceFirst('T', ' ');
+    }
+    final local = parsed.toLocal();
+    const days = [
+      'Lunes',
+      'Martes',
+      'Miércoles',
+      'Jueves',
+      'Viernes',
+      'Sábado',
+      'Domingo'
+    ];
+    const months = [
+      'enero',
+      'febrero',
+      'marzo',
+      'abril',
+      'mayo',
+      'junio',
+      'julio',
+      'agosto',
+      'septiembre',
+      'octubre',
+      'noviembre',
+      'diciembre'
+    ];
+    final dayName = days[local.weekday - 1];
+    final monthName = months[local.month - 1];
+    final dayNum = local.day;
+    final year = local.year;
+
+    final hour = local.hour;
+    final period = hour >= 12 ? 'PM' : 'AM';
+    final hour12 = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+    final minuteStr = local.minute.toString().padLeft(2, '0');
+    final hourStr = hour12.toString().padLeft(2, '0');
+
+    return '$dayName, $dayNum de $monthName de $year · $hourStr:$minuteStr $period';
+  }
+
   String _formatLocalDateTime(dynamic raw) {
     final value = (raw ?? '').toString().trim();
     if (value.isEmpty) {
@@ -388,9 +697,12 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
     final dd = local.day.toString().padLeft(2, '0');
     final mm = local.month.toString().padLeft(2, '0');
     final yyyy = local.year.toString();
-    final hh = local.hour.toString().padLeft(2, '0');
+    final hour = local.hour;
+    final period = hour >= 12 ? 'PM' : 'AM';
+    final hour12 = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour);
     final min = local.minute.toString().padLeft(2, '0');
-    return '$dd/$mm/$yyyy $hh:$min';
+    final hh = hour12.toString().padLeft(2, '0');
+    return '$dd/$mm/$yyyy $hh:$min $period';
   }
 
   Widget _buildExternalRequestsCard(BuildContext context, WidgetRef ref) {
@@ -645,10 +957,9 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
   }
 
   Widget _buildTeamBoardCard(
-    BuildContext context,
-    WidgetRef ref, {
+    BuildContext context, {
     required List<Map<String, dynamic>> teams,
-    required String? participantStatus,
+    required int clubId,
     required bool isMember,
     required String? selectedTeamCode,
     required String? myTeamCode,
@@ -657,11 +968,16 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
       return const SizedBox.shrink();
     }
 
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final cardWidth = ((screenWidth - 32 - 20) / 2.45).clamp(136.0, 165.0);
+
     Widget buildTeamCard(Map<String, dynamic> team) {
       final code = (team['code'] ?? '').toString();
       final label = (team['label'] ?? 'Equipo $code').toString();
       final avgRating = team['avg_rating'];
-      final avgText = avgRating == null ? '-' : avgRating.toString();
+      final avgText = avgRating is num
+          ? '★ ${avgRating.toDouble().toStringAsFixed(1)}'
+          : 'Sin rating';
       final confirmedCount =
           int.tryParse((team['confirmed_count'] ?? 0).toString()) ?? 0;
       final baseSize = int.tryParse((team['base_size'] ?? 0).toString()) ?? 0;
@@ -671,7 +987,10 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
                 .map((e) => e.cast<String, dynamic>())
                 .toList()
           : <Map<String, dynamic>>[];
+      final confirmedSlots =
+          slots.where((slot) => slot['user'] is Map).toList();
       final selected = selectedTeamCode == code;
+      final isMyTeam = myTeamCode == code;
 
       return InkWell(
         onTap: isMember
@@ -679,11 +998,12 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
                 _selectedTeamCode = code;
               })
             : null,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: const EdgeInsets.all(10),
+          width: cardWidth,
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: selected
                   ? Theme.of(context).colorScheme.primary
@@ -697,42 +1017,184 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: Theme.of(context).textTheme.titleSmall),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 14,
+                          ),
+                    ),
+                  ),
+                  if (selected)
+                    Icon(
+                      Icons.check_circle,
+                      size: 16,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                ],
+              ),
               const SizedBox(height: 4),
-              Text('Promedio: $avgText'),
-              Text('Confirmados: $confirmedCount / $baseSize'),
-              const Divider(height: 14),
+              Row(
+                children: [
+                  Text(
+                    avgText,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const Spacer(),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      '$confirmedCount/$baseSize',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 10,
+                          ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Divider(height: 1),
+              const SizedBox(height: 8),
               Expanded(
-                child: ListView.builder(
-                  itemCount: slots.length,
-                  itemBuilder: (context, index) {
-                    final row = slots[index];
-                    final slot =
-                        int.tryParse((row['slot'] ?? 0).toString()) ?? 0;
-                    final user = row['user'] is Map
-                        ? (row['user'] as Map).cast<String, dynamic>()
-                        : null;
-                    final isMe = user?['is_me'] == true;
-                    final displayName = user == null
-                        ? '—'
-                        : ((user['nick'] ?? user['name'] ?? 'Jugador')
-                              .toString());
-
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 2),
-                      child: Text(
-                        '$slot. $displayName',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontWeight: isMe ? FontWeight.w700 : FontWeight.w400,
-                          color: isMe
-                              ? Theme.of(context).colorScheme.primary
-                              : null,
+                child: confirmedSlots.isEmpty
+                    ? Center(
+                        child: Text(
+                          'Sin miembros',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(context).colorScheme.outline,
+                                fontStyle: FontStyle.italic,
+                                fontSize: 11,
+                              ),
                         ),
+                      )
+                    : ListView.builder(
+                        physics: const BouncingScrollPhysics(),
+                        itemCount: confirmedSlots.length,
+                        padding: EdgeInsets.zero,
+                        itemBuilder: (context, idx) {
+                          final slot = confirmedSlots[idx];
+                          final user =
+                              (slot['user'] as Map).cast<String, dynamic>();
+                          final name =
+                              (user['nick'] ?? user['name'] ?? 'Jugador')
+                                  .toString();
+                          final userId =
+                              int.tryParse(user['id'].toString()) ?? 0;
+                          final isMe = user['is_me'] == true;
+
+                          final userRatingRaw = user['avg_rating'];
+                          final userRatingStr = userRatingRaw is num
+                              ? userRatingRaw.toDouble().toStringAsFixed(1)
+                              : '-';
+
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 6),
+                            child: Row(
+                              children: [
+                                InkResponse(
+                                  onTap: (clubId <= 0 || userId <= 0)
+                                      ? null
+                                      : () => Navigator.of(context).push(
+                                            MaterialPageRoute<void>(
+                                              builder: (_) =>
+                                                  PublicPlayerProfileScreen(
+                                                    clubId: clubId,
+                                                    userId: userId,
+                                                  ),
+                                            ),
+                                          ),
+                                  radius: 18,
+                                  child: Container(
+                                    width: 24,
+                                    height: 24,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .primary
+                                          .withValues(alpha: 0.15),
+                                      border: Border.all(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .primary,
+                                        width: 1.2,
+                                      ),
+                                    ),
+                                    alignment: Alignment.center,
+                                    child: Text(
+                                      userRatingStr,
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w900,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .primary,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(
+                                          fontWeight: isMe
+                                              ? FontWeight.w900
+                                              : FontWeight.w500,
+                                          fontSize: 12,
+                                          color: isMe
+                                              ? Theme.of(context)
+                                                  .colorScheme
+                                                  .primary
+                                              : Theme.of(context)
+                                                  .colorScheme
+                                                  .onSurface,
+                                        ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
                       ),
-                    );
-                  },
+              ),
+              const SizedBox(height: 6),
+              Text(
+                isMyTeam
+                    ? '★ Tu equipo'
+                    : (baseSize > confirmedCount
+                          ? '${baseSize - confirmedCount} cupos libres'
+                          : 'Equipo lleno'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: isMyTeam || baseSize > confirmedCount
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).colorScheme.outline,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ],
@@ -741,81 +1203,46 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
       );
     }
 
-    final cards = teams.map(buildTeamCard).toList();
-    final teamBoard = teams.length <= 2
-        ? Row(
-            children: [
-              for (var index = 0; index < cards.length; index++) ...[
-                Expanded(child: SizedBox(height: 290, child: cards[index])),
-                if (index < cards.length - 1) const SizedBox(width: 8),
-              ],
-            ],
-          )
-        : SizedBox(
-            height: 290,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: cards.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 10),
-              itemBuilder: (context, index) {
-                return SizedBox(
-                  width: MediaQuery.of(context).size.width * 0.44,
-                  child: cards[index],
-                );
-              },
-            ),
-          );
-
-    final isConfirmed = participantStatus == 'confirmed';
-    final canConfirm = isMember && selectedTeamCode != null && !isConfirmed;
-    final canMove =
-        isMember &&
-        isConfirmed &&
-        selectedTeamCode != null &&
-        selectedTeamCode != myTeamCode;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Selecciona un equipo para confirmar',
-          style: Theme.of(context).textTheme.titleMedium,
+          'Equipos',
+          style: Theme.of(
+            context,
+          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
         ),
         const SizedBox(height: 8),
-        teamBoard,
-        const SizedBox(height: 10),
-        if (canConfirm)
-          FilledButton.icon(
-            onPressed: () => _confirmInTeam(
-              context,
-              ref,
-              selectedTeamCode: selectedTeamCode,
-            ),
-            icon: const Icon(Icons.check_circle_outline),
-            label: Text('Confirmar en equipo $selectedTeamCode'),
+        Text(
+          isMember
+              ? 'Toca un equipo para seleccionarlo.'
+              : 'Plantillas y disponibilidad por equipo.',
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 245,
+          child: ListView.separated(
+            physics: const BouncingScrollPhysics(),
+            scrollDirection: Axis.horizontal,
+            itemCount: teams.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 10),
+            itemBuilder: (_, index) => buildTeamCard(teams[index]),
           ),
-        if (canMove)
-          FilledButton.icon(
-            onPressed: () => _confirmInTeam(
-              context,
-              ref,
-              selectedTeamCode: selectedTeamCode,
+        ),
+        if (myTeamCode != null) ...[
+          const SizedBox(height: 10),
+          Text(
+            'Tu equipo actual: $myTeamCode',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.primary,
+              fontWeight: FontWeight.w800,
             ),
-            icon: const Icon(Icons.swap_horiz),
-            label: Text('Cambiar al equipo $selectedTeamCode'),
-          ),
-        if (isConfirmed) ...[
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: () => _withdraw(context, ref),
-            icon: const Icon(Icons.exit_to_app),
-            style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
-            label: const Text('Darme de baja'),
           ),
         ],
       ],
     );
   }
+
 
   Future<void> _confirmInTeam(
     BuildContext context,
@@ -971,10 +1398,10 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
                       'audience_age_max': int.tryParse(
                         ageMaxController.text.trim(),
                       ),
-                      'skill_fisico_min': int.tryParse(
+                      'skill_fisico_min': double.tryParse(
                         fisicoController.text.trim(),
                       ),
-                      'skill_defensa_min': int.tryParse(
+                      'skill_defensa_min': double.tryParse(
                         defensaController.text.trim(),
                       ),
                     };
@@ -1013,10 +1440,10 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
                       'audience_age_max': int.tryParse(
                         ageMaxController.text.trim(),
                       ),
-                      'skill_fisico_min': int.tryParse(
+                      'skill_fisico_min': double.tryParse(
                         fisicoController.text.trim(),
                       ),
-                      'skill_defensa_min': int.tryParse(
+                      'skill_defensa_min': double.tryParse(
                         defensaController.text.trim(),
                       ),
                     };
@@ -1165,11 +1592,11 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
 
   Future<void> _addRatingDialog(BuildContext context, WidgetRef ref) async {
     final userIdController = TextEditingController();
-    double fisico = 7;
-    double arquero = 7;
-    double delantero = 7;
-    double mediocampo = 7;
-    double defensa = 7;
+    double fisico = 2.5;
+    double arquero = 2.5;
+    double delantero = 2.5;
+    double mediocampo = 2.5;
+    double defensa = 2.5;
     final comentarioController = TextEditingController();
 
     await showDialog<void>(
@@ -1189,8 +1616,8 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
                     child: Slider(
                       value: value,
                       min: 0,
-                      max: 10,
-                      divisions: 100,
+                      max: 5,
+                      divisions: 50,
                       label: value.toStringAsFixed(1),
                       onChanged: onChanged,
                     ),
@@ -1342,6 +1769,353 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
       }
     }
   }
+}
+
+class _PichangaTabsHeader extends SliverPersistentHeaderDelegate {
+  _PichangaTabsHeader({
+    required this.color,
+    required this.topInset,
+    required this.labels,
+    required this.activeIndex,
+    required this.onSelected,
+    required this.onBack,
+  });
+
+  final Color color;
+  final double topInset;
+  final List<String> labels;
+  final int activeIndex;
+  final ValueChanged<int> onSelected;
+  final VoidCallback onBack;
+
+  @override
+  double get minExtent => 58 + topInset;
+
+  @override
+  double get maxExtent => 58 + topInset;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) => Material(
+    color: color,
+    elevation: overlapsContent ? 2 : 0,
+    child: Padding(
+      padding: EdgeInsets.only(top: topInset),
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: 'Volver',
+            onPressed: onBack,
+            icon: const Icon(Icons.arrow_back_ios_new),
+          ),
+          Expanded(
+            child: Row(
+              children: List.generate(labels.length, (index) {
+                final selected = index == activeIndex;
+                return Expanded(
+                  child: InkWell(
+                    onTap: () => onSelected(index),
+                    child: Container(
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(
+                            color: selected
+                                ? Theme.of(context).colorScheme.primary
+                                : Colors.transparent,
+                            width: 3,
+                          ),
+                        ),
+                      ),
+                      child: AnimatedDefaultTextStyle(
+                        duration: const Duration(milliseconds: 150),
+                        style: Theme.of(context).textTheme.titleSmall!.copyWith(
+                          color: selected
+                              ? Theme.of(context).colorScheme.primary
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontWeight: selected
+                              ? FontWeight.w800
+                              : FontWeight.w600,
+                        ),
+                        child: Text(labels[index]),
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  @override
+  bool shouldRebuild(covariant _PichangaTabsHeader oldDelegate) =>
+      oldDelegate.color != color ||
+      oldDelegate.topInset != topInset ||
+      oldDelegate.activeIndex != activeIndex ||
+      oldDelegate.labels.length != labels.length;
+}
+
+class _PichangaHero extends StatelessWidget {
+  const _PichangaHero({
+    required this.pichanga,
+    required this.onBack,
+    required this.onShare,
+  });
+
+  final Map<String, dynamic> pichanga;
+  final VoidCallback onBack;
+  final VoidCallback onShare;
+
+  @override
+  Widget build(BuildContext context) {
+    final photo = (pichanga['venue_photo_url'] ?? '').toString();
+    return SizedBox(
+      height: 235,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (photo.isNotEmpty)
+            Image.network(
+              photo,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => const _VenuePlaceholder(),
+            )
+          else
+            const _VenuePlaceholder(),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black.withValues(alpha: 0.4),
+                  Colors.black.withValues(alpha: 0.05),
+                ],
+              ),
+            ),
+          ),
+          SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _HeroAction(
+                    icon: Icons.arrow_back_ios_new,
+                    tooltip: 'Volver',
+                    onTap: onBack,
+                  ),
+                  _HeroAction(
+                    icon: Icons.ios_share_outlined,
+                    tooltip: 'Compartir',
+                    onTap: onShare,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VenuePlaceholder extends StatelessWidget {
+  const _VenuePlaceholder();
+  @override
+  Widget build(BuildContext context) => ColoredBox(
+    color: const Color(0xFF263128),
+    child: Center(
+      child: Icon(
+        Icons.sports_soccer,
+        size: 64,
+        color: Theme.of(context).colorScheme.primary,
+      ),
+    ),
+  );
+}
+
+class _HeroAction extends StatelessWidget {
+  const _HeroAction({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) => Material(
+    color: Colors.black.withValues(alpha: 0.48),
+    shape: const CircleBorder(),
+    child: IconButton(
+      tooltip: tooltip,
+      onPressed: onTap,
+      color: Colors.white,
+      icon: Icon(icon),
+    ),
+  );
+}
+
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({required this.label});
+  final String label;
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.primaryContainer,
+      borderRadius: BorderRadius.circular(999),
+    ),
+    child: Text(
+      label,
+      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+        color: Theme.of(context).colorScheme.onPrimaryContainer,
+        fontWeight: FontWeight.w800,
+      ),
+    ),
+  );
+}
+
+class _InfoCard extends StatelessWidget {
+  const _InfoCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.onTap,
+    this.trailing,
+  });
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback? onTap;
+  final Widget? trailing;
+  @override
+  Widget build(BuildContext context) => Card(
+    margin: EdgeInsets.zero,
+    child: ListTile(
+      onTap: onTap,
+      leading: Icon(icon, color: Theme.of(context).colorScheme.primary),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+      subtitle: subtitle.isEmpty ? null : Text(subtitle),
+      trailing: trailing,
+    ),
+  );
+}
+
+class _CapacityStrip extends StatelessWidget {
+  const _CapacityStrip({
+    required this.confirmed,
+    required this.capacity,
+    required this.spots,
+  });
+  final String confirmed;
+  final String capacity;
+  final String spots;
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(16),
+    ),
+    child: Row(
+      children: [
+        Icon(
+          Icons.groups_2_outlined,
+          color: Theme.of(context).colorScheme.primary,
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            '$confirmed / $capacity confirmados',
+            style: const TextStyle(fontWeight: FontWeight.w800),
+          ),
+        ),
+        Text(
+          '$spots cupos',
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.primary,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _PendingRequestNotice extends StatelessWidget {
+  const _PendingRequestNotice();
+  @override
+  Widget build(BuildContext context) => const Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      Icon(Icons.schedule, size: 18),
+      SizedBox(width: 8),
+      Text('Solicitud enviada'),
+    ],
+  );
+}
+
+class _ConfirmedNotice extends StatelessWidget {
+  const _ConfirmedNotice({required this.teamCode});
+  final String? teamCode;
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary),
+      const SizedBox(width: 8),
+      Text(
+        'Estás en Equipo ${teamCode ?? ''}',
+        style: const TextStyle(fontWeight: FontWeight.w800),
+      ),
+    ],
+  );
+}
+
+class _DetailLoadError extends StatelessWidget {
+  const _DetailLoadError({required this.onRetry});
+  final VoidCallback onRetry;
+  @override
+  Widget build(BuildContext context) => Center(
+    child: FilledButton.icon(
+      onPressed: onRetry,
+      icon: const Icon(Icons.refresh),
+      label: const Text('Reintentar'),
+    ),
+  );
+}
+
+class _DetailEmptyState extends StatelessWidget {
+  const _DetailEmptyState({required this.icon, required this.text});
+  final IconData icon;
+  final String text;
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.all(32),
+    child: Column(
+      children: [
+        Icon(icon, size: 40),
+        const SizedBox(height: 12),
+        Text(text, textAlign: TextAlign.center),
+      ],
+    ),
+  );
+}
+
+String _formatMatchFormat(Map<String, dynamic> pichanga) {
+  final teams = pichanga['team_count'] ?? 2;
+  final perTeam = pichanga['players_per_team'] ?? '-';
+  return '$teams equipos · $perTeam por equipo';
 }
 
 class _WatchHeatmapMini extends StatelessWidget {

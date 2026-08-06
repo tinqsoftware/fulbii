@@ -5,6 +5,8 @@ class FieldCourtModel {
     this.urlFoto,
     this.surfaceType,
     this.vsFormat,
+    this.widthM,
+    this.lengthM,
   });
 
   final int id;
@@ -12,6 +14,8 @@ class FieldCourtModel {
   final String? urlFoto;
   final String? surfaceType;
   final String? vsFormat;
+  final double? widthM;
+  final double? lengthM;
 
   factory FieldCourtModel.fromJson(Map<String, dynamic> json) {
     int parseId(dynamic value) {
@@ -24,12 +28,21 @@ class FieldCourtModel {
       return text.isEmpty ? null : text;
     }
 
+    double? parseDouble(dynamic value) {
+      if (value is num) return value.toDouble();
+      return double.tryParse(
+        value?.toString().trim().replaceAll(',', '.') ?? '',
+      );
+    }
+
     return FieldCourtModel(
       id: parseId(json['id']),
       nombre: parseText(json['nombre']),
       urlFoto: parseText(json['url_foto']),
       surfaceType: parseText(json['tipo_superficie']),
       vsFormat: parseText(json['vs_format']),
+      widthM: parseDouble(json['anchom2']),
+      lengthM: parseDouble(json['largom2']),
     );
   }
 }

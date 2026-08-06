@@ -7,10 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 enum WidgetDeepLinkActionType { select, shareLink, shareLineup }
 
 class WidgetDeepLinkAction {
-  const WidgetDeepLinkAction({
-    required this.type,
-    required this.pichangaId,
-  });
+  const WidgetDeepLinkAction({required this.type, required this.pichangaId});
 
   final WidgetDeepLinkActionType type;
   final int pichangaId;
@@ -25,6 +22,7 @@ class DeepLinkService {
 
   Future<void> initialize({
     required void Function(String joinCode) onJoinCode,
+    void Function(int clubId)? onClubId,
     void Function(int pichangaId)? onPichangaId,
     void Function(WidgetDeepLinkAction action)? onWidgetAction,
     VoidCallback? onOpenPichangas,
@@ -39,6 +37,7 @@ class DeepLinkService {
         _handleUri(
           initial,
           onJoinCode,
+          onClubId,
           onPichangaId,
           onWidgetAction,
           onOpenPichangas,
@@ -52,6 +51,7 @@ class DeepLinkService {
       (uri) => _handleUri(
         uri,
         onJoinCode,
+        onClubId,
         onPichangaId,
         onWidgetAction,
         onOpenPichangas,
@@ -70,12 +70,19 @@ class DeepLinkService {
   void _handleUri(
     Uri uri,
     void Function(String joinCode) onJoinCode,
+    void Function(int clubId)? onClubId,
     void Function(int pichangaId)? onPichangaId,
     void Function(WidgetDeepLinkAction action)? onWidgetAction,
     VoidCallback? onOpenPichangas,
   ) {
     final joinCode = _extractJoinCode(uri);
     if (joinCode == null) {
+      final clubId = extractClubId(uri);
+      if (clubId != null && onClubId != null) {
+        onClubId(clubId);
+        return;
+      }
+
       final widgetAction = extractWidgetAction(uri);
       if (widgetAction != null && onWidgetAction != null) {
         onWidgetAction(widgetAction);
@@ -152,10 +159,29 @@ class DeepLinkService {
     }
 
     final queryId = uri.queryParameters['id']?.trim();
-    if ((host == 'pichanga' || (segments.isNotEmpty && segments.first == 'pichanga')) &&
+    if ((host == 'pichanga' ||
+            (segments.isNotEmpty && segments.first == 'pichanga')) &&
         queryId != null &&
         queryId.isNotEmpty) {
       return int.tryParse(queryId);
+    }
+
+    return null;
+  }
+
+  @visibleForTesting
+  int? extractClubId(Uri uri) {
+    final host = uri.host.toLowerCase();
+    final segments = uri.pathSegments
+        .where((segment) => segment.trim().isNotEmpty)
+        .toList();
+
+    if (host == 'club' && segments.isNotEmpty) {
+      return int.tryParse(segments.first.trim());
+    }
+
+    if (segments.length >= 2 && segments.first.toLowerCase() == 'club') {
+      return int.tryParse(segments[1].trim());
     }
 
     return null;
@@ -170,7 +196,9 @@ class DeepLinkService {
         .toList();
 
     String? actionSegment;
-    if (host == 'widget' && segments.length >= 2 && segments.first.toLowerCase() == 'confirmed') {
+    if (host == 'widget' &&
+        segments.length >= 2 &&
+        segments.first.toLowerCase() == 'confirmed') {
       actionSegment = segments[1].toLowerCase();
     } else if (segments.length >= 3 &&
         segments[0].toLowerCase() == 'widget' &&

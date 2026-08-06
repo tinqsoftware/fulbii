@@ -8,6 +8,8 @@ import 'package:video_player/video_player.dart';
 
 import '../../../config/app_config.dart';
 import '../../../core/network/api_error.dart';
+import '../../../core/theme/theme_controller.dart';
+import '../../auth/presentation/login_required_sheet.dart';
 import '../../auth/session_controller.dart';
 import '../data/profile_repository.dart';
 import '../services/clip_processing_service.dart';
@@ -48,11 +50,50 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final favoritesAsync = ref.watch(favoriteFieldsProvider);
     final clipsAsync = ref.watch(myProfileClipsProvider);
     final appConfig = ref.watch(appConfigProvider);
+    final themeMode = ref.watch(themeModeProvider);
 
     final user = session.user;
 
     if (user == null) {
-      return const Center(child: Text('No hay sesión activa.'));
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Icon(Icons.person_outline, size: 56),
+              const SizedBox(height: 14),
+              Text(
+                'Explora Fulbii sin cuenta',
+                textAlign: TextAlign.center,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Inicia sesión para crear pichangas, guardar favoritos y participar en grupos.',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 22),
+              FilledButton(
+                onPressed: () =>
+                    requireSignIn(context, ref, action: 'usar tu perfil'),
+                child: const Text('Iniciar sesión'),
+              ),
+              const SizedBox(height: 14),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Modo oscuro'),
+                value: themeMode == ThemeMode.dark,
+                onChanged: (value) =>
+                    ref.read(themeModeProvider.notifier).setDarkMode(value),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
     return ListView(
@@ -105,6 +146,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ),
               ],
             ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: SwitchListTile.adaptive(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+            title: const Text('Modo oscuro'),
+            subtitle: const Text('Se guarda solo en este equipo.'),
+            value: themeMode == ThemeMode.dark,
+            onChanged: (value) =>
+                ref.read(themeModeProvider.notifier).setDarkMode(value),
           ),
         ),
         const SizedBox(height: 12),

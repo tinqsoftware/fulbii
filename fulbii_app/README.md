@@ -12,12 +12,14 @@ Cliente móvil principal de Fulbii (Android + iOS) conectado a `Laravel API v1`.
 ## Módulos implementados
 - Auth social + onboarding (`nick`, `sexo`)
 - Mapa de canchas + favoritos + envío de nueva cancha
-- Grupos: listar, descubrir, crear, invitar, ver miembros
+- Grupos: `Mis grupos` por membresía activa, descubrir públicos, crear/editar
+  con foto, solicitudes, integrantes y perfil deportivo público
 - Preferencias de notificación por grupo (`always_on`, `mute_24h`, `mute_1w`, `mute_forever`)
-- Pichangas: disponibles, crear, confirmar, baja, solicitudes externas
+- Pichangas: agenda, calendario mensual, detalle de recinto, equipos
+  persistentes, confirmar/cambiar equipo, baja y solicitudes externas
 - Re-avisos con preview + envío
 - Feed y comentarios de pichanga
-- Calificaciones por pichanga
+- Calificaciones globales y por pichanga en estrellas decimales 0.0–5.0
 - Inbox de notificaciones
 - Perfil + historial + edición básica
 
@@ -43,3 +45,8 @@ flutter build appbundle --release \
 ```
 
 Para iOS/TestFlight, usar Xcode Archive con mismo entorno de staging.
+
+## Documentación de continuidad
+
+Antes de cambiar contratos o flujos, revisar
+[`../docs/AI_HANDOFF_CURRENT_STATE.md`](../docs/AI_HANDOFF_CURRENT_STATE.md).

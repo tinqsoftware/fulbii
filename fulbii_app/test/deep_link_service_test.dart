@@ -12,7 +12,22 @@ void main() {
       456,
     );
     expect(service.extractPichangaId(Uri.parse('fulbii://join/ABC')), isNull);
-    expect(service.extractPichangaId(Uri.parse('fulbii://pichanga/abc')), isNull);
+    expect(
+      service.extractPichangaId(Uri.parse('fulbii://pichanga/abc')),
+      isNull,
+    );
+  });
+
+  test('extractClubId supports custom scheme and https path', () {
+    final service = DeepLinkService();
+
+    expect(service.extractClubId(Uri.parse('fulbii://club/123')), 123);
+    expect(
+      service.extractClubId(Uri.parse('https://fulbii.com/club/456')),
+      456,
+    );
+    expect(service.extractClubId(Uri.parse('fulbii://join/ABC')), isNull);
+    expect(service.extractClubId(Uri.parse('fulbii://club/abc')), isNull);
   });
 
   test('extractWidgetAction parses widget confirmed actions', () {
@@ -40,7 +55,9 @@ void main() {
     expect(shareLineup.pichangaId, 99);
 
     expect(
-      service.extractWidgetAction(Uri.parse('fulbii://widget/confirmed/select')),
+      service.extractWidgetAction(
+        Uri.parse('fulbii://widget/confirmed/select'),
+      ),
       isNull,
     );
     expect(
@@ -54,12 +71,21 @@ void main() {
   test('extractOpenPichangas supports custom scheme and https path', () {
     final service = DeepLinkService();
 
-    expect(service.extractOpenPichangas(Uri.parse('fulbii://pichangas')), isTrue);
+    expect(
+      service.extractOpenPichangas(Uri.parse('fulbii://pichangas')),
+      isTrue,
+    );
     expect(
       service.extractOpenPichangas(Uri.parse('https://fulbii.com/pichangas')),
       isTrue,
     );
-    expect(service.extractOpenPichangas(Uri.parse('fulbii://pichanga/123')), isFalse);
-    expect(service.extractOpenPichangas(Uri.parse('fulbii://join/ABC')), isFalse);
+    expect(
+      service.extractOpenPichangas(Uri.parse('fulbii://pichanga/123')),
+      isFalse,
+    );
+    expect(
+      service.extractOpenPichangas(Uri.parse('fulbii://join/ABC')),
+      isFalse,
+    );
   });
 }

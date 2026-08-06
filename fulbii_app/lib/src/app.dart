@@ -5,11 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'config/app_config.dart';
-import 'features/auth/presentation/login_screen.dart';
 import 'features/auth/presentation/onboarding_screen.dart';
 import 'features/auth/session_controller.dart';
 import 'features/auth/session_state.dart';
 import 'features/clubs/presentation/join_club_by_link_screen.dart';
+import 'features/clubs/presentation/club_detail_screen.dart';
 import 'features/home/main_shell.dart';
 import 'features/pichangas/presentation/pichanga_detail_screen.dart';
 import 'features/pichangas/presentation/pichangas_screen.dart';
@@ -18,6 +18,7 @@ import 'features/pichangas/data/pichangas_repository.dart';
 import 'services/deep_links/deep_link_service.dart';
 import 'services/watch/watch_bridge_service.dart';
 import 'services/widget/widget_weekly_service.dart';
+import 'core/theme/theme_controller.dart';
 
 final appNavigatorKeyProvider = Provider<GlobalKey<NavigatorState>>(
   (_) => GlobalKey<NavigatorState>(),
@@ -35,6 +36,7 @@ class _FulbiiAppState extends ConsumerState<FulbiiApp>
   bool _deepLinksInitialized = false;
   bool _openingJoin = false;
   bool _openingPichanga = false;
+  bool _openingClub = false;
   bool _openingWidgetShare = false;
   bool _openingPichangasScreen = false;
   String? _lastWatchToken;
@@ -46,6 +48,7 @@ class _FulbiiAppState extends ConsumerState<FulbiiApp>
   List<Map<String, dynamic>> _lastWatchPendingMatches = const [];
   String? _pendingJoinCode;
   int? _pendingPichangaId;
+  int? _pendingClubId;
   WidgetDeepLinkAction? _pendingWidgetAction;
   bool _pendingOpenPichangas = false;
 
@@ -65,6 +68,7 @@ class _FulbiiAppState extends ConsumerState<FulbiiApp>
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(sessionControllerProvider);
+    final themeMode = ref.watch(themeModeProvider);
     final navigatorKey = ref.watch(appNavigatorKeyProvider);
     _syncWatchAuth(session);
 
@@ -75,6 +79,7 @@ class _FulbiiAppState extends ConsumerState<FulbiiApp>
             .read(deepLinkServiceProvider)
             .initialize(
               onJoinCode: _handleJoinCode,
+              onClubId: _handleClubLink,
               onPichangaId: _handlePichangaLink,
               onWidgetAction: _handleWidgetAction,
               onOpenPichangas: _handleOpenPichangas,
@@ -106,6 +111,17 @@ class _FulbiiAppState extends ConsumerState<FulbiiApp>
       );
     }
 
+    if (_pendingClubId != null &&
+        !_openingClub &&
+        session.initialized &&
+        !session.needsOnboarding) {
+      final clubId = _pendingClubId!;
+      _pendingClubId = null;
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _openClubDetail(clubId),
+      );
+    }
+
     if (_pendingWidgetAction != null &&
         !_openingWidgetShare &&
         session.initialized &&
@@ -131,46 +147,9 @@ class _FulbiiAppState extends ConsumerState<FulbiiApp>
       title: 'Fulbii',
       debugShowCheckedModeBanner: false,
       navigatorKey: navigatorKey,
-      theme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF080C0A),
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF38D430),
-          brightness: Brightness.dark,
-          surface: const Color(0xFF111613),
-        ),
-        cardTheme: CardThemeData(
-          color: const Color(0xFF111613),
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-            side: const BorderSide(color: Color(0xFF26332B)),
-          ),
-        ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF080C0A),
-          foregroundColor: Colors.white,
-          elevation: 0,
-        ),
-        navigationBarTheme: NavigationBarThemeData(
-          height: 72,
-          backgroundColor: const Color(0xFF0D120F),
-          indicatorColor: const Color(0xFF1B8F24),
-          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-          labelTextStyle: WidgetStatePropertyAll(
-            TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
-          ),
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: const Color(0xFF18211B),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Color(0xFF26332B)),
-          ),
-        ),
-      ),
+      themeMode: themeMode,
+      theme: _fulbiiTheme(Brightness.light),
+      darkTheme: _fulbiiTheme(Brightness.dark),
       builder: (context, child) {
         final config = ref.watch(appConfigProvider);
         if (!kDebugMode || config.env != AppEnv.dev) {
@@ -182,9 +161,9 @@ class _FulbiiAppState extends ConsumerState<FulbiiApp>
             const IgnorePointer(
               child: SafeArea(
                 child: Align(
-                  alignment: Alignment.topRight,
+                  alignment: Alignment.bottomRight,
                   child: Padding(
-                    padding: EdgeInsets.only(top: 6, right: 10),
+                    padding: EdgeInsets.only(right: 10, bottom: 10),
                     child: _DevelopmentEnvironmentBadge(),
                   ),
                 ),
@@ -200,11 +179,7 @@ class _FulbiiAppState extends ConsumerState<FulbiiApp>
             return const _SplashScreen();
           }
 
-          if (!session.isAuthenticated) {
-            return const LoginScreen();
-          }
-
-          if (session.needsOnboarding) {
+          if (session.isAuthenticated && session.needsOnboarding) {
             return const OnboardingScreen();
           }
 
@@ -470,7 +445,7 @@ class _FulbiiAppState extends ConsumerState<FulbiiApp>
       _readString(item['cancha_nombre']),
       _readString(item['field_title']),
     ]);
-    final teamCodes = [
+    final teamCodes = <String>[
       if (item['team_codes'] is List)
         ...(item['team_codes'] as List)
             .map((code) => code.toString().trim().toUpperCase())
@@ -573,6 +548,16 @@ class _FulbiiAppState extends ConsumerState<FulbiiApp>
     _pendingPichangaId = pichangaId;
   }
 
+  Future<void> _handleClubLink(int clubId) async {
+    final session = ref.read(sessionControllerProvider);
+    if (session.initialized && !session.needsOnboarding) {
+      await _openClubDetail(clubId);
+      return;
+    }
+
+    _pendingClubId = clubId;
+  }
+
   Future<void> _handleWidgetAction(WidgetDeepLinkAction action) async {
     final session = ref.read(sessionControllerProvider);
     if (session.initialized &&
@@ -640,6 +625,29 @@ class _FulbiiAppState extends ConsumerState<FulbiiApp>
       );
     } finally {
       _openingPichanga = false;
+    }
+  }
+
+  Future<void> _openClubDetail(int clubId) async {
+    if (_openingClub) {
+      return;
+    }
+
+    final navigator = ref.read(appNavigatorKeyProvider).currentState;
+    if (navigator == null || !mounted) {
+      _pendingClubId = clubId;
+      return;
+    }
+
+    _openingClub = true;
+    try {
+      await navigator.push(
+        MaterialPageRoute<void>(
+          builder: (_) => ClubDetailScreen(clubId: clubId),
+        ),
+      );
+    } finally {
+      _openingClub = false;
     }
   }
 
@@ -732,6 +740,57 @@ class _FulbiiAppState extends ConsumerState<FulbiiApp>
     ref.read(deepLinkServiceProvider).dispose();
     super.dispose();
   }
+}
+
+ThemeData _fulbiiTheme(Brightness brightness) {
+  final isDark = brightness == Brightness.dark;
+  final scaffold = isDark ? const Color(0xFF080C0A) : const Color(0xFFF5F8F4);
+  final surface = isDark ? const Color(0xFF111613) : Colors.white;
+  final outline = isDark ? const Color(0xFF26332B) : const Color(0xFFD1DDD1);
+  final green = const Color(0xFF249D31);
+  final colorScheme = ColorScheme.fromSeed(
+    seedColor: green,
+    brightness: brightness,
+    surface: surface,
+  );
+  return ThemeData(
+    useMaterial3: true,
+    brightness: brightness,
+    scaffoldBackgroundColor: scaffold,
+    colorScheme: colorScheme,
+    cardTheme: CardThemeData(
+      color: surface,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: outline),
+      ),
+    ),
+    appBarTheme: AppBarTheme(
+      backgroundColor: scaffold,
+      foregroundColor: isDark ? Colors.white : const Color(0xFF112014),
+      elevation: 0,
+    ),
+    navigationBarTheme: NavigationBarThemeData(
+      height: 72,
+      backgroundColor: isDark ? const Color(0xFF0D120F) : Colors.white,
+      indicatorColor: isDark
+          ? const Color(0xFF1B8F24)
+          : const Color(0xFFA9E29D),
+      labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+      labelTextStyle: const WidgetStatePropertyAll(
+        TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+      ),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: isDark ? const Color(0xFF18211B) : Colors.white,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: outline),
+      ),
+    ),
+  );
 }
 
 class _DevelopmentEnvironmentBadge extends StatelessWidget {

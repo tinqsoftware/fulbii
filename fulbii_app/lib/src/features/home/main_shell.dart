@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/session_controller.dart';
+import '../auth/presentation/login_required_sheet.dart';
 import '../../services/push/push_service.dart';
 import '../../services/widget/widget_weekly_service.dart';
 import '../challenges/presentation/challenge_detail_screen.dart';
@@ -38,7 +39,9 @@ class _MainShellState extends ConsumerState<MainShell>
 
   @override
   Widget build(BuildContext context) {
-    if (!_pushInitialized) {
+    final session = ref.watch(sessionControllerProvider);
+    final isAuthenticated = session.isAuthenticated;
+    if (isAuthenticated && !_pushInitialized) {
       _pushInitialized = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) {
@@ -61,11 +64,31 @@ class _MainShellState extends ConsumerState<MainShell>
       });
     }
 
+    final unreadAsync = isAuthenticated
+        ? ref.watch(unreadNotificationsCountProvider)
+        : const AsyncData<int>(0);
+    final unreadCount = unreadAsync.maybeWhen(
+      data: (count) => count,
+      orElse: () => 0,
+    );
+
     final pages = [
       MapScreen(onOpenPichanga: _openPichanga, onOpenInbox: _openInboxFromBell),
       const ClubsScreen(),
-      const PichangasScreen(),
-      const InboxScreen(),
+      isAuthenticated
+          ? const PichangasScreen()
+          : const _GuestRestrictedPage(
+              icon: Icons.sports_soccer_outlined,
+              title: 'Inicia sesión para ver tus pichangas',
+              action: 'ver las pichangas',
+            ),
+      isAuthenticated
+          ? const InboxScreen()
+          : const _GuestRestrictedPage(
+              icon: Icons.notifications_none,
+              title: 'Inicia sesión para ver tus notificaciones',
+              action: 'ver notificaciones',
+            ),
       const ProfileScreen(),
     ];
 
@@ -76,14 +99,8 @@ class _MainShellState extends ConsumerState<MainShell>
       'Notificaciones',
       'Perfil',
     ];
-    final unreadAsync = ref.watch(unreadNotificationsCountProvider);
-    final unreadCount = unreadAsync.maybeWhen(
-      data: (count) => count,
-      orElse: () => 0,
-    );
-
     return Scaffold(
-      appBar: _currentIndex == 0
+      appBar: _currentIndex == 0 || _currentIndex == 1 || _currentIndex == 2
           ? null
           : AppBar(
               title: Text(titles[_currentIndex]),
@@ -128,42 +145,29 @@ class _MainShellState extends ConsumerState<MainShell>
               ],
             ),
       body: IndexedStack(index: _currentIndex, children: pages),
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar: _FulbiiBottomNavigation(
         selectedIndex: _currentIndex,
-        onDestinationSelected: (index) {
+        unreadCount: unreadCount,
+        onDestinationSelected: (index) async {
+          if (!isAuthenticated && (index == 2 || index == 3)) {
+            await requireSignIn(
+              context,
+              ref,
+              action: index == 2 ? 'ver las pichangas' : 'ver notificaciones',
+            );
+            return;
+          }
           setState(() => _currentIndex = index);
           if (index == 0) {
             // Approved contributions can add a new centre or court while the
             // app is open; fetch the latest marker summaries when returning.
             ref.invalidate(fieldsProvider);
           }
-          if (index == 3) {
+          if (isAuthenticated && index == 3) {
             ref.invalidate(inboxProvider);
             ref.invalidate(unreadNotificationsCountProvider);
           }
         },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.map_outlined),
-            label: 'Canchas',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.groups_outlined),
-            label: 'Grupos',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.sports_soccer_outlined),
-            label: 'Pichangas',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.notifications_none),
-            label: 'Inbox',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            label: 'Perfil',
-          ),
-        ],
       ),
     );
   }
@@ -234,7 +238,11 @@ class _MainShellState extends ConsumerState<MainShell>
     );
   }
 
-  void _openInboxFromBell() {
+  Future<void> _openInboxFromBell() async {
+    if (!ref.read(sessionControllerProvider).isAuthenticated) {
+      await requireSignIn(context, ref, action: 'ver notificaciones');
+      return;
+    }
     setState(() => _currentIndex = 3);
     ref.invalidate(inboxProvider);
     ref.invalidate(unreadNotificationsCountProvider);
@@ -265,5 +273,193 @@ class _MainShellState extends ConsumerState<MainShell>
     }
 
     await ref.read(widgetWeeklyServiceProvider).syncAll(ignoreErrors: true);
+  }
+}
+
+class _FulbiiBottomNavigation extends StatelessWidget {
+  const _FulbiiBottomNavigation({
+    required this.selectedIndex,
+    required this.unreadCount,
+    required this.onDestinationSelected,
+  });
+
+  final int selectedIndex;
+  final int unreadCount;
+  final ValueChanged<int> onDestinationSelected;
+
+  static const _destinations = <({IconData icon, String label})>[
+    (icon: Icons.map_outlined, label: 'Canchas'),
+    (icon: Icons.groups_outlined, label: 'Grupos'),
+    (icon: Icons.sports_soccer_outlined, label: 'Pichangas'),
+    (icon: Icons.notifications_none, label: 'Notificaciones'),
+    (icon: Icons.person_outline, label: 'Perfil'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF0D120F) : colorScheme.surface,
+        border: Border(top: BorderSide(color: colorScheme.outlineVariant)),
+      ),
+      child: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.fromLTRB(8, 4, 8, 3),
+        child: SizedBox(
+          height: 57,
+          child: Row(
+            children: List.generate(_destinations.length, (index) {
+              final destination = _destinations[index];
+              final isSelected = selectedIndex == index;
+              return Expanded(
+                child: _BottomNavigationItem(
+                  icon: destination.icon,
+                  label: destination.label,
+                  selected: isSelected,
+                  unreadCount: index == 3 ? unreadCount : 0,
+                  onTap: () => onDestinationSelected(index),
+                ),
+              );
+            }),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BottomNavigationItem extends StatelessWidget {
+  const _BottomNavigationItem({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.unreadCount,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final int unreadCount;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final foreground = selected
+        ? colorScheme.onPrimary
+        : colorScheme.onSurfaceVariant;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 5),
+          decoration: BoxDecoration(
+            color: selected ? colorScheme.primary : Colors.transparent,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Icon(icon, color: foreground, size: 21),
+                  if (unreadCount > 0)
+                    Positioned(
+                      right: -9,
+                      top: -7,
+                      child: Container(
+                        constraints: const BoxConstraints(minWidth: 15),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 3,
+                          vertical: 1,
+                        ),
+                        decoration: const BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.all(Radius.circular(9)),
+                        ),
+                        child: Text(
+                          unreadCount > 99 ? '99+' : '$unreadCount',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 8,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 1),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  style: TextStyle(
+                    color: foreground,
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GuestRestrictedPage extends ConsumerWidget {
+  const _GuestRestrictedPage({
+    required this.icon,
+    required this.title,
+    required this.action,
+  });
+
+  final IconData icon;
+  final String title;
+  final String action;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 58, color: colorScheme.primary),
+            const SizedBox(height: 18),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Explora Canchas y Grupos libremente. Para esta acción necesitas una cuenta.',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 22),
+            FilledButton(
+              onPressed: () => requireSignIn(context, ref, action: action),
+              child: const Text('Iniciar sesión'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

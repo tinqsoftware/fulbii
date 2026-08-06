@@ -73,6 +73,21 @@ class PichangasRepository {
     );
   }
 
+  Future<List<Map<String, dynamic>>> calendarMonth(DateTime month) async {
+    final response = await _api.getMap(
+      '/pichangas/calendar',
+      queryParameters: {
+        'month':
+            '${month.year.toString().padLeft(4, '0')}-${month.month.toString().padLeft(2, '0')}',
+      },
+    );
+    final items = response['items'] is List ? response['items'] as List : [];
+    return items
+        .whereType<Map>()
+        .map((item) => item.cast<String, dynamic>())
+        .toList();
+  }
+
   Future<List<Map<String, dynamic>>> confirmedNextWidget({
     int limit = 3,
   }) async {
