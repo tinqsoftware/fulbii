@@ -162,7 +162,8 @@ class MapScreen extends ConsumerStatefulWidget {
   ConsumerState<MapScreen> createState() => _MapScreenState();
 }
 
-class _MapScreenState extends ConsumerState<MapScreen> {
+class _MapScreenState extends ConsumerState<MapScreen>
+    with SingleTickerProviderStateMixin {
   final TextEditingController _priceMinController = TextEditingController();
   final TextEditingController _priceMaxController = TextEditingController();
 
@@ -170,6 +171,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   final Set<String> _selectedVsFormats = <String>{};
   final Map<String, BitmapDescriptor> _markerIconCache = {};
   final FieldClusterer _clusterer = const FieldClusterer();
+  late AnimationController _pulseController;
+  LatLng? _currentUserLocation;
+  BitmapDescriptor? _userLocationIconCache;
+
   bool _showList = false;
   FieldModel? _selectedField;
   Future<FieldModel>? _selectedFieldDetail;
@@ -217,11 +222,22 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   @override
   void initState() {
     super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..addListener(() {
+        if (_selectedField != null && mounted) {
+          setState(() {
+            _cameraRevision++;
+          });
+        }
+      });
     _restoreLocationLayer();
   }
 
   @override
   void dispose() {
+    _pulseController.dispose();
     _locationSubscription?.cancel();
     _priceMinController.dispose();
     _priceMaxController.dispose();
@@ -1163,6 +1179,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   void _ensureMarkersFuture(List<FieldModel> fields) {
+    final pulseStep = _selectedField != null
+        ? (_pulseController.value * 8).round()
+        : 0;
+    final userLocKey = _currentUserLocation != null
+        ? '${_currentUserLocation!.latitude.toStringAsFixed(4)},${_currentUserLocation!.longitude.toStringAsFixed(4)}'
+        : 'none';
     final key = fields
         .map(
           (field) =>
@@ -1170,7 +1192,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         )
         .join('|');
     final clusteredKey =
-        '$key:zoom=${_cameraZoom.toStringAsFixed(2)}:revision=$_cameraRevision';
+        '$key:zoom=${_cameraZoom.toStringAsFixed(2)}:userLoc=$userLocKey:pulse=$pulseStep:revision=$_cameraRevision';
 
     if (_markersFuture == null || clusteredKey != _lastMarkersKey) {
       _lastMarkersKey = clusteredKey;
@@ -1188,6 +1210,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             markerId: MarkerId('cluster-${cluster.id}'),
             position: LatLng(cluster.latitude, cluster.longitude),
             icon: await _clusterIconForCount(cluster.fields.length),
+            zIndexInt: 1,
             onTap: () => _zoomIntoCluster(cluster),
           ),
         );
@@ -1195,10 +1218,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       }
 
       final field = cluster.fields.single;
+      final isSelected = _selectedField?.id == field.id;
       final label = _priceBadgeText(field);
       final icon = await _iconForLabel(
         label,
-        selected: _selectedField?.id == field.id,
+        selected: isSelected,
+        pulseProgress: isSelected ? _pulseController.value : 0.0,
       );
 
       markers.add(
@@ -1206,12 +1231,64 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           markerId: MarkerId('field-${field.id}'),
           position: LatLng(field.x, field.y),
           icon: icon,
+          zIndexInt: isSelected ? 100 : 1,
           onTap: () => _selectField(field),
         ),
       );
     }
 
+    // User location marker with highest zIndexInt (999) so it always renders on top of all sports badges!
+    if (_myLocationEnabled && _currentUserLocation != null) {
+      final userIcon = await _getUserLocationIcon();
+      markers.add(
+        Marker(
+          markerId: const MarkerId('user-current-location'),
+          position: _currentUserLocation!,
+          zIndexInt: 999,
+          anchor: const Offset(0.5, 0.5),
+          icon: userIcon,
+        ),
+      );
+    }
+
     return markers;
+  }
+
+  Future<BitmapDescriptor> _getUserLocationIcon() async {
+    if (_userLocationIconCache != null) return _userLocationIconCache!;
+
+    const size = 56.0;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    final center = const Offset(size / 2, size / 2);
+
+    // Outer subtle translucent blue aura
+    final auraPaint = Paint()..color = const Color(0x442196F3);
+    canvas.drawCircle(center, size / 2 - 2, auraPaint);
+
+    // Outer glowing blue stroke
+    final outerRing = Paint()
+      ..color = const Color(0xFF2196F3)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+    canvas.drawCircle(center, size / 2 - 3, outerRing);
+
+    // Solid white circle
+    final whitePaint = Paint()..color = Colors.white;
+    canvas.drawCircle(center, 13, whitePaint);
+
+    // Inner Royal Blue dot
+    final bluePaint = Paint()..color = const Color(0xFF1976D2);
+    canvas.drawCircle(center, 9.5, bluePaint);
+
+    final image = await recorder.endRecording().toImage(size.toInt(), size.toInt());
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    final icon = BitmapDescriptor.bytes(
+      byteData!.buffer.asUint8List(),
+      imagePixelRatio: 2.2,
+    );
+    _userLocationIconCache = icon;
+    return icon;
   }
 
   Future<BitmapDescriptor> _clusterIconForCount(int count) async {
@@ -1313,14 +1390,20 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Future<BitmapDescriptor> _iconForLabel(
     String label, {
     required bool selected,
+    double pulseProgress = 0.0,
   }) async {
-    final cacheKey = '$label:$selected';
+    final step = selected ? (pulseProgress * 8).round() : 0;
+    final cacheKey = '$label:$selected:$step';
     final cached = _markerIconCache[cacheKey];
     if (cached != null) {
       return cached;
     }
 
-    final icon = await _buildBadgeMarkerIcon(label, selected: selected);
+    final icon = await _buildBadgeMarkerIcon(
+      label,
+      selected: selected,
+      pulseProgress: pulseProgress,
+    );
     _markerIconCache[cacheKey] = icon;
     return icon;
   }
@@ -1328,6 +1411,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Future<BitmapDescriptor> _buildBadgeMarkerIcon(
     String text, {
     required bool selected,
+    double pulseProgress = 0.0,
   }) async {
     const horizontalPadding = 18.0;
     const verticalPadding = 10.0;
@@ -1347,12 +1431,32 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       textAlign: TextAlign.center,
     )..layout();
 
-    final width = painter.width + horizontalPadding * 2;
-    final height = painter.height + verticalPadding * 2;
+    final baseWidth = painter.width + horizontalPadding * 2;
+    final baseHeight = painter.height + verticalPadding * 2;
+    final margin = selected ? 18.0 : 0.0;
+    final width = baseWidth + margin * 2;
+    final height = baseHeight + margin * 2;
 
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
-    final rect = Rect.fromLTWH(0, 0, width, height);
+    final rect = Rect.fromLTWH(margin, margin, baseWidth, baseHeight);
+
+    if (selected) {
+      // Outer animated pulsing halo ring
+      final haloExpand = 3.0 + 10.0 * pulseProgress;
+      final haloAlpha = (0.5 - pulseProgress * 0.35).clamp(0.0, 1.0);
+      final haloPaint = Paint()
+        ..color = const Color(0xFF38D430).withValues(alpha: haloAlpha)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 6.0 + 8.0 * pulseProgress;
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          rect.inflate(haloExpand),
+          Radius.circular(radius + haloExpand),
+        ),
+        haloPaint,
+      );
+    }
 
     final fillPaint = Paint()..color = const Color(0xFF1F8F47);
     canvas.drawRRect(
@@ -1360,12 +1464,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       fillPaint,
     );
 
+    final strokeWidth = selected ? (7.0 + 4.0 * pulseProgress) : 2.0;
+    final strokeColor = selected
+        ? Color.lerp(
+            const Color(0xFF38D430),
+            const Color(0xFFB4FFB0),
+            pulseProgress,
+          )!
+        : Colors.white.withValues(alpha: 0.18);
+
     final strokePaint = Paint()
-      ..color = selected
-          ? const Color(0xFF8FE887)
-          : Colors.white.withValues(alpha: 0.18)
+      ..color = strokeColor
       ..style = PaintingStyle.stroke
-      ..strokeWidth = selected ? 4 : 2;
+      ..strokeWidth = strokeWidth;
     canvas.drawRRect(
       RRect.fromRectAndRadius(rect, const Radius.circular(radius)),
       strokePaint,
@@ -1373,7 +1484,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     painter.paint(
       canvas,
-      Offset((width - painter.width) / 2, (height - painter.height) / 2),
+      Offset(
+        margin + (baseWidth - painter.width) / 2,
+        margin + (baseHeight - painter.height) / 2,
+      ),
     );
 
     final image = await recorder.endRecording().toImage(
@@ -1387,6 +1501,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       imagePixelRatio: 2.2,
     );
   }
+
 
   String _priceBadgeText(FieldModel field) {
     final priceNum = field.precioDesdeNum;
@@ -1453,6 +1568,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           .read(fieldsRepositoryProvider)
           .detail(field.id);
     });
+    if (!_pulseController.isAnimating) {
+      _pulseController.repeat(reverse: true);
+    }
   }
 
   void _clearSelectedField() {
@@ -1460,6 +1578,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       _selectedField = null;
       _selectedFieldDetail = null;
     });
+    if (_pulseController.isAnimating) {
+      _pulseController.stop();
+    }
   }
 
   Future<void> _restoreLocationLayer() async {
@@ -1484,9 +1605,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         );
         if (!mounted) return;
         _didAutoCenterOnLocation = true;
-        await _moveCameraToUserLocation(
-          LatLng(position.latitude, position.longitude),
-        );
+        final latLng = LatLng(position.latitude, position.longitude);
+        setState(() => _currentUserLocation = latLng);
+        await _moveCameraToUserLocation(latLng);
       } catch (_) {
         // The map remains on its default area when the device has no location.
       }
@@ -1510,6 +1631,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   Future<void> _moveCameraToUserLocation(LatLng location) async {
+    setState(() => _currentUserLocation = location);
     final controller = _mapController;
     if (controller == null) {
       _pendingInitialUserLocation = location;
@@ -1558,9 +1680,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           accuracy: LocationAccuracy.high,
         ),
       );
-      await _moveCameraToUserLocation(
-        LatLng(position.latitude, position.longitude),
-      );
+      final latLng = LatLng(position.latitude, position.longitude);
+      setState(() => _currentUserLocation = latLng);
+      await _moveCameraToUserLocation(latLng);
     } on LocationServiceDisabledException {
       _showLocationMessage(
         'Activa la ubicación del dispositivo para ver tu posición.',
@@ -1582,11 +1704,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         Geolocator.getPositionStream(
           locationSettings: const LocationSettings(
             accuracy: LocationAccuracy.high,
-            distanceFilter: 10,
+            distanceFilter: 5,
           ),
         ).listen(
-          (_) {
-            // Google Maps renders the blue location point from this native stream.
+          (position) {
+            if (!mounted) return;
+            final loc = LatLng(position.latitude, position.longitude);
+            if (_currentUserLocation != loc) {
+              setState(() => _currentUserLocation = loc);
+            }
           },
           onError: (_) {
             _locationSubscription?.cancel();
