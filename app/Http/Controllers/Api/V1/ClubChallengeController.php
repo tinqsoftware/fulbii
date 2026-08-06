@@ -40,6 +40,7 @@ class ClubChallengeController extends Controller
         $status = trim((string) $request->query('status', 'active'));
         $memberClubIds = ClubUser::query()
             ->where('user_id', $auth->id)
+            ->active()
             ->pluck('club_id')
             ->map(fn($i) => (int) $i)
             ->all();
@@ -80,8 +81,9 @@ class ClubChallengeController extends Controller
         $this->expireChallengesIfNeeded();
 
         $isMember = $this->isMember((int) $club->id, (int) $auth->id);
+        $isActive = !Schema::hasColumn('clubs', 'estado') || (int) $club->estado === 1;
         $isVisible = (bool) ($club->is_visible ?? true);
-        abort_unless($isMember || $isVisible || (bool) $auth->is_superadmin, 403);
+        abort_unless($isMember || ($isActive && $isVisible) || (bool) $auth->is_superadmin, 403);
 
         $status = trim((string) $request->query('status', 'active'));
 
@@ -130,6 +132,11 @@ class ClubChallengeController extends Controller
         abort_if((int) $club->id === $challengedClubId, 422, 'No puedes retar al mismo grupo.');
 
         $challengedClub = Club::query()->findOrFail($challengedClubId);
+        abort_if(
+            Schema::hasColumn('clubs', 'estado') && (int) $challengedClub->estado !== 1,
+            409,
+            'El grupo está desactivado.'
+        );
         abort_if(!(bool) ($challengedClub->is_visible ?? true), 422, 'Solo puedes retar grupos visibles.');
 
         $existing = ClubChallenge::query()
@@ -989,6 +996,7 @@ class ClubChallengeController extends Controller
         return ClubUser::query()
             ->where('club_id', $clubId)
             ->where('user_id', $userId)
+            ->active()
             ->exists();
     }
 
@@ -1061,6 +1069,7 @@ class ClubChallengeController extends Controller
     {
         $rows = ClubUser::query()
             ->where('club_id', $clubId)
+            ->active()
             ->with('user:id,name,nick,sexo,fec_nac,avatar_url')
             ->orderByRaw("CASE WHEN rol = 'admin' THEN 0 ELSE 1 END")
             ->orderBy('id')

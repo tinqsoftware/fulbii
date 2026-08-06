@@ -23,7 +23,13 @@ class ClubJoinRequestController extends Controller
         $auth = $request->user() ?? abort(401);
         $club = $this->resolveClubByJoinCode($joinCode);
 
-        abort_unless((bool) ($club->link_join_enabled ?? true), 404);
+        abort_if(!$this->isClubActive($club), 404, 'El grupo no acepta solicitudes de ingreso.');
+
+        abort_unless(
+            (bool) ($club->is_visible ?? true) && (bool) ($club->link_join_enabled ?? true),
+            404,
+            'El grupo no acepta solicitudes de ingreso.'
+        );
 
         $isMember = $this->isMember((int) $club->id, (int) $auth->id);
         $pending = $this->pendingRequest($club, (int) $auth->id);
@@ -49,7 +55,12 @@ class ClubJoinRequestController extends Controller
     {
         $auth = $request->user() ?? abort(401);
         $club = $this->resolveClubByJoinCode($joinCode);
-        abort_unless((bool) ($club->link_join_enabled ?? true), 404);
+        abort_if(!$this->isClubActive($club), 409, 'El grupo está desactivado.');
+        abort_unless(
+            (bool) ($club->is_visible ?? true) && (bool) ($club->link_join_enabled ?? true),
+            404,
+            'El grupo no acepta solicitudes de ingreso.'
+        );
 
         $joinRequest = $this->createRequest($club, (int) $auth->id, 'link');
 
@@ -62,8 +73,9 @@ class ClubJoinRequestController extends Controller
     public function requestByClub(Request $request, Club $club)
     {
         $auth = $request->user() ?? abort(401);
-        $isVisible = (bool) ($club->is_visible ?? true);
-        abort_unless($isVisible || (bool) $auth->is_superadmin, 404, 'El grupo no acepta solicitudes por búsqueda.');
+        $acceptsRequests = (bool) ($club->is_visible ?? true)
+            && (bool) ($club->link_join_enabled ?? true);
+        abort_unless($acceptsRequests, 404, 'El grupo no acepta solicitudes de ingreso.');
 
         $joinRequest = $this->createRequest($club, (int) $auth->id, 'search');
 
@@ -154,7 +166,7 @@ class ClubJoinRequestController extends Controller
             return response()->json(['message' => 'Solicitud rechazada.']);
         }
 
-        ClubUser::firstOrCreate(
+        ClubUser::updateOrCreate(
             [
                 'club_id' => $club->id,
                 'user_id' => $joinRequest->requester_user_id,
@@ -283,6 +295,7 @@ class ClubJoinRequestController extends Controller
         return ClubUser::query()
             ->where('club_id', $clubId)
             ->where('user_id', $userId)
+            ->active()
             ->exists();
     }
 
@@ -295,8 +308,14 @@ class ClubJoinRequestController extends Controller
         return ClubUser::query()
             ->where('club_id', $clubId)
             ->where('user_id', $userId)
+            ->active()
             ->where('rol', 'admin')
             ->exists();
+    }
+
+    private function isClubActive(Club $club): bool
+    {
+        return !Schema::hasColumn('clubs', 'estado') || (int) $club->estado === 1;
     }
 
     private function generateUniqueJoinCode(): string

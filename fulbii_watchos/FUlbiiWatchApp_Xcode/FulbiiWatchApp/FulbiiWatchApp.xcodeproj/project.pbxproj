@@ -1,0 +1,795 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		E3762DA92F844AC30055FCDA /* FulbiiWatchApp Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = E3762DA82F844AC30055FCDA /* FulbiiWatchApp Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		E3762DEE2F844B620055FCDA /* LocationCaptureManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3762DD82F844B620055FCDA /* LocationCaptureManager.swift */; };
+		E3762DEF2F844B620055FCDA /* MatchSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3762DE62F844B620055FCDA /* MatchSummaryView.swift */; };
+		E3762DF02F844B620055FCDA /* RouteMiniMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3762DE92F844B620055FCDA /* RouteMiniMapView.swift */; };
+		E3762DF12F844B620055FCDA /* FulbiiWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3762DEC2F844B620055FCDA /* FulbiiWatchApp.swift */; };
+		E3762DF22F844B620055FCDA /* EventConfirmationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3762DE42F844B620055FCDA /* EventConfirmationView.swift */; };
+		E3762DF32F844B620055FCDA /* WatchSyncManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3762DDE2F844B620055FCDA /* WatchSyncManager.swift */; };
+		E3762DF42F844B620055FCDA /* SettingsDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3762DEA2F844B620055FCDA /* SettingsDebugView.swift */; };
+		E3762DF52F844B620055FCDA /* PreMatchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3762DE72F844B620055FCDA /* PreMatchView.swift */; };
+		E3762DF62F844B620055FCDA /* WorkoutManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3762DDF2F844B620055FCDA /* WorkoutManager.swift */; };
+		E3762DF72F844B620055FCDA /* HeatmapProjector.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3762DDC2F844B620055FCDA /* HeatmapProjector.swift */; };
+		E3762DF82F844B620055FCDA /* LocalStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3762DDD2F844B620055FCDA /* LocalStore.swift */; };
+		E3762DF92F844B620055FCDA /* MatchSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3762DE22F844B620055FCDA /* MatchSessionManager.swift */; };
+		E3762DFA2F844B620055FCDA /* WatchModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3762DDA2F844B620055FCDA /* WatchModels.swift */; };
+		E3762DFB2F844B620055FCDA /* LiveMatchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3762DE52F844B620055FCDA /* LiveMatchView.swift */; };
+		E3762DFC2F844B620055FCDA /* RootWatchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3762DE82F844B620055FCDA /* RootWatchView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		E3762DAA2F844AC30055FCDA /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E3762D9C2F844AC20055FCDA /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E3762DA72F844AC30055FCDA;
+			remoteInfo = "FulbiiWatchApp Watch App";
+		};
+		E3762DB82F844AC40055FCDA /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E3762D9C2F844AC20055FCDA /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E3762DA72F844AC30055FCDA;
+			remoteInfo = "FulbiiWatchApp Watch App";
+		};
+		E3762DC22F844AC40055FCDA /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E3762D9C2F844AC20055FCDA /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E3762DA72F844AC30055FCDA;
+			remoteInfo = "FulbiiWatchApp Watch App";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		E3762DCE2F844AC40055FCDA /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				E3762DA92F844AC30055FCDA /* FulbiiWatchApp Watch App.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		E3762DA22F844AC30055FCDA /* FulbiiWatchApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FulbiiWatchApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E3762DA82F844AC30055FCDA /* FulbiiWatchApp Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "FulbiiWatchApp Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		E3762DB72F844AC40055FCDA /* FulbiiWatchApp Watch AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "FulbiiWatchApp Watch AppTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		E3762DC12F844AC40055FCDA /* FulbiiWatchApp Watch AppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "FulbiiWatchApp Watch AppUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		E3762DD82F844B620055FCDA /* LocationCaptureManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationCaptureManager.swift; sourceTree = "<group>"; };
+		E3762DDA2F844B620055FCDA /* WatchModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchModels.swift; sourceTree = "<group>"; };
+		E3762DDC2F844B620055FCDA /* HeatmapProjector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeatmapProjector.swift; sourceTree = "<group>"; };
+		E3762DDD2F844B620055FCDA /* LocalStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalStore.swift; sourceTree = "<group>"; };
+		E3762DDE2F844B620055FCDA /* WatchSyncManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSyncManager.swift; sourceTree = "<group>"; };
+		E3762DDF2F844B620055FCDA /* WorkoutManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutManager.swift; sourceTree = "<group>"; };
+		E3762DE22F844B620055FCDA /* MatchSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchSessionManager.swift; sourceTree = "<group>"; };
+		E3762DE42F844B620055FCDA /* EventConfirmationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventConfirmationView.swift; sourceTree = "<group>"; };
+		E3762DE52F844B620055FCDA /* LiveMatchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveMatchView.swift; sourceTree = "<group>"; };
+		E3762DE62F844B620055FCDA /* MatchSummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchSummaryView.swift; sourceTree = "<group>"; };
+		E3762DE72F844B620055FCDA /* PreMatchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreMatchView.swift; sourceTree = "<group>"; };
+		E3762DE82F844B620055FCDA /* RootWatchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootWatchView.swift; sourceTree = "<group>"; };
+		E3762DE92F844B620055FCDA /* RouteMiniMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteMiniMapView.swift; sourceTree = "<group>"; };
+		E3762DEA2F844B620055FCDA /* SettingsDebugView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsDebugView.swift; sourceTree = "<group>"; };
+		E3762DEC2F844B620055FCDA /* FulbiiWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FulbiiWatchApp.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		E3762DAC2F844AC30055FCDA /* FulbiiWatchApp Watch App */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "FulbiiWatchApp Watch App";
+			sourceTree = "<group>";
+		};
+		E3762DBA2F844AC40055FCDA /* FulbiiWatchApp Watch AppTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "FulbiiWatchApp Watch AppTests";
+			sourceTree = "<group>";
+		};
+		E3762DC42F844AC40055FCDA /* FulbiiWatchApp Watch AppUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "FulbiiWatchApp Watch AppUITests";
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		E3762DA52F844AC30055FCDA /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E3762DB42F844AC40055FCDA /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E3762DBE2F844AC40055FCDA /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		E3762D9B2F844AC20055FCDA = {
+			isa = PBXGroup;
+			children = (
+				E3762DAC2F844AC30055FCDA /* FulbiiWatchApp Watch App */,
+				E3762DBA2F844AC40055FCDA /* FulbiiWatchApp Watch AppTests */,
+				E3762DC42F844AC40055FCDA /* FulbiiWatchApp Watch AppUITests */,
+				E3762DA32F844AC30055FCDA /* Products */,
+				E3762DED2F844B620055FCDA /* FulbiiWatchApp */,
+			);
+			sourceTree = "<group>";
+		};
+		E3762DA32F844AC30055FCDA /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				E3762DA22F844AC30055FCDA /* FulbiiWatchApp.app */,
+				E3762DA82F844AC30055FCDA /* FulbiiWatchApp Watch App.app */,
+				E3762DB72F844AC40055FCDA /* FulbiiWatchApp Watch AppTests.xctest */,
+				E3762DC12F844AC40055FCDA /* FulbiiWatchApp Watch AppUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		E3762DD92F844B620055FCDA /* Managers */ = {
+			isa = PBXGroup;
+			children = (
+				E3762DD82F844B620055FCDA /* LocationCaptureManager.swift */,
+			);
+			path = Managers;
+			sourceTree = "<group>";
+		};
+		E3762DDB2F844B620055FCDA /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				E3762DDA2F844B620055FCDA /* WatchModels.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		E3762DE02F844B620055FCDA /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				E3762DDC2F844B620055FCDA /* HeatmapProjector.swift */,
+				E3762DDD2F844B620055FCDA /* LocalStore.swift */,
+				E3762DDE2F844B620055FCDA /* WatchSyncManager.swift */,
+				E3762DDF2F844B620055FCDA /* WorkoutManager.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		E3762DE12F844B620055FCDA /* Support */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Support;
+			sourceTree = "<group>";
+		};
+		E3762DE32F844B620055FCDA /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				E3762DE22F844B620055FCDA /* MatchSessionManager.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		E3762DEB2F844B620055FCDA /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				E3762DE42F844B620055FCDA /* EventConfirmationView.swift */,
+				E3762DE52F844B620055FCDA /* LiveMatchView.swift */,
+				E3762DE62F844B620055FCDA /* MatchSummaryView.swift */,
+				E3762DE72F844B620055FCDA /* PreMatchView.swift */,
+				E3762DE82F844B620055FCDA /* RootWatchView.swift */,
+				E3762DE92F844B620055FCDA /* RouteMiniMapView.swift */,
+				E3762DEA2F844B620055FCDA /* SettingsDebugView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		E3762DED2F844B620055FCDA /* FulbiiWatchApp */ = {
+			isa = PBXGroup;
+			children = (
+				E3762DD92F844B620055FCDA /* Managers */,
+				E3762DDB2F844B620055FCDA /* Models */,
+				E3762DE02F844B620055FCDA /* Services */,
+				E3762DE12F844B620055FCDA /* Support */,
+				E3762DE32F844B620055FCDA /* ViewModels */,
+				E3762DEB2F844B620055FCDA /* Views */,
+				E3762DEC2F844B620055FCDA /* FulbiiWatchApp.swift */,
+			);
+			path = FulbiiWatchApp;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		E3762DA12F844AC30055FCDA /* FulbiiWatchApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E3762DCF2F844AC40055FCDA /* Build configuration list for PBXNativeTarget "FulbiiWatchApp" */;
+			buildPhases = (
+				E3762DA02F844AC30055FCDA /* Resources */,
+				E3762DCE2F844AC40055FCDA /* Embed Watch Content */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				E3762DAB2F844AC30055FCDA /* PBXTargetDependency */,
+			);
+			name = FulbiiWatchApp;
+			packageProductDependencies = (
+			);
+			productName = FulbiiWatchApp;
+			productReference = E3762DA22F844AC30055FCDA /* FulbiiWatchApp.app */;
+			productType = "com.apple.product-type.application.watchapp2-container";
+		};
+		E3762DA72F844AC30055FCDA /* FulbiiWatchApp Watch App */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E3762DCB2F844AC40055FCDA /* Build configuration list for PBXNativeTarget "FulbiiWatchApp Watch App" */;
+			buildPhases = (
+				E3762DA42F844AC30055FCDA /* Sources */,
+				E3762DA52F844AC30055FCDA /* Frameworks */,
+				E3762DA62F844AC30055FCDA /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				E3762DAC2F844AC30055FCDA /* FulbiiWatchApp Watch App */,
+			);
+			name = "FulbiiWatchApp Watch App";
+			packageProductDependencies = (
+			);
+			productName = "FulbiiWatchApp Watch App";
+			productReference = E3762DA82F844AC30055FCDA /* FulbiiWatchApp Watch App.app */;
+			productType = "com.apple.product-type.application";
+		};
+		E3762DB62F844AC40055FCDA /* FulbiiWatchApp Watch AppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E3762DD22F844AC40055FCDA /* Build configuration list for PBXNativeTarget "FulbiiWatchApp Watch AppTests" */;
+			buildPhases = (
+				E3762DB32F844AC40055FCDA /* Sources */,
+				E3762DB42F844AC40055FCDA /* Frameworks */,
+				E3762DB52F844AC40055FCDA /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				E3762DB92F844AC40055FCDA /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				E3762DBA2F844AC40055FCDA /* FulbiiWatchApp Watch AppTests */,
+			);
+			name = "FulbiiWatchApp Watch AppTests";
+			packageProductDependencies = (
+			);
+			productName = "FulbiiWatchApp Watch AppTests";
+			productReference = E3762DB72F844AC40055FCDA /* FulbiiWatchApp Watch AppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		E3762DC02F844AC40055FCDA /* FulbiiWatchApp Watch AppUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E3762DD52F844AC40055FCDA /* Build configuration list for PBXNativeTarget "FulbiiWatchApp Watch AppUITests" */;
+			buildPhases = (
+				E3762DBD2F844AC40055FCDA /* Sources */,
+				E3762DBE2F844AC40055FCDA /* Frameworks */,
+				E3762DBF2F844AC40055FCDA /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				E3762DC32F844AC40055FCDA /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				E3762DC42F844AC40055FCDA /* FulbiiWatchApp Watch AppUITests */,
+			);
+			name = "FulbiiWatchApp Watch AppUITests";
+			packageProductDependencies = (
+			);
+			productName = "FulbiiWatchApp Watch AppUITests";
+			productReference = E3762DC12F844AC40055FCDA /* FulbiiWatchApp Watch AppUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		E3762D9C2F844AC20055FCDA /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1640;
+				LastUpgradeCheck = 1640;
+				TargetAttributes = {
+					E3762DA12F844AC30055FCDA = {
+						CreatedOnToolsVersion = 16.4;
+					};
+					E3762DA72F844AC30055FCDA = {
+						CreatedOnToolsVersion = 16.4;
+					};
+					E3762DB62F844AC40055FCDA = {
+						CreatedOnToolsVersion = 16.4;
+						TestTargetID = E3762DA72F844AC30055FCDA;
+					};
+					E3762DC02F844AC40055FCDA = {
+						CreatedOnToolsVersion = 16.4;
+						TestTargetID = E3762DA72F844AC30055FCDA;
+					};
+				};
+			};
+			buildConfigurationList = E3762D9F2F844AC20055FCDA /* Build configuration list for PBXProject "FulbiiWatchApp" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = E3762D9B2F844AC20055FCDA;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = E3762DA32F844AC30055FCDA /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				E3762DA12F844AC30055FCDA /* FulbiiWatchApp */,
+				E3762DA72F844AC30055FCDA /* FulbiiWatchApp Watch App */,
+				E3762DB62F844AC40055FCDA /* FulbiiWatchApp Watch AppTests */,
+				E3762DC02F844AC40055FCDA /* FulbiiWatchApp Watch AppUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		E3762DA02F844AC30055FCDA /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E3762DA62F844AC30055FCDA /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E3762DB52F844AC40055FCDA /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E3762DBF2F844AC40055FCDA /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		E3762DA42F844AC30055FCDA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E3762DEE2F844B620055FCDA /* LocationCaptureManager.swift in Sources */,
+				E3762DEF2F844B620055FCDA /* MatchSummaryView.swift in Sources */,
+				E3762DF02F844B620055FCDA /* RouteMiniMapView.swift in Sources */,
+				E3762DF12F844B620055FCDA /* FulbiiWatchApp.swift in Sources */,
+				E3762DF22F844B620055FCDA /* EventConfirmationView.swift in Sources */,
+				E3762DF32F844B620055FCDA /* WatchSyncManager.swift in Sources */,
+				E3762DF42F844B620055FCDA /* SettingsDebugView.swift in Sources */,
+				E3762DF52F844B620055FCDA /* PreMatchView.swift in Sources */,
+				E3762DF62F844B620055FCDA /* WorkoutManager.swift in Sources */,
+				E3762DF72F844B620055FCDA /* HeatmapProjector.swift in Sources */,
+				E3762DF82F844B620055FCDA /* LocalStore.swift in Sources */,
+				E3762DF92F844B620055FCDA /* MatchSessionManager.swift in Sources */,
+				E3762DFA2F844B620055FCDA /* WatchModels.swift in Sources */,
+				E3762DFB2F844B620055FCDA /* LiveMatchView.swift in Sources */,
+				E3762DFC2F844B620055FCDA /* RootWatchView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E3762DB32F844AC40055FCDA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E3762DBD2F844AC40055FCDA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		E3762DAB2F844AC30055FCDA /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E3762DA72F844AC30055FCDA /* FulbiiWatchApp Watch App */;
+			targetProxy = E3762DAA2F844AC30055FCDA /* PBXContainerItemProxy */;
+		};
+		E3762DB92F844AC40055FCDA /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E3762DA72F844AC30055FCDA /* FulbiiWatchApp Watch App */;
+			targetProxy = E3762DB82F844AC40055FCDA /* PBXContainerItemProxy */;
+		};
+		E3762DC32F844AC40055FCDA /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E3762DA72F844AC30055FCDA /* FulbiiWatchApp Watch App */;
+			targetProxy = E3762DC22F844AC40055FCDA /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		E3762DC92F844AC40055FCDA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = H22GQQX4KT;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				WATCHOS_DEPLOYMENT_TARGET = 8.0;
+			};
+			name = Debug;
+		};
+		E3762DCA2F844AC40055FCDA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = H22GQQX4KT;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				WATCHOS_DEPLOYMENT_TARGET = 8.0;
+			};
+			name = Release;
+		};
+		E3762DCC2F844AC40055FCDA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "FulbiiWatchApp Watch App/FulbiiWatchApp Watch App.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = H22GQQX4KT;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "FulbiiWatchApp-Watch-App-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = FulbiiWatchApp;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKWatchOnly = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.fulbii.FulbiiWatchApp.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 8.0;
+			};
+			name = Debug;
+		};
+		E3762DCD2F844AC40055FCDA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "FulbiiWatchApp Watch App/FulbiiWatchApp Watch App.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = H22GQQX4KT;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "FulbiiWatchApp-Watch-App-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = FulbiiWatchApp;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKWatchOnly = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.fulbii.FulbiiWatchApp.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				VALIDATE_PRODUCT = YES;
+				WATCHOS_DEPLOYMENT_TARGET = 8.0;
+			};
+			name = Release;
+		};
+		E3762DD02F844AC40055FCDA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = H22GQQX4KT;
+				INFOPLIST_KEY_CFBundleDisplayName = FulbiiWatchApp;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.fulbii.FulbiiWatchApp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				WATCHOS_DEPLOYMENT_TARGET = 8.0;
+			};
+			name = Debug;
+		};
+		E3762DD12F844AC40055FCDA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = H22GQQX4KT;
+				INFOPLIST_KEY_CFBundleDisplayName = FulbiiWatchApp;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.fulbii.FulbiiWatchApp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				VALIDATE_PRODUCT = YES;
+				WATCHOS_DEPLOYMENT_TARGET = 8.0;
+			};
+			name = Release;
+		};
+		E3762DD32F844AC40055FCDA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = H22GQQX4KT;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.fulbii.FulbiiWatchApp-Watch-AppTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FulbiiWatchApp Watch App.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/FulbiiWatchApp Watch App";
+				WATCHOS_DEPLOYMENT_TARGET = 8.0;
+			};
+			name = Debug;
+		};
+		E3762DD42F844AC40055FCDA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = H22GQQX4KT;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.fulbii.FulbiiWatchApp-Watch-AppTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FulbiiWatchApp Watch App.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/FulbiiWatchApp Watch App";
+				VALIDATE_PRODUCT = YES;
+				WATCHOS_DEPLOYMENT_TARGET = 8.0;
+			};
+			name = Release;
+		};
+		E3762DD62F844AC40055FCDA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = H22GQQX4KT;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.fulbii.FulbiiWatchApp-Watch-AppUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_TARGET_NAME = "FulbiiWatchApp Watch App";
+				WATCHOS_DEPLOYMENT_TARGET = 8.0;
+			};
+			name = Debug;
+		};
+		E3762DD72F844AC40055FCDA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = H22GQQX4KT;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.fulbii.FulbiiWatchApp-Watch-AppUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_TARGET_NAME = "FulbiiWatchApp Watch App";
+				VALIDATE_PRODUCT = YES;
+				WATCHOS_DEPLOYMENT_TARGET = 8.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		E3762D9F2F844AC20055FCDA /* Build configuration list for PBXProject "FulbiiWatchApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E3762DC92F844AC40055FCDA /* Debug */,
+				E3762DCA2F844AC40055FCDA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E3762DCB2F844AC40055FCDA /* Build configuration list for PBXNativeTarget "FulbiiWatchApp Watch App" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E3762DCC2F844AC40055FCDA /* Debug */,
+				E3762DCD2F844AC40055FCDA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E3762DCF2F844AC40055FCDA /* Build configuration list for PBXNativeTarget "FulbiiWatchApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E3762DD02F844AC40055FCDA /* Debug */,
+				E3762DD12F844AC40055FCDA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E3762DD22F844AC40055FCDA /* Build configuration list for PBXNativeTarget "FulbiiWatchApp Watch AppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E3762DD32F844AC40055FCDA /* Debug */,
+				E3762DD42F844AC40055FCDA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E3762DD52F844AC40055FCDA /* Build configuration list for PBXNativeTarget "FulbiiWatchApp Watch AppUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E3762DD62F844AC40055FCDA /* Debug */,
+				E3762DD72F844AC40055FCDA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = E3762D9C2F844AC20055FCDA /* Project object */;
+}

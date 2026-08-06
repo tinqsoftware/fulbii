@@ -120,13 +120,10 @@ class FieldApiController extends Controller
             }
         }
 
-        if (!empty($surfaceTypes) && $hasTipoSuperficie) {
-            $query->whereHas('canchas', function ($where) use ($surfaceTypes) {
-                $where->whereIn('tipo_superficie', $surfaceTypes);
-            });
-        }
-
-        if (!empty($vsFormats) && ($hasFormatoVs || $hasEquiposVs)) {
+        if (
+            (!empty($surfaceTypes) && $hasTipoSuperficie)
+            || (!empty($vsFormats) && ($hasFormatoVs || $hasEquiposVs))
+        ) {
             $capacities = collect($vsFormats)
                 ->map(function (string $format): ?string {
                     $normalized = $this->normalizeFormat($format);
@@ -140,16 +137,44 @@ class FieldApiController extends Controller
                 ->values()
                 ->all();
 
-            $query->whereHas('canchas', function ($where) use ($vsFormats, $capacities, $hasFormatoVs, $hasEquiposVs) {
-                $where->where(function ($formats) use ($vsFormats, $capacities, $hasFormatoVs, $hasEquiposVs) {
-                    if ($hasFormatoVs) {
-                        $formats->whereIn('formato_vs', $vsFormats);
-                    }
-                    if ($hasEquiposVs && !empty($capacities)) {
-                        $method = $hasFormatoVs ? 'orWhereIn' : 'whereIn';
-                        $formats->{$method}('equiposvs', $capacities);
-                    }
-                });
+            $normalizedFormats = collect($vsFormats)
+                ->map(fn (string $format) => $this->normalizeFormat($format))
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+
+            // Surface and format filters must match the same court. Separate
+            // whereHas clauses would incorrectly match two different courts
+            // belonging to the same sports centre.
+            $query->whereHas('canchas', function ($where) use (
+                $surfaceTypes,
+                $normalizedFormats,
+                $capacities,
+                $hasTipoSuperficie,
+                $hasFormatoVs,
+                $hasEquiposVs,
+            ) {
+                if (!empty($surfaceTypes) && $hasTipoSuperficie) {
+                    $surfaceValues = collect($surfaceTypes)
+                        ->flatMap(fn (string $surface) => $this->surfaceAliases($surface))
+                        ->unique()
+                        ->values()
+                        ->all();
+                    $where->whereIn('tipo_superficie', $surfaceValues);
+                }
+
+                if (!empty($normalizedFormats) && ($hasFormatoVs || $hasEquiposVs)) {
+                    $where->where(function ($formats) use ($normalizedFormats, $capacities, $hasFormatoVs, $hasEquiposVs) {
+                        if ($hasFormatoVs) {
+                            $formats->whereIn('formato_vs', $normalizedFormats);
+                        }
+                        if ($hasEquiposVs && !empty($capacities)) {
+                            $method = $hasFormatoVs ? 'orWhereIn' : 'whereIn';
+                            $formats->{$method}('equiposvs', $capacities);
+                        }
+                    });
+                }
             });
         }
 
@@ -195,10 +220,12 @@ class FieldApiController extends Controller
         $hasTipoSuperficie = Schema::hasColumn('cancha', 'tipo_superficie');
         $hasFormatoVs = Schema::hasColumn('cancha', 'formato_vs');
         $hasEquiposVs = Schema::hasColumn('cancha', 'equiposvs');
+        $hasCanchaAncho = Schema::hasColumn('cancha', 'anchom2');
+        $hasCanchaLargo = Schema::hasColumn('cancha', 'largom2');
 
         $field->loadCount('canchas');
         $field->load([
-            'canchas' => function ($canchasQuery) use ($hasTipoSuperficie, $hasFormatoVs, $hasEquiposVs) {
+            'canchas' => function ($canchasQuery) use ($hasTipoSuperficie, $hasFormatoVs, $hasEquiposVs, $hasCanchaAncho, $hasCanchaLargo) {
                     $columns = ['id', 'id_polideportivo', 'nombre', 'url_foto'];
                     if ($hasTipoSuperficie) {
                         $columns[] = 'tipo_superficie';
@@ -208,6 +235,12 @@ class FieldApiController extends Controller
                     }
                     if ($hasEquiposVs) {
                         $columns[] = 'equiposvs';
+                    }
+                    if ($hasCanchaAncho) {
+                        $columns[] = 'anchom2';
+                    }
+                    if ($hasCanchaLargo) {
+                        $columns[] = 'largom2';
                     }
                     $canchasQuery->select($columns);
             },
@@ -220,6 +253,8 @@ class FieldApiController extends Controller
                 $hasTipoSuperficie,
                 $hasFormatoVs,
                 $hasEquiposVs,
+                $hasCanchaAncho,
+                $hasCanchaLargo,
                 includeCanchas: true,
             ),
         ]);
@@ -234,6 +269,8 @@ class FieldApiController extends Controller
         bool $hasTipoSuperficie,
         bool $hasFormatoVs,
         bool $hasEquiposVs,
+        bool $hasCanchaAncho = false,
+        bool $hasCanchaLargo = false,
         bool $includeCanchas = false,
     ): array
     {
@@ -279,7 +316,7 @@ class FieldApiController extends Controller
 
         if ($includeCanchas) {
             $payload['canchas'] = $field->canchas
-                ->map(function ($cancha) use ($hasTipoSuperficie, $hasFormatoVs, $hasEquiposVs) {
+                ->map(function ($cancha) use ($hasTipoSuperficie, $hasFormatoVs, $hasEquiposVs, $hasCanchaAncho, $hasCanchaLargo) {
                     $format = $hasFormatoVs
                         ? $this->normalizeFormat((string) ($cancha->formato_vs ?? ''))
                         : null;
@@ -293,6 +330,8 @@ class FieldApiController extends Controller
                         'url_foto' => $cancha->url_foto,
                         'tipo_superficie' => $hasTipoSuperficie ? $cancha->tipo_superficie : null,
                         'vs_format' => $format,
+                        'anchom2' => $hasCanchaAncho && $cancha->anchom2 !== null ? (float) $cancha->anchom2 : null,
+                        'largom2' => $hasCanchaLargo && $cancha->largom2 !== null ? (float) $cancha->largom2 : null,
                     ];
                 })
                 ->values()
@@ -319,6 +358,35 @@ class FieldApiController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * Return the stored aliases for a user-facing surface value.
+     *
+     * Older demo data may contain "artificial" while the app exposes the
+     * canonical label "sintetico". Matching both keeps filtering consistent
+     * without requiring a destructive data migration.
+     *
+     * @return array<int,string>
+     */
+    private function surfaceAliases(string $value): array
+    {
+        $normalized = strtolower(trim($value));
+        $normalized = str_replace(['á', 'é', 'í', 'ó', 'ú'], ['a', 'e', 'i', 'o', 'u'], $normalized);
+
+        return match ($normalized) {
+            'sintetico', 'artificial', 'grass sintetico', 'grass artificial' => [
+                'sintetico',
+                'artificial',
+                'grass sintetico',
+                'sintético',
+                'grass artificial',
+                'Grass sintético',
+            ],
+            'natural', 'grass natural' => ['natural', 'grass natural'],
+            'losa' => ['losa'],
+            default => [$value],
+        };
     }
 
     private function parseDecimalQuery(mixed $value): ?float

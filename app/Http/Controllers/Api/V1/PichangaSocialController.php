@@ -149,11 +149,11 @@ class PichangaSocialController extends Controller
 
         $data = $request->validate([
             'rated_user_id' => ['required', 'integer', 'exists:users,id'],
-            'fisico' => ['required', 'numeric', 'min:0', 'max:10', 'decimal:0,1'],
-            'arquero' => ['required', 'numeric', 'min:0', 'max:10', 'decimal:0,1'],
-            'delantero' => ['required', 'numeric', 'min:0', 'max:10', 'decimal:0,1'],
-            'mediocampo' => ['required', 'numeric', 'min:0', 'max:10', 'decimal:0,1'],
-            'defensa' => ['required', 'numeric', 'min:0', 'max:10', 'decimal:0,1'],
+            'fisico' => ['required', 'numeric', 'min:0', 'max:5', 'decimal:0,1'],
+            'arquero' => ['required', 'numeric', 'min:0', 'max:5', 'decimal:0,1'],
+            'delantero' => ['required', 'numeric', 'min:0', 'max:5', 'decimal:0,1'],
+            'mediocampo' => ['required', 'numeric', 'min:0', 'max:5', 'decimal:0,1'],
+            'defensa' => ['required', 'numeric', 'min:0', 'max:5', 'decimal:0,1'],
             'comentario' => ['nullable', 'string', 'max:500'],
         ]);
 
@@ -284,11 +284,15 @@ class PichangaSocialController extends Controller
 
     private function isMember(int $clubId, int $userId): bool
     {
-        return ClubUser::where('club_id', $clubId)->where('user_id', $userId)->exists();
+        return ClubUser::where('club_id', $clubId)->where('user_id', $userId)->active()->exists();
     }
 
     private function isClubAdmin(int $clubId, int $userId): bool
     {
-        return ClubUser::where('club_id', $clubId)->where('user_id', $userId)->where('rol', 'admin')->exists();
+        return ClubUser::where('club_id', $clubId)
+            ->where('user_id', $userId)
+            ->active()
+            ->where('rol', 'admin')
+            ->exists();
     }
 }

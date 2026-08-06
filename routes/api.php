@@ -46,6 +46,28 @@ Route::prefix('v1')->group(function () {
     Route::get('/users/{user}/profile-clips', [ProfileClipController::class, 'indexByUser']);
 });
 
+// Public discovery: guests can explore centres and visible groups, but every
+// mutation remains in the authenticated group below.
+Route::prefix('v1')->group(function () {
+    Route::get('/fields', [FieldApiController::class, 'index']);
+    Route::get('/fields/nearby', [FieldApiController::class, 'nearby']);
+    Route::get('/fields/{field}', [FieldApiController::class, 'show']);
+    Route::get('/clubs', [ClubApiController::class, 'index'])
+        ->middleware('auth.optional');
+    Route::get('/clubs/{club}', [ClubApiController::class, 'show'])
+        ->middleware('auth.optional');
+    Route::get('/clubs/{club}/members', [ClubApiController::class, 'members'])
+        ->middleware('auth.optional');
+    Route::get('/clubs/{club}/members/{member}/public-profile', [ClubApiController::class, 'publicMemberProfile'])
+        ->middleware('auth.optional');
+    Route::get('/clubs/{club}/pichangas', [GroupPichangaController::class, 'indexByClub'])
+        ->middleware('auth.optional');
+    Route::get('/pichangas/{pichanga}', [GroupPichangaController::class, 'show'])
+        ->middleware('auth.optional')
+        // Keep reserved paths such as /pichangas/my-board from being bound as IDs.
+        ->whereNumber('pichanga');
+});
+
 Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::post('/auth/logout', [SocialAuthController::class, 'logout']);
 
@@ -67,79 +89,77 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
         Route::post('/me/profile-clips', [ProfileClipController::class, 'store']);
         Route::delete('/me/profile-clips/{clip}', [ProfileClipController::class, 'destroy']);
         Route::put('/me/profile-clips/reorder', [ProfileClipController::class, 'reorder']);
-        Route::get('/fields', [FieldApiController::class, 'index']);
-        Route::get('/fields/nearby', [FieldApiController::class, 'nearby']);
-        Route::get('/fields/{field}', [FieldApiController::class, 'show']);
         Route::put('/fields/{field}/geometry', [FieldGeometryController::class, 'upsert']);
 
-        Route::get('/clubs', [ClubApiController::class, 'index']);
         Route::post('/clubs', [ClubApiController::class, 'store']);
         Route::get('/clubs/join/{joinCode}', [ClubJoinRequestController::class, 'previewByCode']);
         Route::post('/clubs/join/{joinCode}/request', [ClubJoinRequestController::class, 'requestByCode']);
-        Route::get('/clubs/{club}', [ClubApiController::class, 'show']);
-        Route::put('/clubs/{club}', [ClubApiController::class, 'update']);
-        Route::post('/clubs/{club}/join-requests', [ClubJoinRequestController::class, 'requestByClub']);
+        Route::put('/clubs/{club}', [ClubApiController::class, 'update'])->middleware('club.active:club');
+        Route::post('/clubs/{club}/join-requests', [ClubJoinRequestController::class, 'requestByClub'])->middleware('club.active:club');
         Route::get('/clubs/{club}/join-requests', [ClubJoinRequestController::class, 'listByClub']);
-        Route::post('/clubs/{club}/join-requests/{joinRequest}/decision', [ClubJoinRequestController::class, 'decide']);
-        Route::post('/clubs/{club}/join-requests/{joinRequest}/cancel', [ClubJoinRequestController::class, 'cancel']);
-        Route::post('/clubs/{club}/join-code/rotate', [ClubJoinRequestController::class, 'rotateJoinCode']);
-        Route::get('/clubs/{club}/members', [ClubApiController::class, 'members']);
-        Route::put('/clubs/{club}/members/{user}/role', [ClubApiController::class, 'setMemberRole']);
-        Route::delete('/clubs/{club}/members/{user}', [ClubApiController::class, 'removeMember']);
+        Route::post('/clubs/{club}/join-requests/{joinRequest}/decision', [ClubJoinRequestController::class, 'decide'])->middleware('club.active:club');
+        Route::post('/clubs/{club}/join-requests/{joinRequest}/cancel', [ClubJoinRequestController::class, 'cancel'])->middleware('club.active:club');
+        Route::post('/clubs/{club}/join-code/rotate', [ClubJoinRequestController::class, 'rotateJoinCode'])->middleware('club.active:club');
+        Route::put('/clubs/{club}/members/{user}/role', [ClubApiController::class, 'setMemberRole'])->middleware('club.active:club');
+        Route::delete('/clubs/{club}/members/{user}', [ClubApiController::class, 'removeMember'])->middleware('club.active:club');
 
         Route::get('/challenges', [ClubChallengeController::class, 'indexMine']);
         Route::get('/clubs/{club}/challenges', [ClubChallengeController::class, 'indexByClub']);
-        Route::post('/clubs/{club}/challenges', [ClubChallengeController::class, 'store']);
+        Route::post('/clubs/{club}/challenges', [ClubChallengeController::class, 'store'])->middleware('club.active:club');
         Route::get('/challenges/{challenge}', [ClubChallengeController::class, 'show']);
-        Route::post('/challenges/{challenge}/coordinate', [ClubChallengeController::class, 'coordinate']);
-        Route::post('/challenges/{challenge}/reject', [ClubChallengeController::class, 'reject']);
-        Route::post('/challenges/{challenge}/cancel', [ClubChallengeController::class, 'cancel']);
+        Route::post('/challenges/{challenge}/coordinate', [ClubChallengeController::class, 'coordinate'])->middleware('club.active:challenge');
+        Route::post('/challenges/{challenge}/reject', [ClubChallengeController::class, 'reject'])->middleware('club.active:challenge');
+        Route::post('/challenges/{challenge}/cancel', [ClubChallengeController::class, 'cancel'])->middleware('club.active:challenge');
         Route::get('/challenges/{challenge}/messages', [ClubChallengeController::class, 'messages']);
-        Route::post('/challenges/{challenge}/messages', [ClubChallengeController::class, 'sendMessage']);
-        Route::post('/challenges/{challenge}/field-options', [ClubChallengeController::class, 'proposeFieldOption']);
-        Route::post('/challenges/{challenge}/time-options', [ClubChallengeController::class, 'proposeTimeOption']);
+        Route::post('/challenges/{challenge}/messages', [ClubChallengeController::class, 'sendMessage'])->middleware('club.active:challenge');
+        Route::post('/challenges/{challenge}/field-options', [ClubChallengeController::class, 'proposeFieldOption'])->middleware('club.active:challenge');
+        Route::post('/challenges/{challenge}/time-options', [ClubChallengeController::class, 'proposeTimeOption'])->middleware('club.active:challenge');
         Route::get('/challenges/{challenge}/configurations', [ClubChallengeController::class, 'listConfigurations']);
-        Route::post('/challenges/{challenge}/configurations/propose', [ClubChallengeController::class, 'proposeConfiguration']);
-        Route::post('/challenges/{challenge}/configurations/{configuration}/decision', [ClubChallengeController::class, 'decideConfiguration']);
+        Route::post('/challenges/{challenge}/configurations/propose', [ClubChallengeController::class, 'proposeConfiguration'])->middleware('club.active:challenge');
+        Route::post('/challenges/{challenge}/configurations/{configuration}/decision', [ClubChallengeController::class, 'decideConfiguration'])->middleware('club.active:challenge');
         Route::put('/me/presence/chat', [ClubChallengeController::class, 'updateChatPresence']);
 
         Route::get('/invitations', [ClubInvitationApiController::class, 'indexMine']);
-        Route::post('/clubs/{club}/invitations', [ClubInvitationApiController::class, 'store']);
-        Route::post('/invitations/{invitation}/respond', [ClubInvitationApiController::class, 'respond']);
-        Route::post('/invitations/{invitation}/revoke', [ClubInvitationApiController::class, 'revoke']);
+        Route::post('/clubs/{club}/invitations', [ClubInvitationApiController::class, 'store'])->middleware('club.active:club');
+        Route::post('/invitations/{invitation}/respond', [ClubInvitationApiController::class, 'respond'])->middleware('club.active:invitation');
+        Route::post('/invitations/{invitation}/revoke', [ClubInvitationApiController::class, 'revoke'])->middleware('club.active:invitation');
 
         Route::get('/clubs/{club}/notification-preference', [ClubNotificationPreferenceController::class, 'show']);
-        Route::put('/clubs/{club}/notification-preference', [ClubNotificationPreferenceController::class, 'update']);
+        Route::put('/clubs/{club}/notification-preference', [ClubNotificationPreferenceController::class, 'update'])->middleware('club.active:club');
 
-        Route::get('/clubs/{club}/pichangas', [GroupPichangaController::class, 'indexByClub']);
-        Route::post('/clubs/{club}/pichangas', [GroupPichangaController::class, 'store']);
+        Route::post('/clubs/{club}/pichangas', [GroupPichangaController::class, 'store'])->middleware('club.active:club');
 
         Route::get('/pichangas/available', [GroupPichangaController::class, 'available']);
         Route::get('/pichangas/my-board', [GroupPichangaController::class, 'myBoard']);
+        Route::get('/pichangas/calendar', [GroupPichangaController::class, 'calendar']);
         Route::get('/pichangas/widget/confirmed-next', [GroupPichangaController::class, 'confirmedNextWidget']);
-        Route::get('/pichangas/{pichanga}', [GroupPichangaController::class, 'show']);
         Route::put('/pichangas/{pichanga}/audience', [GroupPichangaController::class, 'updateAudience'])
+            ->middleware('club.active:pichanga')
             ->middleware('throttle:pichanga-sensitive');
-        Route::post('/pichangas/{pichanga}/confirm', [GroupPichangaController::class, 'confirm']);
-        Route::post('/pichangas/{pichanga}/withdraw', [GroupPichangaController::class, 'withdraw']);
+        Route::post('/pichangas/{pichanga}/confirm', [GroupPichangaController::class, 'confirm'])->middleware('club.active:pichanga');
+        Route::post('/pichangas/{pichanga}/withdraw', [GroupPichangaController::class, 'withdraw'])->middleware('club.active:pichanga');
         Route::post('/pichangas/{pichanga}/status', [GroupPichangaController::class, 'setStatus'])
+            ->middleware('club.active:pichanga')
             ->middleware('throttle:pichanga-sensitive');
 
         Route::post('/pichangas/{pichanga}/external-requests', [GroupPichangaController::class, 'createExternalRequest'])
+            ->middleware('club.active:pichanga')
             ->middleware('throttle:pichanga-sensitive');
         Route::get('/pichangas/{pichanga}/external-requests', [GroupPichangaController::class, 'listExternalRequests']);
         Route::post('/pichangas/{pichanga}/external-requests/{externalRequest}/decision', [GroupPichangaController::class, 'decideExternalRequest'])
+            ->middleware('club.active:pichanga')
             ->middleware('throttle:pichanga-sensitive');
 
-        Route::post('/pichangas/{pichanga}/renotify/preview', [GroupPichangaController::class, 'renotifyPreview']);
+        Route::post('/pichangas/{pichanga}/renotify/preview', [GroupPichangaController::class, 'renotifyPreview'])->middleware('club.active:pichanga');
         Route::post('/pichangas/{pichanga}/renotify/send', [GroupPichangaController::class, 'renotifySend'])
+            ->middleware('club.active:pichanga')
             ->middleware('throttle:pichanga-sensitive');
         Route::get('/pichangas/{pichanga}/feed', [PichangaSocialController::class, 'feed']);
-        Route::post('/pichangas/{pichanga}/feed/posts', [PichangaSocialController::class, 'addPost']);
-        Route::delete('/pichangas/{pichanga}/feed/posts/{post}', [PichangaSocialController::class, 'removePost']);
-        Route::post('/pichangas/{pichanga}/feed/posts/{post}/comments', [PichangaSocialController::class, 'addComment']);
-        Route::delete('/pichangas/{pichanga}/feed/posts/{post}/comments/{comment}', [PichangaSocialController::class, 'removeComment']);
-        Route::post('/pichangas/{pichanga}/ratings', [PichangaSocialController::class, 'addOrUpdateRating']);
+        Route::post('/pichangas/{pichanga}/feed/posts', [PichangaSocialController::class, 'addPost'])->middleware('club.active:pichanga');
+        Route::delete('/pichangas/{pichanga}/feed/posts/{post}', [PichangaSocialController::class, 'removePost'])->middleware('club.active:pichanga');
+        Route::post('/pichangas/{pichanga}/feed/posts/{post}/comments', [PichangaSocialController::class, 'addComment'])->middleware('club.active:pichanga');
+        Route::delete('/pichangas/{pichanga}/feed/posts/{post}/comments/{comment}', [PichangaSocialController::class, 'removeComment'])->middleware('club.active:pichanga');
+        Route::post('/pichangas/{pichanga}/ratings', [PichangaSocialController::class, 'addOrUpdateRating'])->middleware('club.active:pichanga');
         Route::get('/pichangas/{pichanga}/ratings', [PichangaSocialController::class, 'ratings']);
 
         Route::get('/reports/mine', [ReportController::class, 'indexMine']);

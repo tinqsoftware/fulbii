@@ -75,6 +75,7 @@ class ClubNotificationPreferenceController extends Controller
 
         $isMember = ClubUser::where('club_id', $clubId)
             ->where('user_id', $userId)
+            ->active()
             ->exists();
 
         abort_unless($isMember, 403, 'No perteneces a este grupo.');

@@ -69,7 +69,10 @@ class ClubInvitationApiController extends Controller
         abort_if($invitedEmail === '', 422, 'No se pudo resolver el email de invitación.');
 
         if ($invitedUserId) {
-            $isMember = ClubUser::where('club_id', $club->id)->where('user_id', $invitedUserId)->exists();
+            $isMember = ClubUser::where('club_id', $club->id)
+                ->where('user_id', $invitedUserId)
+                ->active()
+                ->exists();
             abort_if($isMember, 422, 'El usuario ya pertenece al grupo.');
         }
 
@@ -122,7 +125,7 @@ class ClubInvitationApiController extends Controller
             $invitation->invited_user_id = $auth->id;
             $invitation->save();
 
-            ClubUser::firstOrCreate(
+            ClubUser::updateOrCreate(
                 ['club_id' => $invitation->club_id, 'user_id' => $auth->id],
                 ['rol' => 'miembro', 'estado' => 1]
             );
@@ -164,6 +167,7 @@ class ClubInvitationApiController extends Controller
 
         return ClubUser::where('club_id', $clubId)
             ->where('user_id', $userId)
+            ->active()
             ->where('rol', 'admin')
             ->exists();
     }

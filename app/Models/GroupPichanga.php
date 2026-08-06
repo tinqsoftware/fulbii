@@ -32,11 +32,11 @@ class GroupPichanga extends Model
         'challenge_id' => 'integer',
         'audience_age_min' => 'integer',
         'audience_age_max' => 'integer',
-        'skill_fisico_min' => 'integer',
-        'skill_arquero_min' => 'integer',
-        'skill_delantero_min' => 'integer',
-        'skill_mediocampo_min' => 'integer',
-        'skill_defensa_min' => 'integer',
+        'skill_fisico_min' => 'float',
+        'skill_arquero_min' => 'float',
+        'skill_delantero_min' => 'float',
+        'skill_mediocampo_min' => 'float',
+        'skill_defensa_min' => 'float',
     ];
 
     public function club()

@@ -1,0 +1,1 @@
+* * * * * cd /var/www/fulbii/current && php artisan schedule:run >> /var/log/fulbii-scheduler.log 2>&1

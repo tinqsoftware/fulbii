@@ -102,6 +102,46 @@ Route::get('/pichanga/{pichangaId}', function (int $pichangaId) {
   );
 })->whereNumber('pichangaId')->name('pichanga.link');
 
+Route::get('/club/{clubId}', function (int $clubId) {
+  abort_if($clubId <= 0, 404);
+
+  $appLink = "fulbii://club/{$clubId}";
+  $baseUrl = rtrim((string) config('services.app_links.base_url', config('app.url')), '/');
+  $canonical = "{$baseUrl}/club/{$clubId}";
+  $androidStore = (string) config('services.app_links.android_store_url', '');
+  $iosStore = (string) config('services.app_links.ios_store_url', '');
+
+  return response(
+    '<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Fulbii - Grupo</title>
+  <link rel="canonical" href="' . e($canonical) . '">
+  <style>
+    body { font-family: Arial, sans-serif; padding: 24px; max-width: 560px; margin: 0 auto; }
+    .btn { display: inline-block; margin-right: 8px; margin-bottom: 8px; padding: 10px 14px; border-radius: 8px; text-decoration: none; background: #0d7a3f; color: #fff; }
+    .btn.alt { background: #334155; }
+  </style>
+</head>
+<body>
+  <h1>Ver grupo en Fulbii</h1>
+  <p>Si tienes la app, se abrirá automáticamente.</p>
+  <p><a class="btn" href="' . e($appLink) . '">Abrir app</a></p>
+  <p>Si no tienes la app, instálala y vuelve a abrir este link.</p>' .
+    ($androidStore !== '' ? '<p><a class="btn alt" href="' . e($androidStore) . '">Android</a></p>' : '') .
+    ($iosStore !== '' ? '<p><a class="btn alt" href="' . e($iosStore) . '">iPhone</a></p>' : '') .
+    '<script>
+      setTimeout(function(){ window.location.href = "' . e($appLink) . '"; }, 350);
+    </script>
+</body>
+</html>',
+    200,
+    ['Content-Type' => 'text/html; charset=UTF-8']
+  );
+})->whereNumber('clubId')->name('club.share');
+
 Auth::routes();
 
 Route::get('/nick/available', [MiPerfilController::class, 'nickavailable'])->name('nick.available');

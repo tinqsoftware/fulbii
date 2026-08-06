@@ -97,11 +97,11 @@ class MiPerfilController extends Controller
         $u = $this->me();
         $validated = $r->validate([
             'id'         => 'nullable|integer',
-            'fisico'     => 'required|numeric|min:0|max:10|decimal:0,1',
-            'arquero'    => 'required|numeric|min:0|max:10|decimal:0,1',
-            'delantero'  => 'required|numeric|min:0|max:10|decimal:0,1',
-            'mediocampo' => 'required|numeric|min:0|max:10|decimal:0,1',
-            'defensa'    => 'required|numeric|min:0|max:10|decimal:0,1',
+            'fisico'     => 'required|numeric|min:0|max:5|decimal:0,1',
+            'arquero'    => 'required|numeric|min:0|max:5|decimal:0,1',
+            'delantero'  => 'required|numeric|min:0|max:5|decimal:0,1',
+            'mediocampo' => 'required|numeric|min:0|max:5|decimal:0,1',
+            'defensa'    => 'required|numeric|min:0|max:5|decimal:0,1',
             'comentario' => 'nullable|string|max:500',
         ]);
 

@@ -1,0 +1,17 @@
+[Unit]
+Description=Fulbii Queue Worker
+After=network.target mysql.service php8.2-fpm.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/fulbii/current
+ExecStart=/usr/bin/php /var/www/fulbii/current/artisan queue:work --queue=default,push --tries=3 --backoff=30,120,300 --sleep=1 --timeout=120
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/fulbii-queue.log
+StandardError=append:/var/log/fulbii-queue-error.log
+
+[Install]
+WantedBy=multi-user.target

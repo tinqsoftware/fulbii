@@ -53,8 +53,9 @@ class Kernel extends HttpKernel
      * @var array<string, class-string|string>
      */
     protected $middlewareAliases = [
-        'auth' => \App\Http\Middleware\Authenticate::class,
-        'auth.basic' => \Illuminate\Auth\Middleware\AuthenticateWithBasicAuth::class,
+            'auth' => \App\Http\Middleware\Authenticate::class,
+            'auth.optional' => \App\Http\Middleware\OptionalSanctumAuthentication::class,
+            'auth.basic' => \Illuminate\Auth\Middleware\AuthenticateWithBasicAuth::class,
         'auth.session' => \Illuminate\Session\Middleware\AuthenticateSession::class,
         'cache.headers' => \Illuminate\Http\Middleware\SetCacheHeaders::class,
         'can' => \Illuminate\Auth\Middleware\Authorize::class,
@@ -65,6 +66,7 @@ class Kernel extends HttpKernel
         'throttle' => \Illuminate\Routing\Middleware\ThrottleRequests::class,
         'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
         'user.not_suspended' => \App\Http\Middleware\EnsureUserNotSuspended::class,
+        'club.active' => \App\Http\Middleware\EnsureActiveClub::class,
         'admin.backoffice' => \App\Http\Middleware\EnsureBackofficeAccess::class,
     ];
 }

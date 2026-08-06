@@ -56,7 +56,7 @@ return [
             'trim',
             explode(',', (string) env('APP_LINK_ANDROID_SHA256_CERT_FINGERPRINTS', ''))
         ))),
-        'paths' => ['/join/*', '/pichanga/*'],
+        'paths' => ['/join/*', '/pichanga/*', '/club/*'],
     ],
 
 ];

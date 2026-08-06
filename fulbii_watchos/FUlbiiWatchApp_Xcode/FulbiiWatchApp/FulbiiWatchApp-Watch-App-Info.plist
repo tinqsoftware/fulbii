@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Fulbii Watch actualiza datos de entrenamiento del partido para mejorar el registro de actividad.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Fulbii Watch usa HealthKit para mantener activa la sesión de entrenamiento durante el partido</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Fulbii Watch usa tu ubicación durante el partido para registrar recorrido y distancia.</string>
+	<key>UIBackgroundModes</key>
+	<array/>
+	<key>WKBackgroundModes</key>
+	<array>
+		<string>workout-processing</string>
+	</array>
+</dict>
+</plist>

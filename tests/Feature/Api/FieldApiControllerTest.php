@@ -120,6 +120,8 @@ class FieldApiControllerTest extends TestCase
                 'tipo_superficie' => 'sintetico',
                 'url_foto' => 'https://example.test/a.jpg',
                 'formato_vs' => null,
+                'anchom2' => 20,
+                'largom2' => 40,
             ],
             [
                 'id' => 11,
@@ -129,6 +131,8 @@ class FieldApiControllerTest extends TestCase
                 'tipo_superficie' => null,
                 'formato_vs' => '5v5',
                 'url_foto' => null,
+                'anchom2' => null,
+                'largom2' => null,
             ],
         ]);
 
@@ -140,6 +144,8 @@ class FieldApiControllerTest extends TestCase
             ->assertJsonPath('field.canchas.0.nombre', 'Cancha A')
             ->assertJsonPath('field.canchas.0.vs_format', '7v7')
             ->assertJsonPath('field.canchas.0.tipo_superficie', 'sintetico')
+            ->assertJsonPath('field.canchas.0.anchom2', 20)
+            ->assertJsonPath('field.canchas.0.largom2', 40)
             ->assertJsonPath('field.canchas.1.vs_format', '5v5');
     }
 
@@ -194,6 +200,67 @@ class FieldApiControllerTest extends TestCase
             ->assertJsonPath('field.canchas.0.vs_format', '7v7');
     }
 
+    public function test_surface_and_format_filters_match_the_same_court(): void
+    {
+        DB::table('polideportivo')->insert([
+            [
+                'id' => 61,
+                'nombre' => 'Centro con filtros separados',
+                'precio_desde_num' => 70,
+            ],
+            [
+                'id' => 62,
+                'nombre' => 'Centro con cancha compatible',
+                'precio_desde_num' => 70,
+            ],
+            [
+                'id' => 63,
+                'nombre' => 'Centro fuera de precio',
+                'precio_desde_num' => 120,
+            ],
+        ]);
+        DB::table('cancha')->insert([
+            // This centre must not match: each filter is satisfied by a
+            // different court.
+            [
+                'id' => 610,
+                'id_polideportivo' => 61,
+                'equiposvs' => '11',
+                'tipo_superficie' => 'sintetico',
+                'formato_vs' => null,
+            ],
+            [
+                'id' => 611,
+                'id_polideportivo' => 61,
+                'equiposvs' => '7',
+                'tipo_superficie' => 'losa',
+                'formato_vs' => null,
+            ],
+            // This single court satisfies both surface and format.
+            [
+                'id' => 620,
+                'id_polideportivo' => 62,
+                'equiposvs' => '11',
+                'tipo_superficie' => 'losa',
+                'formato_vs' => null,
+            ],
+            // It matches the court filters but not the centre price range.
+            [
+                'id' => 630,
+                'id_polideportivo' => 63,
+                'equiposvs' => '11',
+                'tipo_superficie' => 'losa',
+                'formato_vs' => null,
+            ],
+        ]);
+
+        $this->getJson('/api/v1/fields?surface_types=losa&vs_formats=11v11&price_min=60&price_max=80')
+            ->assertOk()
+            ->assertJsonCount(1, 'items')
+            ->assertJsonPath('items.0.id', 62)
+            ->assertJsonPath('items.0.vs_formats', ['11v11']);
+    }
+
     public function test_selected_existing_polideportivo_is_persisted_as_existing_submission(): void
     {
         DB::table('polideportivo')->insert([
@@ -236,6 +303,21 @@ class FieldApiControllerTest extends TestCase
             ->assertJsonValidationErrors('existing_polideportivo_id');
     }
 
+    public function test_submission_accepts_only_one_photo(): void
+    {
+        $this->postJson('/api/v1/field-submissions', [
+            'nombre' => 'Centro con fotos',
+            'cancha_nombre' => 'Cancha Nueva',
+            'cancha_equiposvs' => '7',
+            'cancha_tipo_superficie' => 'sintetico',
+            'photos' => [
+                'https://example.test/one.jpg',
+                'https://example.test/two.jpg',
+            ],
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('photos');
+    }
+
     public function test_approved_existing_submission_adds_a_court_without_creating_a_second_centre(): void
     {
         DB::table('polideportivo')->insert([
@@ -253,7 +335,7 @@ class FieldApiControllerTest extends TestCase
             'nombre' => 'El Agustino Sport',
             'cancha_nombre' => 'Cancha C',
             'cancha_equiposvs' => '8',
-            'cancha_tipo_superficie' => 'artificial',
+            'cancha_tipo_superficie' => 'natural',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -274,6 +356,7 @@ class FieldApiControllerTest extends TestCase
             'id_polideportivo' => 51,
             'nombre' => 'Cancha C',
             'equiposvs' => '8',
+            'tipo_superficie' => 'natural',
         ]);
     }
 }

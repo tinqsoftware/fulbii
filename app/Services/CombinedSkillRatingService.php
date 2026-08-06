@@ -45,30 +45,80 @@ class CombinedSkillRatingService
      *   arquero:?float,
      *   delantero:?float,
      *   mediocampo:?float,
-     *   defensa:?float
+     *   defensa:?float,
+     *   player_average:?float,
+     *   goalkeeper_average:?float,
+     *   stars:?float,
+     *   primary_role:'jugador'|'arquero'|null
      * }
      */
     public function summaryForUser(int $userId, ?int $clubId = null): array
     {
         $row = $this->averagesByUserIds([$userId], $clubId)->get($userId);
         if (!$row) {
-            return [
-                'votos' => 0,
-                'fisico' => null,
-                'arquero' => null,
-                'delantero' => null,
-                'mediocampo' => null,
-                'defensa' => null,
-            ];
+            return $this->emptySummary();
+        }
+
+        return $this->deriveSummary($row);
+    }
+
+    /**
+     * @return array{votos:int,fisico:?float,arquero:?float,delantero:?float,mediocampo:?float,defensa:?float,player_average:?float,goalkeeper_average:?float,stars:?float,primary_role:'jugador'|'arquero'|null}
+     */
+    public function deriveSummary(object|array $row): array
+    {
+        $value = fn (string $key) => is_array($row) ? ($row[$key] ?? null) : ($row->{$key} ?? null);
+        $fieldValues = array_filter([
+            $value('fisico'),
+            $value('delantero'),
+            $value('mediocampo'),
+            $value('defensa'),
+        ], fn ($score) => $score !== null);
+        $playerAverage = empty($fieldValues) ? null : round(array_sum($fieldValues) / count($fieldValues), 2);
+        $goalkeeperAverage = $value('arquero') === null ? null : round((float) $value('arquero'), 2);
+        $stars = null;
+        $primaryRole = null;
+        if ($playerAverage !== null || $goalkeeperAverage !== null) {
+            // En empate se prioriza al jugador de campo.
+            if ($playerAverage !== null && ($goalkeeperAverage === null || $playerAverage >= $goalkeeperAverage)) {
+                $stars = $playerAverage;
+                $primaryRole = 'jugador';
+            } else {
+                $stars = $goalkeeperAverage;
+                $primaryRole = 'arquero';
+            }
         }
 
         return [
-            'votos' => (int) ($row->votos ?? 0),
-            'fisico' => $row->fisico !== null ? round((float) $row->fisico, 2) : null,
-            'arquero' => $row->arquero !== null ? round((float) $row->arquero, 2) : null,
-            'delantero' => $row->delantero !== null ? round((float) $row->delantero, 2) : null,
-            'mediocampo' => $row->mediocampo !== null ? round((float) $row->mediocampo, 2) : null,
-            'defensa' => $row->defensa !== null ? round((float) $row->defensa, 2) : null,
+            'votos' => (int) $value('votos'),
+            'fisico' => $value('fisico') !== null ? round((float) $value('fisico'), 2) : null,
+            'arquero' => $goalkeeperAverage,
+            'delantero' => $value('delantero') !== null ? round((float) $value('delantero'), 2) : null,
+            'mediocampo' => $value('mediocampo') !== null ? round((float) $value('mediocampo'), 2) : null,
+            'defensa' => $value('defensa') !== null ? round((float) $value('defensa'), 2) : null,
+            'player_average' => $playerAverage,
+            'goalkeeper_average' => $goalkeeperAverage,
+            'stars' => $stars,
+            'primary_role' => $primaryRole,
+        ];
+    }
+
+    /**
+     * @return array{votos:int,fisico:?float,arquero:?float,delantero:?float,mediocampo:?float,defensa:?float,player_average:?float,goalkeeper_average:?float,stars:?float,primary_role:'jugador'|'arquero'|null}
+     */
+    private function emptySummary(): array
+    {
+        return [
+            'votos' => 0,
+            'fisico' => null,
+            'arquero' => null,
+            'delantero' => null,
+            'mediocampo' => null,
+            'defensa' => null,
+            'player_average' => null,
+            'goalkeeper_average' => null,
+            'stars' => null,
+            'primary_role' => null,
         ];
     }
 
@@ -116,4 +166,3 @@ class CombinedSkillRatingService
         return $query;
     }
 }
-

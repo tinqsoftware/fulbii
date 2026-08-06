@@ -56,7 +56,7 @@ class FieldSubmissionController extends Controller
             ],
             'cancha_nombre' => ['nullable', 'string', 'max:250'],
             'cancha_equiposvs' => ['nullable', Rule::in(['5', '6', '7', '8', '9', '11'])],
-            'cancha_tipo_superficie' => ['nullable', Rule::in(['losa', 'sintetico', 'artificial'])],
+            'cancha_tipo_superficie' => ['nullable', Rule::in(['losa', 'sintetico', 'natural'])],
             'cancha_anchom2' => ['nullable', 'numeric', 'min:1', 'max:200'],
             'cancha_largom2' => ['nullable', 'numeric', 'min:1', 'max:300'],
             'create_default_cancha' => ['nullable', 'boolean'],
@@ -64,9 +64,9 @@ class FieldSubmissionController extends Controller
             'canchas.*.nombre' => ['required_with:canchas', 'string', 'max:250'],
             'canchas.*.anchom2' => ['nullable', 'numeric', 'min:1', 'max:200'],
             'canchas.*.largom2' => ['nullable', 'numeric', 'min:1', 'max:300'],
-            'photos' => ['nullable', 'array', 'max:8'],
+            'photos' => ['nullable', 'array', 'max:1'],
             'photos.*' => ['string', 'max:500'],
-            'photo_files' => ['nullable', 'array', 'max:8'],
+            'photo_files' => ['nullable', 'array', 'max:1'],
             'photo_files.*' => ['file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
         ]);
 
