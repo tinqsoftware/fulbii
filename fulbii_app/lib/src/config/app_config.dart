@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 enum AppEnv { dev, stg, prod }
@@ -20,8 +21,8 @@ class AppConfig {
   static AppConfig fromEnvironment() {
     return forEnvironment(
       envRaw: const String.fromEnvironment(
-      'APP_ENV',
-      defaultValue: 'prod',
+        'APP_ENV',
+        defaultValue: kReleaseMode ? 'prod' : 'dev',
       ),
       apiBaseUrl: const String.fromEnvironment(
         'API_BASE_URL',
@@ -46,6 +47,9 @@ class AppConfig {
     String googleWebClientId = '',
   }) {
     envRaw = envRaw.trim();
+    if (kReleaseMode && (envRaw.isEmpty || envRaw == 'dev')) {
+      envRaw = 'prod';
+    }
     final env = switch (envRaw) {
       'prod' => AppEnv.prod,
       'stg' => AppEnv.stg,
@@ -60,6 +64,9 @@ class AppConfig {
       AppEnv.prod => 'https://fulbii.com/api/v1',
     };
     apiBaseUrl = apiBaseUrl.trim();
+    if (kReleaseMode && (apiBaseUrl.isEmpty || apiBaseUrl.contains('127.0.0.1') || apiBaseUrl.contains('localhost') || apiBaseUrl.contains('fulbii.test'))) {
+      apiBaseUrl = 'https://fulbii.com/api/v1';
+    }
     appLinkBaseUrl = appLinkBaseUrl.trim();
     googleWebClientId = googleWebClientId.trim();
 
