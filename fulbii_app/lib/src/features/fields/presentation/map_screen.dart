@@ -178,7 +178,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   bool _myLocationEnabled = false;
   bool _didAutoCenterOnLocation = false;
   LatLng? _pendingInitialUserLocation;
-  double _cameraZoom = 13;
+  double _cameraZoom = 11.5;
   int _cameraRevision = 0;
   int _filterRequestId = 0;
   List<FieldModel> _lastMapFields = const [];
@@ -379,7 +379,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         FutureBuilder<Set<Marker>>(
           future: _markersFuture,
           builder: (context, snapshot) => GoogleMap(
-            initialCameraPosition: CameraPosition(target: initial, zoom: 13),
+            initialCameraPosition: CameraPosition(target: initial, zoom: 11.5),
             markers: snapshot.data ?? <Marker>{},
             style: Theme.of(context).brightness == Brightness.dark
                 ? _mapStyle
@@ -1516,7 +1516,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       return;
     }
 
-    await controller.animateCamera(CameraUpdate.newLatLngZoom(location, 15.5));
+    await controller.animateCamera(CameraUpdate.newLatLngZoom(location, 11.5));
   }
 
   Future<void> _centerOnMyLocation() async {
