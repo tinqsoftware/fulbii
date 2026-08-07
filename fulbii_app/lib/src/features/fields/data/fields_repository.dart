@@ -13,7 +13,7 @@ class FieldsRepository {
 
   Future<List<FieldModel>> list({
     String q = '',
-    int limit = 200,
+    int limit = 1500,
     double? priceMin,
     double? priceMax,
     List<String> surfaceTypes = const [],

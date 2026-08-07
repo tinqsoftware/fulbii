@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import '../../../services/widget/widget_weekly_service.dart';
 import '../data/pichangas_repository.dart';
 import 'pichanga_detail_screen.dart';
+import '../../home/main_shell.dart';
+import '../../fields/presentation/map_screen.dart';
 
 final pichangasBoardProvider = FutureProvider.autoDispose<Map<String, dynamic>>(
   (ref) => ref.watch(pichangasRepositoryProvider).myBoard(days: 7),
@@ -206,7 +208,7 @@ class _ActionHeader extends StatelessWidget {
   }
 }
 
-class _AgendaList extends StatelessWidget {
+class _AgendaList extends ConsumerWidget {
   const _AgendaList({
     required this.items,
     required this.emptyText,
@@ -226,9 +228,10 @@ class _AgendaList extends StatelessWidget {
   final bool showWatch;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    Widget mainList;
     if (items.isEmpty) {
-      return RefreshIndicator(
+      mainList = RefreshIndicator(
         onRefresh: onRefresh,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -245,46 +248,80 @@ class _AgendaList extends StatelessWidget {
           ],
         ),
       );
+    } else {
+      final groups = <String, List<Map<String, dynamic>>>{};
+      for (final item in items) {
+        final date = _parseDate(item['starts_at']);
+        groups.putIfAbsent(_dateKey(date), () => []).add(item);
+      }
+      final entries = groups.entries.toList();
+
+      mainList = RefreshIndicator(
+        onRefresh: onRefresh,
+        child: ListView.builder(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+          itemCount: entries.length,
+          itemBuilder: (context, index) {
+            final entry = entries[index];
+            final date = _parseDate(entry.value.first['starts_at']);
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _DateGroupLabel(date: date),
+                const SizedBox(height: 8),
+                ...entry.value.map(
+                  (item) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _PichangaAgendaCard(
+                      item: item,
+                      pending: pending,
+                      terminated: terminated,
+                      showWatch: showWatch,
+                      onTap: () =>
+                          onOpen(int.tryParse(item['id'].toString()) ?? 0),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      );
     }
 
-    final groups = <String, List<Map<String, dynamic>>>{};
-    for (final item in items) {
-      final date = _parseDate(item['starts_at']);
-      groups.putIfAbsent(_dateKey(date), () => []).add(item);
-    }
-    final entries = groups.entries.toList();
-
-    return RefreshIndicator(
-      onRefresh: onRefresh,
-      child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
-        itemCount: entries.length,
-        itemBuilder: (context, index) {
-          final entry = entries[index];
-          final date = _parseDate(entry.value.first['starts_at']);
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _DateGroupLabel(date: date),
-              const SizedBox(height: 8),
-              ...entry.value.map(
-                (item) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _PichangaAgendaCard(
-                    item: item,
-                    pending: pending,
-                    terminated: terminated,
-                    showWatch: showWatch,
-                    onTap: () =>
-                        onOpen(int.tryParse(item['id'].toString()) ?? 0),
+    if (!pending && !terminated) {
+      return Column(
+        children: [
+          Expanded(child: mainList),
+          SafeArea(
+            top: false,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                border: Border(
+                  top: BorderSide(
+                    color: Theme.of(context).colorScheme.outlineVariant,
                   ),
                 ),
               ),
-            ],
-          );
-        },
-      ),
-    );
+              child: FilledButton.icon(
+                onPressed: () {
+                  ref.read(mapScreenMessageProvider.notifier).state =
+                      'Primero escoge una cancha y dentro de ella podrás crear la pichanga.';
+                  ref.read(mainShellTabProvider.notifier).state = 0;
+                },
+                icon: const Icon(Icons.add_outlined),
+                label: const Text('Crear pichanga'),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return mainList;
   }
 }
 

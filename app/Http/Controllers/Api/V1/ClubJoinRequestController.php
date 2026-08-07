@@ -105,6 +105,7 @@ class ClubJoinRequestController extends Controller
 
         $query = ClubJoinRequest::query()
             ->where('club_id', $club->id)
+            ->where('status', '!=', ClubJoinRequest::STATUS_CANCELLED)
             ->with('requester:id,name,nick,email,sexo,fec_nac,avatar_url');
 
         if ($status !== 'all') {

@@ -235,6 +235,23 @@ class ClubsRepository {
   Future<Map<String, dynamic>> rotateJoinCode(int clubId) {
     return _api.postMap('/clubs/$clubId/join-code/rotate');
   }
+
+  Future<List<Map<String, dynamic>>> searchUsers({
+    required String query,
+    int? clubId,
+  }) async {
+    final response = await _api.getList(
+      '/users/search',
+      queryParameters: {
+        'q': query,
+        if (clubId != null) 'club_id': clubId,
+      },
+    );
+    return response
+        .whereType<Map>()
+        .map((item) => item.cast<String, dynamic>())
+        .toList();
+  }
 }
 
 final clubsRepositoryProvider = Provider<ClubsRepository>((ref) {

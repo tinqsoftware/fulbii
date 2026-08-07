@@ -23,6 +23,31 @@ class ProfileRepository {
     return _api.putMap('/me', data: payload);
   }
 
+  Future<Map<String, dynamic>> updateProfileWithAvatar({
+    required Map<String, dynamic> payload,
+    File? avatarFile,
+  }) async {
+    final data = <String, dynamic>{
+      for (final entry in payload.entries)
+        if (entry.value != null) entry.key: entry.value.toString(),
+    };
+
+    if (avatarFile != null) {
+      data['avatar'] = await MultipartFile.fromFile(
+        avatarFile.path,
+        filename: 'avatar.jpg',
+      );
+    }
+
+    return _api.postMultipartMap(
+      '/me',
+      data: FormData.fromMap({
+        ...data,
+        '_method': 'PUT',
+      }),
+    );
+  }
+
   Future<List<dynamic>> pichangaHistory() async {
     final response = await _api.getMap('/me/pichangas/history');
     return response['items'] is List ? response['items'] as List<dynamic> : [];

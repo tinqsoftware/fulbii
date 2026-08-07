@@ -16,6 +16,8 @@ import '../pichangas/presentation/pichangas_screen.dart';
 import '../fields/presentation/map_screen.dart';
 import '../profile/presentation/profile_screen.dart';
 
+final mainShellTabProvider = StateProvider<int>((ref) => 0);
+
 class MainShell extends ConsumerStatefulWidget {
   const MainShell({super.key});
 
@@ -25,7 +27,6 @@ class MainShell extends ConsumerStatefulWidget {
 
 class _MainShellState extends ConsumerState<MainShell>
     with WidgetsBindingObserver {
-  int _currentIndex = 0;
   bool _pushInitialized = false;
   bool _widgetSyncScheduled = false;
   late final PushService _pushService;
@@ -99,11 +100,17 @@ class _MainShellState extends ConsumerState<MainShell>
       'Notificaciones',
       'Perfil',
     ];
+
+    final currentIndex = ref.watch(mainShellTabProvider);
+
     return Scaffold(
-      appBar: _currentIndex == 0 || _currentIndex == 1 || _currentIndex == 2
+      appBar: currentIndex == 0 ||
+              currentIndex == 1 ||
+              currentIndex == 2 ||
+              currentIndex == 4
           ? null
           : AppBar(
-              title: Text(titles[_currentIndex]),
+              title: Text(titles[currentIndex]),
               actions: [
                 IconButton(
                   onPressed: _openInboxFromBell,
@@ -144,9 +151,9 @@ class _MainShellState extends ConsumerState<MainShell>
                 ),
               ],
             ),
-      body: IndexedStack(index: _currentIndex, children: pages),
+      body: IndexedStack(index: currentIndex, children: pages),
       bottomNavigationBar: _FulbiiBottomNavigation(
-        selectedIndex: _currentIndex,
+        selectedIndex: currentIndex,
         unreadCount: unreadCount,
         onDestinationSelected: (index) async {
           if (!isAuthenticated && (index == 2 || index == 3)) {
@@ -157,7 +164,7 @@ class _MainShellState extends ConsumerState<MainShell>
             );
             return;
           }
-          setState(() => _currentIndex = index);
+          ref.read(mainShellTabProvider.notifier).state = index;
           if (index == 0) {
             // Approved contributions can add a new centre or court while the
             // app is open; fetch the latest marker summaries when returning.
@@ -243,7 +250,7 @@ class _MainShellState extends ConsumerState<MainShell>
       await requireSignIn(context, ref, action: 'ver notificaciones');
       return;
     }
-    setState(() => _currentIndex = 3);
+    ref.read(mainShellTabProvider.notifier).state = 3;
     ref.invalidate(inboxProvider);
     ref.invalidate(unreadNotificationsCountProvider);
   }

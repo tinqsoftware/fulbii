@@ -222,13 +222,15 @@ class ClubApiController extends Controller
                 ->active()
                 ->value('rol')
             : null;
-        $hasPendingJoinRequest = $user
+        $pendingJoinRequest = $user
             && Schema::hasTable('club_join_requests')
-            && ClubJoinRequest::query()
+            ? ClubJoinRequest::query()
                 ->where('club_id', $club->id)
                 ->where('requester_user_id', $user->id)
                 ->where('status', ClubJoinRequest::STATUS_PENDING)
-                ->exists();
+                ->first()
+            : null;
+        $hasPendingJoinRequest = $pendingJoinRequest !== null;
 
         $rating = $this->ratingStatsForClub($club->id);
 
@@ -254,6 +256,7 @@ class ClubApiController extends Controller
                 'rating_average' => $rating['average'],
                 'rating_member_count' => $rating['count'],
                 'has_pending_join_request' => $hasPendingJoinRequest,
+                'pending_join_request_id' => $pendingJoinRequest?->id,
                 'join_code' => $isMember || $isSuper ? $club->join_code : null,
                 'join_url' => ($isMember || $isSuper) ? $this->buildJoinUrl($club->join_code) : null,
             ],
@@ -428,12 +431,28 @@ class ClubApiController extends Controller
             $summary = app(CombinedSkillRatingService::class)->summaryForUser((int) $member->id);
         }
         $pichangasPlayed = 0;
+        $latestPichangas = [];
         if (Schema::hasTable('group_pichanga_participants') && Schema::hasTable('group_pichangas')) {
             $pichangasPlayed = GroupPichangaParticipant::query()
                 ->join('group_pichangas as gp', 'gp.id', '=', 'group_pichanga_participants.pichanga_id')
                 ->where('group_pichanga_participants.user_id', $member->id)
                 ->where('group_pichanga_participants.status', 'confirmed')
                 ->count();
+
+            $latestPichangas = GroupPichangaParticipant::query()
+                ->join('group_pichangas as gp', 'gp.id', '=', 'group_pichanga_participants.pichanga_id')
+                ->where('group_pichanga_participants.user_id', $member->id)
+                ->where('group_pichanga_participants.status', 'confirmed')
+                ->orderBy('gp.starts_at', 'desc')
+                ->limit(5)
+                ->select([
+                    'gp.id',
+                    'gp.title',
+                    'gp.starts_at',
+                    'gp.status',
+                ])
+                ->get()
+                ->toArray();
         }
 
         return response()->json([
@@ -462,6 +481,7 @@ class ClubApiController extends Controller
                     'delantero' => $summary['delantero'],
                 ],
             ],
+            'latest_pichangas' => $latestPichangas,
         ]);
     }
 

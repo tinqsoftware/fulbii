@@ -13,6 +13,8 @@ import '../../auth/presentation/login_required_sheet.dart';
 import '../../auth/session_controller.dart';
 import '../data/profile_repository.dart';
 import '../services/clip_processing_service.dart';
+import 'edit_profile_screen.dart';
+import '../../clubs/data/clubs_repository.dart';
 
 final pichangaHistoryProvider = FutureProvider.autoDispose<List<dynamic>>(
   (ref) => ref.watch(profileRepositoryProvider).pichangaHistory(),
@@ -96,249 +98,367 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       );
     }
 
+    final topPadding = MediaQuery.of(context).padding.top + 16;
+
     return ListView(
-      padding: const EdgeInsets.all(14),
+      padding: EdgeInsets.fromLTRB(20, topPadding, 20, 24),
       children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 26,
-                      child: Text(
-                        user.nick?.substring(0, 1).toUpperCase() ?? 'U',
+        // Cabecera Principal
+        Row(
+          children: [
+            CircleAvatar(
+              radius: 42,
+              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+              backgroundImage: user.avatarUrl != null && user.avatarUrl!.isNotEmpty
+                  ? NetworkImage(resolveClubImageUrl(user.avatarUrl, appConfig) ?? '')
+                  : null,
+              child: (user.avatarUrl == null || user.avatarUrl!.isEmpty)
+                  ? Text(
+                      user.nick?.substring(0, 1).toUpperCase() ?? 'U',
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            user.nick ?? user.name,
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                          Text(user.email),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => _openEditProfile(context, ref),
-                      icon: const Icon(Icons.edit),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    Chip(label: Text('Sexo: ${user.sexo ?? '-'}')),
-                    Chip(label: Text('Altura: ${user.alturaCm ?? '-'} cm')),
-                    Chip(label: Text('Nac: ${user.fecNac ?? '-'}')),
-                    if (user.isSuperadmin)
-                      const Chip(label: Text('Superadmin')),
-                  ],
-                ),
-              ],
+                    )
+                  : null,
             ),
-          ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    user.name,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 22,
+                        ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '@${user.nick ?? ""}',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.primary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    user.email,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+            IconButton.filledTonal(
+              onPressed: () => _openEditProfile(context, ref),
+              icon: const Icon(Icons.edit_outlined, size: 20),
+              tooltip: 'Editar Perfil',
+            ),
+          ],
         ),
-        const SizedBox(height: 12),
-        Card(
-          child: SwitchListTile.adaptive(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14),
-            title: const Text('Modo oscuro'),
-            subtitle: const Text('Se guarda solo en este equipo.'),
-            value: themeMode == ThemeMode.dark,
-            onChanged: (value) =>
-                ref.read(themeModeProvider.notifier).setDarkMode(value),
-          ),
+        const SizedBox(height: 18),
+
+        // Info Chips
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _buildInfoChip(
+              context,
+              icon: Icons.wc_outlined,
+              label: user.sexo == 'M' ? 'Hombre' : (user.sexo == 'F' ? 'Mujer' : 'Sexo: —'),
+            ),
+            _buildInfoChip(
+              context,
+              icon: Icons.height,
+              label: user.alturaCm != null ? '${user.alturaCm} cm' : 'Altura: —',
+            ),
+            _buildInfoChip(
+              context,
+              icon: Icons.cake_outlined,
+              label: user.fecNac ?? 'Nacimiento: —',
+            ),
+            if (user.isSuperadmin)
+              _buildInfoChip(
+                context,
+                icon: Icons.admin_panel_settings_outlined,
+                label: 'Superadmin',
+                color: Colors.amber.shade700,
+              ),
+          ],
         ),
-        const SizedBox(height: 12),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Mis clips de perfil (máx 5)',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
+        const SizedBox(height: 24),
+        const Divider(height: 1),
+        const SizedBox(height: 20),
+
+        // Sección de Clips
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Text(
+                'Mis Clips de Perfil (máx 5)',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
                     ),
-                    FilledButton.icon(
-                      onPressed: _clipBusy ? null : _pickAndUploadClip,
-                      icon: _clipBusy
-                          ? const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.add),
-                      label: const Text('Subir clip'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Flujo: video con audio (7-20s) → eliges tramo exacto de 7s → compresión vertical 9:16 (objetivo 0.5MB-1.0MB, máximo 1.3MB).',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: Colors.black54),
-                ),
-                const SizedBox(height: 10),
-                clipsAsync.when(
-                  loading: () => const LinearProgressIndicator(minHeight: 2),
-                  error: (error, _) =>
-                      Text('No se pudieron cargar clips: $error'),
-                  data: (items) {
-                    if (items.isEmpty) {
-                      return const Text('No tienes clips todavía.');
-                    }
-
-                    return ReorderableListView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: items.length,
-                      onReorder: (oldIndex, newIndex) {
-                        if (_clipBusy) {
-                          return;
-                        }
-                        _reorderClips(items, oldIndex, newIndex);
-                      },
-                      itemBuilder: (context, index) {
-                        return _buildClipTile(
-                          context,
-                          key: ValueKey('clip_${items[index]['id']}'),
-                          index: index,
-                          item: items[index],
-                          appLinkBaseUrl: appConfig.appLinkBaseUrl,
-                        );
-                      },
-                    );
-                  },
-                ),
-              ],
+              ),
             ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Historial de pichangas',
-                  style: Theme.of(context).textTheme.titleMedium,
+            const SizedBox(width: 8),
+            FilledButton.icon(
+              onPressed: _clipBusy ? null : _pickAndUploadClip,
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                const SizedBox(height: 8),
-                historyAsync.when(
-                  loading: () => const LinearProgressIndicator(minHeight: 2),
-                  error: (error, _) =>
-                      Text('No se pudo cargar historial: $error'),
-                  data: (items) {
-                    if (items.isEmpty) {
-                      return const Text('Sin historial todavía.');
-                    }
-
-                    return Column(
-                      children: items.whereType<Map>().take(20).map((item) {
-                        final title =
-                            (item['title'] ?? 'Pichanga #${item['id']}')
-                                .toString();
-                        final startsAt = (item['starts_at'] ?? '')
-                            .toString()
-                            .replaceFirst('T', ' ');
-                        final status = (item['status'] ?? '').toString();
-
-                        return ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(title),
-                          subtitle: Text('$startsAt • $status'),
-                        );
-                      }).toList(),
-                    );
-                  },
-                ),
-              ],
+              ),
+              icon: _clipBusy
+                  ? const SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.add, size: 16),
+              label: const Text('Subir clip', style: TextStyle(fontSize: 13)),
             ),
-          ),
+          ],
         ),
+        const SizedBox(height: 6),
+        Text(
+          'Selecciona un tramo de 7s de un video con audio (duración 7-20s). Se optimizará verticalmente.',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+        ),
+        const SizedBox(height: 14),
+        clipsAsync.when(
+          loading: () => const Center(child: Padding(
+            padding: EdgeInsets.all(16),
+            child: CircularProgressIndicator(),
+          )),
+          error: (error, _) => Text('Error al cargar clips: $error'),
+          data: (items) {
+            if (items.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(
+                  'No tienes clips todavía.',
+                  style: TextStyle(color: Colors.grey.shade600, fontStyle: FontStyle.italic),
+                ),
+              );
+            }
+
+            return ReorderableListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: items.length,
+              onReorder: (oldIndex, newIndex) {
+                if (_clipBusy) return;
+                _reorderClips(items, oldIndex, newIndex);
+              },
+              itemBuilder: (context, index) {
+                return _buildClipTile(
+                  context,
+                  key: ValueKey('clip_${items[index]['id']}'),
+                  index: index,
+                  item: items[index],
+                  appLinkBaseUrl: appConfig.appLinkBaseUrl,
+                );
+              },
+            );
+          },
+        ),
+        const SizedBox(height: 16),
+        const Divider(height: 1),
+        const SizedBox(height: 20),
+
+        // Historial de Pichangas
+        Text(
+          'Historial de Pichangas',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+        ),
+        const SizedBox(height: 8),
+        historyAsync.when(
+          loading: () => const Center(child: Padding(
+            padding: EdgeInsets.all(16),
+            child: CircularProgressIndicator(),
+          )),
+          error: (error, _) => Text('Error al cargar historial: $error'),
+          data: (items) {
+            if (items.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(
+                  'Sin historial todavía.',
+                  style: TextStyle(color: Colors.grey.shade600, fontStyle: FontStyle.italic),
+                ),
+              );
+            }
+
+            return Column(
+              children: items.whereType<Map>().take(10).map((item) {
+                final title = (item['title'] ?? 'Pichanga #${item['id']}').toString();
+                final startsAt = (item['starts_at'] ?? '').toString().replaceFirst('T', ' ');
+                final status = (item['status'] ?? '').toString();
+
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    radius: 18,
+                    backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                    child: const Icon(Icons.sports_soccer_outlined, size: 18),
+                  ),
+                  title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                  subtitle: Text('$startsAt · $status', style: const TextStyle(fontSize: 12)),
+                );
+              }).toList(),
+            );
+          },
+        ),
+        const SizedBox(height: 16),
+        const Divider(height: 1),
+        const SizedBox(height: 20),
+
+        // Canchas Favoritas
+        Text(
+          'Mis Canchas Favoritas',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+        ),
+        const SizedBox(height: 8),
+        favoritesAsync.when(
+          loading: () => const Center(child: Padding(
+            padding: EdgeInsets.all(16),
+            child: CircularProgressIndicator(),
+          )),
+          error: (error, _) => Text('Error al cargar favoritos: $error'),
+          data: (items) {
+            if (items.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(
+                  'Aún no tienes canchas favoritas agregadas.',
+                  style: TextStyle(color: Colors.grey.shade600, fontStyle: FontStyle.italic),
+                ),
+              );
+            }
+
+            return Column(
+              children: items.whereType<Map>().take(10).map((item) {
+                final field = (item['field'] as Map?)?.cast<String, dynamic>() ?? {};
+                final fieldName = (field['nombre'] ?? '').toString();
+                final fieldId = int.tryParse(item['polideportivo_id'].toString());
+
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    radius: 18,
+                    backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
+                    child: const Icon(Icons.star_outline, size: 18),
+                  ),
+                  title: Text(fieldName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                  subtitle: Text(
+                    (field['descripcion'] ?? '').toString(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  trailing: IconButton(
+                    onPressed: fieldId == null
+                        ? null
+                        : () async {
+                            await ref
+                                .read(profileRepositoryProvider)
+                                .removeFavoriteField(fieldId);
+                            ref.invalidate(favoriteFieldsProvider);
+                          },
+                    icon: const Icon(Icons.delete_outline, size: 20),
+                  ),
+                );
+              }).toList(),
+            );
+          },
+        ),
+        const SizedBox(height: 16),
+        const Divider(height: 1),
         const SizedBox(height: 12),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Mis canchas favoritas',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 8),
-                favoritesAsync.when(
-                  loading: () => const LinearProgressIndicator(minHeight: 2),
-                  error: (error, _) =>
-                      Text('No se pudo cargar favoritos: $error'),
-                  data: (items) {
-                    if (items.isEmpty) {
-                      return const Text('No tienes canchas favoritas.');
-                    }
 
-                    return Column(
-                      children: items.whereType<Map>().take(20).map((item) {
-                        final field =
-                            (item['field'] as Map?)?.cast<String, dynamic>() ??
-                            {};
-                        final fieldName = (field['nombre'] ?? '').toString();
-                        final fieldId = int.tryParse(
-                          item['polideportivo_id'].toString(),
-                        );
+        // Preferencias & Ajustes
+        SwitchListTile.adaptive(
+          contentPadding: EdgeInsets.zero,
+          secondary: Icon(
+            themeMode == ThemeMode.dark ? Icons.dark_mode_outlined : Icons.light_mode_outlined,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          title: const Text(
+            'Modo Oscuro',
+            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+          ),
+          subtitle: const Text('Tema visual de la interfaz.', style: TextStyle(fontSize: 12)),
+          value: themeMode == ThemeMode.dark,
+          onChanged: (value) =>
+              ref.read(themeModeProvider.notifier).setDarkMode(value),
+        ),
+        const SizedBox(height: 24),
 
-                        return ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(fieldName),
-                          subtitle: Text(
-                            (field['descripcion'] ?? '').toString(),
-                          ),
-                          trailing: IconButton(
-                            onPressed: fieldId == null
-                                ? null
-                                : () async {
-                                    await ref
-                                        .read(profileRepositoryProvider)
-                                        .removeFavoriteField(fieldId);
-                                    ref.invalidate(favoriteFieldsProvider);
-                                  },
-                            icon: const Icon(Icons.delete_outline),
-                          ),
-                        );
-                      }).toList(),
-                    );
-                  },
-                ),
-              ],
+        // Botón Cerrar Sesión
+        OutlinedButton.icon(
+          onPressed: () => ref.read(sessionControllerProvider.notifier).logout(),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
             ),
+            side: const BorderSide(color: Colors.redAccent),
+            foregroundColor: Colors.redAccent,
           ),
-        ),
-        const SizedBox(height: 12),
-        FilledButton.icon(
-          onPressed: () =>
-              ref.read(sessionControllerProvider.notifier).logout(),
-          icon: const Icon(Icons.logout),
-          label: const Text('Cerrar sesión'),
+          icon: const Icon(Icons.logout_outlined, size: 18),
+          label: const Text(
+            'Cerrar Sesión',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+          ),
         ),
       ],
+    );
+  }
+
+  Widget _buildInfoChip(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    Color? color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color?.withValues(alpha: 0.1) ?? Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: color?.withValues(alpha: 0.3) ?? Theme.of(context).colorScheme.outlineVariant,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: color ?? Theme.of(context).colorScheme.primary),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: color ?? Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -698,109 +818,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       return;
     }
 
-    final nameController = TextEditingController(text: user.name);
-    final avatarController = TextEditingController(text: user.avatarUrl ?? '');
-    final birthController = TextEditingController(text: user.fecNac ?? '');
-    final heightController = TextEditingController(
-      text: '${user.alturaCm ?? ''}',
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const EditProfileScreen(),
+      ),
     );
-    String sexo = user.sexo ?? 'M';
-
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              title: const Text('Editar perfil'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextField(
-                      controller: nameController,
-                      decoration: const InputDecoration(labelText: 'Nombre'),
-                    ),
-                    TextField(
-                      controller: avatarController,
-                      decoration: const InputDecoration(
-                        labelText: 'Avatar URL',
-                      ),
-                    ),
-                    TextField(
-                      controller: birthController,
-                      decoration: const InputDecoration(
-                        labelText: 'Fecha nac (YYYY-MM-DD)',
-                      ),
-                    ),
-                    TextField(
-                      controller: heightController,
-                      decoration: const InputDecoration(
-                        labelText: 'Altura (cm)',
-                      ),
-                      keyboardType: TextInputType.number,
-                    ),
-                    DropdownButtonFormField<String>(
-                      initialValue: sexo,
-                      items: const [
-                        DropdownMenuItem(value: 'M', child: Text('Hombre')),
-                        DropdownMenuItem(value: 'F', child: Text('Mujer')),
-                      ],
-                      onChanged: (value) =>
-                          setState(() => sexo = value ?? sexo),
-                      decoration: const InputDecoration(labelText: 'Sexo'),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: const Text('Cancelar'),
-                ),
-                FilledButton(
-                  onPressed: () async {
-                    try {
-                      await ref.read(profileRepositoryProvider).updateProfile({
-                        'name': nameController.text.trim(),
-                        'avatar_url': avatarController.text.trim(),
-                        'fec_nac': birthController.text.trim(),
-                        'altura_cm': int.tryParse(heightController.text.trim()),
-                        'sexo': sexo,
-                      });
-                      await ref
-                          .read(sessionControllerProvider.notifier)
-                          .refreshMe();
-                      ref.invalidate(pichangaHistoryProvider);
-                      if (context.mounted) {
-                        Navigator.of(dialogContext).pop();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Perfil actualizado.')),
-                        );
-                      }
-                    } on ApiError catch (e) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(
-                          dialogContext,
-                        ).showSnackBar(SnackBar(content: Text(e.message)));
-                      }
-                    }
-                  },
-                  child: const Text('Guardar'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-
-    if (context.mounted) {
-      nameController.dispose();
-      avatarController.dispose();
-      birthController.dispose();
-      heightController.dispose();
-    }
   }
 }
 

@@ -90,6 +90,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
         Route::delete('/me/profile-clips/{clip}', [ProfileClipController::class, 'destroy']);
         Route::put('/me/profile-clips/reorder', [ProfileClipController::class, 'reorder']);
         Route::put('/fields/{field}/geometry', [FieldGeometryController::class, 'upsert']);
+        Route::get('/users/search', [\App\Http\Controllers\UsuarioController::class, 'search']);
 
         Route::post('/clubs', [ClubApiController::class, 'store']);
         Route::get('/clubs/join/{joinCode}', [ClubJoinRequestController::class, 'previewByCode']);

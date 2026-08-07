@@ -40,41 +40,43 @@ class PublicPlayerProfileScreen extends ConsumerWidget {
       publicPlayerProfileProvider((clubId: clubId, userId: userId)),
     );
     final clips = ref.watch(publicPlayerClipsProvider(userId));
-    final appLinkBaseUrl = ref.watch(appConfigProvider).appLinkBaseUrl;
+    final appConfig = ref.watch(appConfigProvider);
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Perfil deportivo')),
+      appBar: AppBar(
+        title: const Text('Perfil Deportivo'),
+        elevation: 0,
+      ),
       body: profile.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
-            child: Text('No se pudo cargar el perfil: $error'),
+            child: Text(
+              'No se pudo cargar el perfil: $error',
+              textAlign: TextAlign.center,
+            ),
           ),
         ),
         data: (data) {
           final club = (data['club'] as Map?)?.cast<String, dynamic>() ?? {};
-          final member =
-              (data['member'] as Map?)?.cast<String, dynamic>() ?? {};
+          final member = (data['member'] as Map?)?.cast<String, dynamic>() ?? {};
           final stats = (data['stats'] as Map?)?.cast<String, dynamic>() ?? {};
-          final skills =
-              (stats['skills'] as Map?)?.cast<String, dynamic>() ?? {};
+          final skills = (stats['skills'] as Map?)?.cast<String, dynamic>() ?? {};
           final name = (member['nick'] ?? 'Jugador').toString();
           final avatar = (member['avatar_url'] ?? '').toString();
           final stars = stats['star_average'] as num?;
           final playerAverage = stats['player_average'] as num?;
           final goalkeeperAverage = stats['goalkeeper_average'] as num?;
+          
+          final latestPichangas = (data['latest_pichangas'] as List?)
+                  ?.cast<Map<String, dynamic>>() ??
+              [];
 
           return ListView(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             children: [
-              Text(
-                'Miembro de ${club['nombre'] ?? 'este grupo'}',
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: Theme.of(context).colorScheme.primary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 14),
+              // Cabecera del Integrante
               Row(
                 children: [
                   _PublicAvatar(name: name, url: avatar),
@@ -85,15 +87,27 @@ class PublicPlayerProfileScreen extends ConsumerWidget {
                       children: [
                         Text(
                           name,
-                          style: Theme.of(context).textTheme.headlineSmall
-                              ?.copyWith(fontWeight: FontWeight.w900),
+                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 2),
                         Text(
                           member['rol']?.toString() == 'admin'
                               ? 'Administrador del grupo'
                               : 'Integrante del grupo',
-                          style: Theme.of(context).textTheme.bodyMedium,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Miembro de ${club['nombre'] ?? 'este grupo'}',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.primary,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
                         ),
                       ],
                     ),
@@ -101,52 +115,52 @@ class PublicPlayerProfileScreen extends ConsumerWidget {
                 ],
               ),
               const SizedBox(height: 24),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
+              const Divider(height: 1),
+              const SizedBox(height: 20),
+
+              // Métricas de Rendimiento (Grid 2x2 responsivo y elegante)
+              GridView.count(
+                crossAxisCount: 2,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: 2.2,
                 children: [
-                  SizedBox(
-                    width: 164,
-                    child: _Metric(
-                      label: 'Estrellas',
-                      value: stars == null
-                          ? '—'
-                          : '★ ${stars.toDouble().toStringAsFixed(1)}',
-                    ),
+                  _Metric(
+                    label: 'Estrellas',
+                    value: stars == null
+                        ? '—'
+                        : '★ ${stars.toDouble().toStringAsFixed(1)}',
                   ),
-                  SizedBox(
-                    width: 164,
-                    child: _Metric(
-                      label: 'Promedio jugador',
-                      value: playerAverage == null
-                          ? '—'
-                          : playerAverage.toDouble().toStringAsFixed(1),
-                    ),
+                  _Metric(
+                    label: 'Promedio jugador',
+                    value: playerAverage == null
+                        ? '—'
+                        : playerAverage.toDouble().toStringAsFixed(1),
                   ),
-                  SizedBox(
-                    width: 164,
-                    child: _Metric(
-                      label: 'Como arquero',
-                      value: goalkeeperAverage == null
-                          ? '—'
-                          : goalkeeperAverage.toDouble().toStringAsFixed(1),
-                    ),
+                  _Metric(
+                    label: 'Como arquero',
+                    value: goalkeeperAverage == null
+                        ? '—'
+                        : goalkeeperAverage.toDouble().toStringAsFixed(1),
                   ),
-                  SizedBox(
-                    width: 164,
-                    child: _Metric(
-                      label: 'Pichangas',
-                      value: '${stats['pichangas_played'] ?? 0}',
-                    ),
+                  _Metric(
+                    label: 'Pichangas',
+                    value: '${stats['pichangas_played'] ?? 0}',
                   ),
                 ],
               ),
-              const SizedBox(height: 28),
+              const SizedBox(height: 24),
+              const Divider(height: 1),
+              const SizedBox(height: 20),
+
+              // Habilidades
               Text(
                 'Habilidades',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
               ),
               const SizedBox(height: 12),
               if (stars == null)
@@ -155,7 +169,7 @@ class PublicPlayerProfileScreen extends ConsumerWidget {
                   text: 'Todavía no tiene calificaciones deportivas.',
                 )
               else
-                ...const [
+                ...[
                   ('Físico', 'fisico'),
                   ('Arquero', 'arquero'),
                   ('Defensa', 'defensa'),
@@ -167,20 +181,26 @@ class PublicPlayerProfileScreen extends ConsumerWidget {
                     value: (skills[skill.$2] as num?)?.toDouble(),
                   ),
                 ),
-              const SizedBox(height: 28),
+              const SizedBox(height: 20),
+              const Divider(height: 1),
+              const SizedBox(height: 20),
+
+              // Clips públicos
               Text(
-                'Clips',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                'Clips Públicos',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
               ),
               const SizedBox(height: 12),
               clips.when(
-                loading: () => const SizedBox(
-                  height: 156,
-                  child: Center(child: CircularProgressIndicator()),
+                loading: () => const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(20),
+                    child: CircularProgressIndicator(),
+                  ),
                 ),
-                error: (_, _) => const _EmptyProfileSection(
+                error: (_, __) => const _EmptyProfileSection(
                   icon: Icons.videocam_off_outlined,
                   text: 'No se pudieron cargar los clips.',
                 ),
@@ -190,23 +210,63 @@ class PublicPlayerProfileScreen extends ConsumerWidget {
                         text: 'Este jugador aún no tiene clips públicos.',
                       )
                     : SizedBox(
-                        height: 180,
+                        height: 140,
                         child: ListView.separated(
                           scrollDirection: Axis.horizontal,
                           itemCount: items.length,
-                          separatorBuilder: (_, _) => const SizedBox(width: 10),
+                          separatorBuilder: (_, _) => const SizedBox(width: 12),
                           itemBuilder: (_, index) => _ClipCard(
                             clip: {
                               ...items[index],
                               'mp4_url': _resolvePublicClipUrl(
                                 (items[index]['mp4_url'] ?? '').toString(),
-                                appLinkBaseUrl,
+                                appConfig.appLinkBaseUrl,
                               ),
                             },
                           ),
                         ),
                       ),
               ),
+              const SizedBox(height: 20),
+              const Divider(height: 1),
+              const SizedBox(height: 20),
+
+              // Últimas Pichangas del jugador
+              Text(
+                'Últimas Pichangas Jugadas',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+              const SizedBox(height: 12),
+              if (latestPichangas.isEmpty)
+                const _EmptyProfileSection(
+                  icon: Icons.sports_soccer_outlined,
+                  text: 'Aún no registra pichangas jugadas.',
+                )
+              else
+                ...latestPichangas.map((item) {
+                  final title = (item['title'] ?? 'Pichanga #${item['id']}').toString();
+                  final startsAt = (item['starts_at'] ?? '').toString().replaceFirst('T', ' ');
+                  final status = (item['status'] ?? '').toString();
+
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: CircleAvatar(
+                      radius: 18,
+                      backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                      child: const Icon(Icons.sports_soccer_outlined, size: 18),
+                    ),
+                    title: Text(
+                      title,
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    ),
+                    subtitle: Text(
+                      '$startsAt · $status',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  );
+                }),
             ],
           );
         },
@@ -226,37 +286,30 @@ String _resolvePublicClipUrl(String raw, String appLinkBaseUrl) {
   return '$base${value.startsWith('/') ? value : '/$value'}';
 }
 
-class _PublicAvatar extends StatelessWidget {
+class _PublicAvatar extends ConsumerWidget {
   const _PublicAvatar({required this.name, required this.url});
   final String name;
   final String url;
 
   @override
-  Widget build(BuildContext context) => CircleAvatar(
-    radius: 42,
-    child: url.isEmpty
-        ? Text(
-            name.isEmpty ? '?' : name.substring(0, 1).toUpperCase(),
-            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
-          )
-        : ClipOval(
-            child: Image.network(
-              url,
-              width: 84,
-              height: 84,
-              fit: BoxFit.cover,
-              errorBuilder: (_, _, _) => Center(
-                child: Text(
-                  name.isEmpty ? '?' : name.substring(0, 1).toUpperCase(),
-                  style: const TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ),
-          ),
-  );
+  Widget build(BuildContext context, WidgetRef ref) {
+    final config = ref.watch(appConfigProvider);
+    final resolvedUrl = resolveClubImageUrl(url, config);
+
+    return CircleAvatar(
+      radius: 42,
+      backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+      backgroundImage: resolvedUrl != null && resolvedUrl.isNotEmpty
+          ? NetworkImage(resolvedUrl)
+          : null,
+      child: (resolvedUrl == null || resolvedUrl.isEmpty)
+          ? Text(
+              name.isEmpty ? '?' : name.substring(0, 1).toUpperCase(),
+              style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
+            )
+          : null,
+    );
+  }
 }
 
 class _Metric extends StatelessWidget {
@@ -265,25 +318,36 @@ class _Metric extends StatelessWidget {
   final String value;
 
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-    decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(14),
-    ),
-    child: Column(
-      children: [
-        Text(
-          value,
-          style: Theme.of(
-            context,
-          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
-        ),
-        const SizedBox(height: 3),
-        Text(label, style: Theme.of(context).textTheme.labelSmall),
-      ],
-    ),
-  );
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            value,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  color: colorScheme.primary,
+                ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _SkillBar extends StatelessWidget {
@@ -295,16 +359,23 @@ class _SkillBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final safeValue = (value ?? 0).clamp(0, 5);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 10),
       child: Row(
         children: [
-          SizedBox(width: 92, child: Text(label)),
+          SizedBox(
+            width: 92,
+            child: Text(
+              label,
+              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+            ),
+          ),
           Expanded(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(99),
               child: LinearProgressIndicator(
                 value: safeValue / 5,
-                minHeight: 8,
+                minHeight: 6,
+                backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
               ),
             ),
           ),
@@ -314,6 +385,7 @@ class _SkillBar extends StatelessWidget {
             child: Text(
               value == null ? '—' : value!.toStringAsFixed(1),
               textAlign: TextAlign.end,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
             ),
           ),
         ],
@@ -329,20 +401,28 @@ class _EmptyProfileSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    width: double.infinity,
-    padding: const EdgeInsets.all(18),
-    decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(14),
-    ),
-    child: Row(
-      children: [
-        Icon(icon),
-        const SizedBox(width: 10),
-        Expanded(child: Text(text)),
-      ],
-    ),
-  );
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 20, color: Theme.of(context).colorScheme.outline),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                text,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
 }
 
 class _ClipCard extends StatelessWidget {
@@ -354,33 +434,38 @@ class _ClipCard extends StatelessWidget {
     final url = (clip['mp4_url'] ?? '').toString();
     final title = (clip['title'] ?? 'Clip deportivo').toString();
     return SizedBox(
-      width: 118,
+      width: 110,
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         onTap: url.isEmpty
             ? null
             : () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => _PublicClipPlayer(url: url, title: title),
+                  MaterialPageRoute<void>(
+                    builder: (_) => _PublicClipPlayer(url: url, title: title),
+                  ),
                 ),
-              ),
         child: Ink(
           decoration: BoxDecoration(
             color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(12),
           ),
           child: Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(10),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.play_circle_fill_outlined, size: 42),
-                const SizedBox(height: 10),
+                Icon(
+                  Icons.play_circle_fill_outlined,
+                  size: 36,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(height: 8),
                 Text(
                   title,
                   textAlign: TextAlign.center,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                 ),
               ],
             ),
@@ -420,31 +505,31 @@ class _PublicClipPlayerState extends State<_PublicClipPlayer> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(widget.title)),
-    body: Center(
-      child: _controller.value.isInitialized
-          ? AspectRatio(
-              aspectRatio: _controller.value.aspectRatio,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  VideoPlayer(_controller),
-                  IconButton.filled(
-                    icon: Icon(
-                      _controller.value.isPlaying
-                          ? Icons.pause
-                          : Icons.play_arrow,
-                    ),
-                    onPressed: () => setState(
-                      () => _controller.value.isPlaying
-                          ? _controller.pause()
-                          : _controller.play(),
-                    ),
+        appBar: AppBar(title: Text(widget.title)),
+        body: Center(
+          child: _controller.value.isInitialized
+              ? AspectRatio(
+                  aspectRatio: _controller.value.aspectRatio,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      VideoPlayer(_controller),
+                      IconButton.filled(
+                        icon: Icon(
+                          _controller.value.isPlaying
+                              ? Icons.pause
+                              : Icons.play_arrow,
+                        ),
+                        onPressed: () => setState(
+                          () => _controller.value.isPlaying
+                              ? _controller.pause()
+                              : _controller.play(),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            )
-          : const CircularProgressIndicator(),
-    ),
-  );
+                )
+              : const CircularProgressIndicator(),
+        ),
+      );
 }

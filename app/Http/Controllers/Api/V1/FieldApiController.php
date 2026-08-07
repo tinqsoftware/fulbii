@@ -39,7 +39,12 @@ class FieldApiController extends Controller
     public function index(Request $request)
     {
         $q = trim((string) $request->query('q', ''));
-        $limit = max(1, min(500, (int) $request->query('limit', 200)));
+        $rawLimit = $request->query('limit');
+        $limit = null;
+        if ($rawLimit !== null && (string)$rawLimit !== '0' && strtolower((string)$rawLimit) !== 'all') {
+            $limit = max(1, min(5000, (int) $rawLimit));
+        }
+
         $priceMin = $this->parseDecimalQuery($request->query('price_min'));
         $priceMax = $this->parseDecimalQuery($request->query('price_max'));
         $surfaceTypes = $this->parseCsv($request->query('surface_types'));

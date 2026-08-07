@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../config/app_config.dart';
 import '../storage/token_store.dart';
 import 'api_error.dart';
+import 'package:dio/io.dart';
 
 final dioProvider = Provider<Dio>((ref) {
   final config = ref.watch(appConfigProvider);
@@ -35,6 +36,14 @@ final dioProvider = Provider<Dio>((ref) {
       },
     ),
   );
+
+  if (config.env == AppEnv.dev) {
+    (dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
+      final client = HttpClient();
+      client.badCertificateCallback = (cert, host, port) => true;
+      return client;
+    };
+  }
 
   return dio;
 });

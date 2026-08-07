@@ -17,6 +17,8 @@ import '../../pichangas/presentation/create_pichanga_screen.dart';
 import '../../pichangas/presentation/pichanga_detail_screen.dart';
 import '../../profile/presentation/public_player_profile_screen.dart';
 import '../data/clubs_repository.dart';
+import 'club_invite_screen.dart';
+import 'challenge_club_screen.dart';
 
 final clubDetailProvider = FutureProvider.autoDispose
     .family<Map<String, dynamic>, int>((ref, clubId) {
@@ -149,6 +151,9 @@ class ClubDetailScreen extends ConsumerWidget {
                   final linkJoinEnabled = club['link_join_enabled'] == true;
                   final hasPendingJoinRequest =
                       club['has_pending_join_request'] == true;
+                  final pendingJoinRequestId = int.tryParse(
+                    club['pending_join_request_id']?.toString() ?? '',
+                  );
                   final autoEnabled = club['auto_reminder_enabled'] == true;
                   final auto48 = club['auto_reminder_48h_enabled'] == true;
                   final auto24 = club['auto_reminder_24h_enabled'] == true;
@@ -246,16 +251,24 @@ class ClubDetailScreen extends ConsumerWidget {
                               spacing: 8,
                               runSpacing: 8,
                               children: [
-                                if (isActive &&
-                                    isVisitor &&
-                                    isVisible &&
-                                    linkJoinEnabled &&
-                                    !hasPendingJoinRequest)
-                                  FilledButton.icon(
-                                    onPressed: () => _requestJoin(context, ref),
-                                    icon: const Icon(Icons.group_add_outlined),
-                                    label: const Text('Solicitar ingreso'),
-                                  ),
+                                if (isActive && isVisitor && isVisible) ...[
+                                  if (linkJoinEnabled && !hasPendingJoinRequest)
+                                    FilledButton.icon(
+                                      onPressed: () => _requestJoin(context, ref),
+                                      icon: const Icon(Icons.group_add_outlined),
+                                      label: const Text('Solicitar ingreso'),
+                                    )
+                                  else if (hasPendingJoinRequest && pendingJoinRequestId != null)
+                                    FilledButton.icon(
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor: Colors.red.shade700,
+                                        foregroundColor: Colors.white,
+                                      ),
+                                      onPressed: () => _cancelJoin(context, ref, pendingJoinRequestId),
+                                      icon: const Icon(Icons.close),
+                                      label: const Text('Cancelar solicitud'),
+                                    ),
+                                ],
                                 if (isActive && isAdmin)
                                   OutlinedButton.icon(
                                     onPressed: () =>
@@ -719,76 +732,11 @@ class ClubDetailScreen extends ConsumerWidget {
   }
 
   Future<void> _inviteDialog(BuildContext context, WidgetRef ref) async {
-    final nickController = TextEditingController();
-    final emailController = TextEditingController();
-
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Invitar usuario'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nickController,
-                decoration: const InputDecoration(labelText: 'Nick'),
-              ),
-              TextField(
-                controller: emailController,
-                decoration: const InputDecoration(labelText: 'Email'),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                final nick = nickController.text.trim();
-                final email = emailController.text.trim();
-                if (nick.isEmpty && email.isEmpty) {
-                  ScaffoldMessenger.of(dialogContext).showSnackBar(
-                    const SnackBar(content: Text('Ingresa nick o email.')),
-                  );
-                  return;
-                }
-
-                try {
-                  await ref
-                      .read(clubsRepositoryProvider)
-                      .inviteByNickOrEmail(
-                        clubId,
-                        nick: nick.isEmpty ? null : nick,
-                        email: email.isEmpty ? null : email,
-                      );
-                  if (context.mounted) {
-                    Navigator.of(dialogContext).pop();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Invitación enviada.')),
-                    );
-                  }
-                } on ApiError catch (e) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(
-                      dialogContext,
-                    ).showSnackBar(SnackBar(content: Text(e.message)));
-                  }
-                }
-              },
-              child: const Text('Enviar'),
-            ),
-          ],
-        );
-      },
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ClubInviteScreen(clubId: clubId),
+      ),
     );
-
-    if (context.mounted) {
-      nickController.dispose();
-      emailController.dispose();
-    }
   }
 
   Future<void> _requestJoin(BuildContext context, WidgetRef ref) async {
@@ -799,6 +747,32 @@ class ClubDetailScreen extends ConsumerWidget {
       }
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Solicitud de ingreso enviada.')),
+      );
+      ref.invalidate(clubDetailProvider(clubId));
+    } on ApiError catch (e) {
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  Future<void> _cancelJoin(
+    BuildContext context,
+    WidgetRef ref,
+    int requestId,
+  ) async {
+    try {
+      await ref
+          .read(clubsRepositoryProvider)
+          .cancelJoinRequest(clubId, requestId);
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Solicitud de ingreso cancelada.')),
       );
       ref.invalidate(clubDetailProvider(clubId));
     } on ApiError catch (e) {
@@ -846,136 +820,14 @@ class ClubDetailScreen extends ConsumerWidget {
       return;
     }
 
-    int selectedClubId = int.tryParse(myClubs.first['id'].toString()) ?? 0;
-    final teamSizeController = TextEditingController(text: '6');
-    String challengeWindow = 'next_week';
-    final noteController = TextEditingController();
-
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: Text('Retar a $targetClubName'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    DropdownButtonFormField<int>(
-                      initialValue: selectedClubId,
-                      decoration: const InputDecoration(
-                        labelText: 'Tu grupo',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: myClubs.map((club) {
-                        final id = int.tryParse(club['id'].toString()) ?? 0;
-                        return DropdownMenuItem<int>(
-                          value: id,
-                          child: Text((club['nombre'] ?? 'Grupo').toString()),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        if (value == null) {
-                          return;
-                        }
-                        setDialogState(() => selectedClubId = value);
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: teamSizeController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Cantidad por equipo (vs)',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<String>(
-                      initialValue: challengeWindow,
-                      decoration: const InputDecoration(
-                        labelText: 'Ventana del reto',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: const [
-                        DropdownMenuItem(
-                          value: 'next_week',
-                          child: Text('Siguiente semana'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'next_fortnight',
-                          child: Text('Siguiente quincena'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'next_month',
-                          child: Text('Siguiente mes'),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        if (value == null) {
-                          return;
-                        }
-                        setDialogState(() => challengeWindow = value);
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: noteController,
-                      minLines: 2,
-                      maxLines: 4,
-                      decoration: const InputDecoration(
-                        labelText: 'Mensaje inicial (opcional)',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: const Text('Cancelar'),
-                ),
-                FilledButton(
-                  onPressed: () async {
-                    try {
-                      final teamSize =
-                          int.tryParse(teamSizeController.text.trim()) ?? 6;
-                      await ref
-                          .read(challengesRepositoryProvider)
-                          .create(
-                            fromClubId: selectedClubId,
-                            challengedClubId: targetClubId,
-                            teamSize: teamSize,
-                            challengeWindow: challengeWindow,
-                            requestedNote: noteController.text.trim().isEmpty
-                                ? null
-                                : noteController.text.trim(),
-                          );
-                      if (dialogContext.mounted) {
-                        Navigator.of(dialogContext).pop();
-                      }
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Reto enviado.')),
-                        );
-                      }
-                    } on ApiError catch (e) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(
-                          context,
-                        ).showSnackBar(SnackBar(content: Text(e.message)));
-                      }
-                    }
-                  },
-                  child: const Text('Enviar reto'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ChallengeClubScreen(
+          targetClubId: targetClubId,
+          targetClubName: targetClubName,
+          myClubs: myClubs,
+        ),
+      ),
     );
   }
 

@@ -57,9 +57,7 @@ class AppConfig {
     };
 
     final defaultBaseUrl = switch (env) {
-      // iOS Simulator cannot resolve the Mac-only Valet hostname
-      // (fulbii.test). localhost:8000 serves the same local Laravel app.
-      AppEnv.dev => 'http://127.0.0.1:8000/api/v1',
+      AppEnv.dev => 'https://fulbii.test/api/v1',
       AppEnv.stg => 'https://fulbii.com/api/v1',
       AppEnv.prod => 'https://fulbii.com/api/v1',
     };

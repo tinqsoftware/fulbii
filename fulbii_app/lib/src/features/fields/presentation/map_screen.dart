@@ -128,6 +128,7 @@ final fieldsProvider = FutureProvider.autoDispose<List<FieldModel>>((
   final repo = ref.watch(fieldsRepositoryProvider);
   final filter = ref.watch(mapFilterStateProvider);
   return repo.list(
+    limit: 1500,
     priceMin: filter.priceMin,
     priceMax: filter.priceMax,
     surfaceTypes: filter.surfaceTypes,
@@ -147,6 +148,8 @@ final favoriteFieldIdsProvider = FutureProvider.autoDispose<Set<int>>((
       .whereType<int>()
       .toSet();
 });
+
+final mapScreenMessageProvider = StateProvider<String?>((ref) => null);
 
 class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({
@@ -246,6 +249,28 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<String?>(mapScreenMessageProvider, (previous, next) {
+      if (next != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          showDialog<void>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Crear pichanga'),
+              content: Text(next),
+              actions: [
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Entendido'),
+                ),
+              ],
+            ),
+          );
+          ref.read(mapScreenMessageProvider.notifier).state = null;
+        });
+      }
+    });
+
     final fieldsAsync = ref.watch(fieldsProvider);
 
     return fieldsAsync.when(
