@@ -10,7 +10,6 @@ import '../../../config/app_config.dart';
 import '../../../core/network/api_error.dart';
 import '../../auth/presentation/login_required_sheet.dart';
 import '../../auth/session_controller.dart';
-import '../../challenges/data/challenges_repository.dart';
 import '../../challenges/presentation/challenges_screen.dart';
 import '../../pichangas/data/pichangas_repository.dart';
 import '../../pichangas/presentation/create_pichanga_screen.dart';
@@ -30,9 +29,27 @@ final clubMembersProvider = FutureProvider.autoDispose
       return ref.watch(clubsRepositoryProvider).members(clubId);
     });
 
+typedef ClubPichangasQuery = ({int clubId, String tab, int page});
+
 final clubPichangasProvider = FutureProvider.autoDispose
-    .family<List<Map<String, dynamic>>, int>((ref, clubId) {
-      return ref.watch(pichangasRepositoryProvider).byClub(clubId);
+    .family<Map<String, dynamic>, ClubPichangasQuery>((ref, query) {
+      return ref
+          .watch(pichangasRepositoryProvider)
+          .byClubPage(query.clubId, tab: query.tab, page: query.page);
+    });
+
+final clubPichangasCalendarProvider = FutureProvider.autoDispose
+    .family<List<Map<String, dynamic>>, ({int clubId, String month})>((
+      ref,
+      query,
+    ) {
+      final parts = query.month.split('-');
+      return ref
+          .watch(pichangasRepositoryProvider)
+          .clubCalendarMonth(
+            query.clubId,
+            DateTime(int.parse(parts[0]), int.parse(parts[1])),
+          );
     });
 
 final clubNotificationPrefProvider = FutureProvider.autoDispose
@@ -72,7 +89,6 @@ class ClubDetailScreen extends ConsumerWidget {
     }
     final detailAsync = ref.watch(clubDetailProvider(clubId));
     final membersAsync = ref.watch(clubMembersProvider(clubId));
-    final pichangasAsync = ref.watch(clubPichangasProvider(clubId));
     final isAdminFromDetail = isClubAdminDetail(detailAsync.valueOrNull);
     final isActiveFromDetail = isClubActiveDetail(detailAsync.valueOrNull);
     final isMemberFromDetail =
@@ -254,17 +270,25 @@ class ClubDetailScreen extends ConsumerWidget {
                                 if (isActive && isVisitor && isVisible) ...[
                                   if (linkJoinEnabled && !hasPendingJoinRequest)
                                     FilledButton.icon(
-                                      onPressed: () => _requestJoin(context, ref),
-                                      icon: const Icon(Icons.group_add_outlined),
+                                      onPressed: () =>
+                                          _requestJoin(context, ref),
+                                      icon: const Icon(
+                                        Icons.group_add_outlined,
+                                      ),
                                       label: const Text('Solicitar ingreso'),
                                     )
-                                  else if (hasPendingJoinRequest && pendingJoinRequestId != null)
+                                  else if (hasPendingJoinRequest &&
+                                      pendingJoinRequestId != null)
                                     FilledButton.icon(
                                       style: FilledButton.styleFrom(
                                         backgroundColor: Colors.red.shade700,
                                         foregroundColor: Colors.white,
                                       ),
-                                      onPressed: () => _cancelJoin(context, ref, pendingJoinRequestId),
+                                      onPressed: () => _cancelJoin(
+                                        context,
+                                        ref,
+                                        pendingJoinRequestId,
+                                      ),
                                       icon: const Icon(Icons.close),
                                       label: const Text('Cancelar solicitud'),
                                     ),
@@ -621,58 +645,7 @@ class ClubDetailScreen extends ConsumerWidget {
                   ),
                 ),
               const SizedBox(height: 12),
-              Card(
-                margin: const EdgeInsets.symmetric(horizontal: 20),
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Pichangas del grupo',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 8),
-                      pichangasAsync.when(
-                        loading: () =>
-                            const LinearProgressIndicator(minHeight: 2),
-                        error: (error, _) =>
-                            Text('No se pudo cargar pichangas: $error'),
-                        data: (items) {
-                          if (items.isEmpty) {
-                            return const Text('Todavía no hay pichangas.');
-                          }
-
-                          return Column(
-                            children: items
-                                .map(
-                                  (item) => _ClubPichangaCard(
-                                    item: item,
-                                    onTap: () {
-                                      final id =
-                                          int.tryParse(item['id'].toString()) ??
-                                          0;
-                                      if (id > 0) {
-                                        Navigator.of(context).push(
-                                          MaterialPageRoute<void>(
-                                            builder: (_) =>
-                                                PichangaDetailScreen(
-                                                  pichangaId: id,
-                                                ),
-                                          ),
-                                        );
-                                      }
-                                    },
-                                  ),
-                                )
-                                .toList(),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+              _ClubPichangasAgenda(clubId: clubId),
             ],
           ),
           SafeArea(
@@ -733,9 +706,7 @@ class ClubDetailScreen extends ConsumerWidget {
 
   Future<void> _inviteDialog(BuildContext context, WidgetRef ref) async {
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => ClubInviteScreen(clubId: clubId),
-      ),
+      MaterialPageRoute<void>(builder: (_) => ClubInviteScreen(clubId: clubId)),
     );
   }
 
@@ -1514,6 +1485,317 @@ class _EditClubScreenState extends ConsumerState<_EditClubScreen> {
   );
 }
 
+class _ClubPichangasAgenda extends ConsumerStatefulWidget {
+  const _ClubPichangasAgenda({required this.clubId, this.guest = false});
+  final int clubId;
+  final bool guest;
+
+  @override
+  ConsumerState<_ClubPichangasAgenda> createState() =>
+      _ClubPichangasAgendaState();
+}
+
+class _ClubPichangasAgendaState extends ConsumerState<_ClubPichangasAgenda> {
+  String _tab = 'pending';
+  int _page = 1;
+
+  @override
+  Widget build(BuildContext context) {
+    final result = ref.watch(
+      clubPichangasProvider((clubId: widget.clubId, tab: _tab, page: _page)),
+    );
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Pichangas del grupo',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: _openCalendar,
+                  icon: const Icon(Icons.calendar_month_outlined),
+                  tooltip: 'Calendario del grupo',
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            if (!widget.guest)
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'pending', label: Text('Pendientes')),
+                  ButtonSegment(value: 'past', label: Text('Pasadas')),
+                ],
+                selected: {_tab},
+                showSelectedIcon: false,
+                onSelectionChanged: (value) => setState(() {
+                  _tab = value.first;
+                  _page = 1;
+                }),
+              )
+            else
+              Text(
+                'Próximas pichangas públicas',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            const SizedBox(height: 12),
+            result.when(
+              loading: () => const LinearProgressIndicator(minHeight: 2),
+              error: (error, _) =>
+                  Text('No se pudieron cargar pichangas: $error'),
+              data: (data) {
+                final items =
+                    (data['items'] as List?)
+                        ?.whereType<Map>()
+                        .map((item) => item.cast<String, dynamic>())
+                        .toList() ??
+                    <Map<String, dynamic>>[];
+                final meta =
+                    (data['meta'] as Map?)?.cast<String, dynamic>() ?? {};
+                final lastPage =
+                    int.tryParse((meta['last_page'] ?? 1).toString()) ?? 1;
+                if (items.isEmpty)
+                  return Text(
+                    _tab == 'past'
+                        ? 'Todavía no hay pichangas pasadas.'
+                        : 'Todavía no hay pichangas pendientes.',
+                  );
+                return Column(
+                  children: [
+                    ...items.map(
+                      (item) => _ClubPichangaCard(
+                        item: item,
+                        onTap: () => _openDetail(item),
+                      ),
+                    ),
+                    if (lastPage > 1)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            IconButton(
+                              onPressed: _page > 1
+                                  ? () => setState(() => _page--)
+                                  : null,
+                              icon: const Icon(Icons.chevron_left),
+                            ),
+                            Text(
+                              'Página $_page de $lastPage',
+                              style: Theme.of(context).textTheme.labelMedium,
+                            ),
+                            IconButton(
+                              onPressed: _page < lastPage
+                                  ? () => setState(() => _page++)
+                                  : null,
+                              icon: const Icon(Icons.chevron_right),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _openDetail(Map<String, dynamic> item) {
+    final id = int.tryParse(item['id'].toString()) ?? 0;
+    if (id > 0)
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => PichangaDetailScreen(pichangaId: id),
+        ),
+      );
+  }
+
+  Future<void> _openCalendar() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) =>
+          _ClubPichangasCalendar(clubId: widget.clubId, onOpen: _openDetail),
+    );
+  }
+}
+
+class _ClubPichangasCalendar extends ConsumerStatefulWidget {
+  const _ClubPichangasCalendar({required this.clubId, required this.onOpen});
+  final int clubId;
+  final ValueChanged<Map<String, dynamic>> onOpen;
+  @override
+  ConsumerState<_ClubPichangasCalendar> createState() =>
+      _ClubPichangasCalendarState();
+}
+
+class _ClubPichangasCalendarState
+    extends ConsumerState<_ClubPichangasCalendar> {
+  DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
+  DateTime? _selectedDay;
+  @override
+  Widget build(BuildContext context) {
+    final key =
+        '${_month.year.toString().padLeft(4, '0')}-${_month.month.toString().padLeft(2, '0')}';
+    final data = ref.watch(
+      clubPichangasCalendarProvider((clubId: widget.clubId, month: key)),
+    );
+    return SafeArea(
+      child: SizedBox(
+        height: MediaQuery.sizeOf(context).height * .82,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: data.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (error, _) =>
+                Center(child: Text('No se pudo cargar calendario: $error')),
+            data: (items) {
+              final byDay = <int, List<Map<String, dynamic>>>{};
+              for (final item in items) {
+                final date = DateTime.tryParse(
+                  (item['starts_at'] ?? '').toString(),
+                )?.toLocal();
+                if (date != null)
+                  byDay.putIfAbsent(date.day, () => []).add(item);
+              }
+              final days = DateUtils.getDaysInMonth(_month.year, _month.month);
+              final firstWeekday =
+                  DateTime(_month.year, _month.month).weekday % 7;
+              final selectedItems = _selectedDay == null
+                  ? <Map<String, dynamic>>[]
+                  : byDay[_selectedDay!.day] ?? [];
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      IconButton(
+                        onPressed: () => setState(
+                          () =>
+                              _month = DateTime(_month.year, _month.month - 1),
+                        ),
+                        icon: const Icon(Icons.chevron_left),
+                      ),
+                      Expanded(
+                        child: Text(
+                          '${const ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'][_month.month - 1]} ${_month.year}',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => setState(
+                          () =>
+                              _month = DateTime(_month.year, _month.month + 1),
+                        ),
+                        icon: const Icon(Icons.chevron_right),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      for (final label in ['D', 'L', 'M', 'M', 'J', 'V', 'S'])
+                        Expanded(child: Center(child: Text(label))),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  GridView.builder(
+                    shrinkWrap: true,
+                    itemCount: firstWeekday + days,
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 7,
+                          childAspectRatio: 1,
+                        ),
+                    itemBuilder: (_, index) {
+                      if (index < firstWeekday) return const SizedBox.shrink();
+                      final day = index - firstWeekday + 1;
+                      final has = byDay.containsKey(day);
+                      final selected = _selectedDay?.day == day;
+                      return InkWell(
+                        onTap: has
+                            ? () => setState(
+                                () => _selectedDay = DateTime(
+                                  _month.year,
+                                  _month.month,
+                                  day,
+                                ),
+                              )
+                            : null,
+                        borderRadius: BorderRadius.circular(18),
+                        child: Container(
+                          margin: const EdgeInsets.all(3),
+                          decoration: BoxDecoration(
+                            color: selected
+                                ? Theme.of(context).colorScheme.primaryContainer
+                                : null,
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text('$day'),
+                              if (has)
+                                Container(
+                                  width: 5,
+                                  height: 5,
+                                  margin: const EdgeInsets.only(top: 2),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primary,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: _selectedDay == null
+                        ? const Center(
+                            child: Text('Toca un día con actividad.'),
+                          )
+                        : ListView(
+                            children: selectedItems
+                                .map(
+                                  (item) => _ClubPichangaCard(
+                                    item: item,
+                                    onTap: () {
+                                      Navigator.of(context).pop();
+                                      widget.onOpen(item);
+                                    },
+                                  ),
+                                )
+                                .toList(),
+                          ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _GuestClubDetail extends ConsumerWidget {
   const _GuestClubDetail({required this.clubId});
 
@@ -1523,7 +1805,6 @@ class _GuestClubDetail extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final detail = ref.watch(clubDetailProvider(clubId));
     final members = ref.watch(clubMembersProvider(clubId));
-    final pichangas = ref.watch(clubPichangasProvider(clubId));
     return Scaffold(
       body: Stack(
         children: [
@@ -1616,56 +1897,7 @@ class _GuestClubDetail extends ConsumerWidget {
                 },
               ),
               const SizedBox(height: 12),
-              Card(
-                margin: const EdgeInsets.symmetric(horizontal: 20),
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Próximas pichangas',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 8),
-                      pichangas.when(
-                        loading: () =>
-                            const LinearProgressIndicator(minHeight: 2),
-                        error: (error, _) =>
-                            const Text('No se pudieron cargar pichangas.'),
-                        data: (items) => items.isEmpty
-                            ? const Text('Todavía no hay pichangas abiertas.')
-                            : Column(
-                                children: items
-                                    .map(
-                                      (item) => _ClubPichangaCard(
-                                        item: item,
-                                        onTap: () {
-                                          final id =
-                                              int.tryParse(
-                                                item['id'].toString(),
-                                              ) ??
-                                              0;
-                                          if (id > 0) {
-                                            Navigator.of(context).push(
-                                              MaterialPageRoute<void>(
-                                                builder: (_) =>
-                                                    PichangaDetailScreen(
-                                                      pichangaId: id,
-                                                    ),
-                                              ),
-                                            );
-                                          }
-                                        },
-                                      ),
-                                    )
-                                    .toList(),
-                              ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+              _ClubPichangasAgenda(clubId: clubId, guest: true),
               const SizedBox(height: 12),
               Card(
                 margin: const EdgeInsets.symmetric(horizontal: 20),

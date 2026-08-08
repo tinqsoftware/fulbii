@@ -59,6 +59,20 @@ class FieldApiControllerTest extends TestCase
             $table->decimal('largom2', 8, 2)->nullable();
             $table->timestamps();
         });
+        Schema::create('polideportivo_photos', function (Blueprint $table) {
+            $table->increments('id');
+            $table->unsignedInteger('polideportivo_id');
+            $table->string('photo_url');
+            $table->unsignedInteger('sort_order')->default(0);
+            $table->timestamps();
+        });
+        Schema::create('cancha_photos', function (Blueprint $table) {
+            $table->increments('id');
+            $table->unsignedInteger('cancha_id');
+            $table->string('photo_url');
+            $table->unsignedInteger('sort_order')->default(0);
+            $table->timestamps();
+        });
         Schema::create('field_submissions', function (Blueprint $table) {
             $table->increments('id');
             $table->unsignedInteger('user_id');
@@ -92,6 +106,8 @@ class FieldApiControllerTest extends TestCase
             $table->increments('id');
             $table->unsignedInteger('field_submission_id');
             $table->string('photo_url');
+            $table->string('asset_type')->default('court');
+            $table->unsignedInteger('sort_order')->default(0);
             $table->string('status')->default('active');
             $table->timestamps();
         });
@@ -303,7 +319,7 @@ class FieldApiControllerTest extends TestCase
             ->assertJsonValidationErrors('existing_polideportivo_id');
     }
 
-    public function test_submission_accepts_only_one_photo(): void
+    public function test_submission_limits_legacy_court_photos_to_three(): void
     {
         $this->postJson('/api/v1/field-submissions', [
             'nombre' => 'Centro con fotos',
@@ -313,9 +329,52 @@ class FieldApiControllerTest extends TestCase
             'photos' => [
                 'https://example.test/one.jpg',
                 'https://example.test/two.jpg',
+                'https://example.test/three.jpg',
+                'https://example.test/four.jpg',
             ],
         ])->assertUnprocessable()
             ->assertJsonValidationErrors('photos');
+    }
+
+    public function test_submission_separates_venue_and_court_photo_urls(): void
+    {
+        $response = $this->postJson('/api/v1/field-submissions', [
+            'submission_type' => 'new_polideportivo',
+            'nombre' => 'Arena Fotos',
+            'cancha_nombre' => 'Cancha Principal',
+            'cancha_equiposvs' => '7',
+            'cancha_tipo_superficie' => 'sintetico',
+            'photos' => ['https://example.test/court.jpg'],
+        ]);
+
+        $response->assertCreated();
+        $this->assertDatabaseHas('field_submission_photos', [
+            'photo_url' => 'https://example.test/court.jpg',
+            'asset_type' => 'court',
+        ]);
+    }
+
+    public function test_approval_persists_separate_venue_and_court_galleries(): void
+    {
+        DB::table('field_submissions')->insert([
+            'id' => 70, 'user_id' => 1, 'status' => 'pending',
+            'submission_type' => 'new_polideportivo', 'nombre' => 'Arena Fotos',
+            'cancha_nombre' => 'Cancha Principal', 'cancha_equiposvs' => '7',
+            'cancha_tipo_superficie' => 'sintetico', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('field_submission_photos')->insert([
+            ['field_submission_id' => 70, 'photo_url' => 'https://example.test/venue.jpg', 'asset_type' => 'venue', 'sort_order' => 0, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()],
+            ['field_submission_id' => 70, 'photo_url' => 'https://example.test/court.jpg', 'asset_type' => 'court', 'sort_order' => 0, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        $reviewer = new User(['id' => 99, 'name' => 'Moderador']);
+        $reviewer->exists = true;
+        $result = app(FieldSubmissionApprovalService::class)->decide(FieldSubmission::query()->findOrFail(70), $reviewer, 'approve', null);
+
+        $this->assertDatabaseHas('polideportivo_photos', ['polideportivo_id' => $result['approved_polideportivo_id'], 'photo_url' => 'https://example.test/venue.jpg']);
+        $this->assertDatabaseHas('cancha_photos', ['cancha_id' => $result['approved_cancha_id'], 'photo_url' => 'https://example.test/court.jpg']);
+        $this->assertDatabaseHas('polideportivo', ['id' => $result['approved_polideportivo_id'], 'url_foto' => 'https://example.test/venue.jpg']);
+        $this->assertDatabaseHas('cancha', ['id' => $result['approved_cancha_id'], 'url_foto' => 'https://example.test/court.jpg']);
     }
 
     public function test_approved_existing_submission_adds_a_court_without_creating_a_second_centre(): void

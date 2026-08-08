@@ -8,6 +8,7 @@ import 'package:video_player/video_player.dart';
 
 import '../../../config/app_config.dart';
 import '../../../core/network/api_error.dart';
+import '../../../core/formatters/spanish_date_formatter.dart';
 import '../../../core/theme/theme_controller.dart';
 import '../../auth/presentation/login_required_sheet.dart';
 import '../../auth/session_controller.dart';
@@ -15,6 +16,8 @@ import '../data/profile_repository.dart';
 import '../services/clip_processing_service.dart';
 import 'edit_profile_screen.dart';
 import '../../clubs/data/clubs_repository.dart';
+import '../../pichangas/presentation/pichanga_history_screen.dart';
+import '../../pichangas/presentation/pichanga_detail_screen.dart';
 
 final pichangaHistoryProvider = FutureProvider.autoDispose<List<dynamic>>(
   (ref) => ref.watch(profileRepositoryProvider).pichangaHistory(),
@@ -109,8 +112,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             CircleAvatar(
               radius: 42,
               backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-              backgroundImage: user.avatarUrl != null && user.avatarUrl!.isNotEmpty
-                  ? NetworkImage(resolveClubImageUrl(user.avatarUrl, appConfig) ?? '')
+              backgroundImage:
+                  user.avatarUrl != null && user.avatarUrl!.isNotEmpty
+                  ? NetworkImage(
+                      resolveClubImageUrl(user.avatarUrl, appConfig) ?? '',
+                    )
                   : null,
               child: (user.avatarUrl == null || user.avatarUrl!.isEmpty)
                   ? Text(
@@ -131,24 +137,24 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   Text(
                     user.name,
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 22,
-                        ),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 22,
+                    ),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     '@${user.nick ?? ""}',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     user.email,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
@@ -170,17 +176,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             _buildInfoChip(
               context,
               icon: Icons.wc_outlined,
-              label: user.sexo == 'M' ? 'Hombre' : (user.sexo == 'F' ? 'Mujer' : 'Sexo: —'),
+              label: user.sexo == 'M'
+                  ? 'Hombre'
+                  : (user.sexo == 'F' ? 'Mujer' : 'Sexo: —'),
             ),
             _buildInfoChip(
               context,
               icon: Icons.height,
-              label: user.alturaCm != null ? '${user.alturaCm} cm' : 'Altura: —',
+              label: user.alturaCm != null
+                  ? '${user.alturaCm} cm'
+                  : 'Altura: —',
             ),
             _buildInfoChip(
               context,
               icon: Icons.cake_outlined,
-              label: user.fecNac ?? 'Nacimiento: —',
+              label: SpanishDateFormatter.birthDate(user.fecNac),
             ),
             if (user.isSuperadmin)
               _buildInfoChip(
@@ -202,16 +212,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             Expanded(
               child: Text(
                 'Mis Clips de Perfil (máx 5)',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
               ),
             ),
             const SizedBox(width: 8),
             FilledButton.icon(
               onPressed: _clipBusy ? null : _pickAndUploadClip,
               style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
@@ -220,7 +233,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ? const SizedBox(
                       width: 12,
                       height: 12,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
                     )
                   : const Icon(Icons.add, size: 16),
               label: const Text('Subir clip', style: TextStyle(fontSize: 13)),
@@ -231,15 +247,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         Text(
           'Selecciona un tramo de 7s de un video con audio (duración 7-20s). Se optimizará verticalmente.',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
         const SizedBox(height: 14),
         clipsAsync.when(
-          loading: () => const Center(child: Padding(
-            padding: EdgeInsets.all(16),
-            child: CircularProgressIndicator(),
-          )),
+          loading: () => const Center(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: CircularProgressIndicator(),
+            ),
+          ),
           error: (error, _) => Text('Error al cargar clips: $error'),
           data: (items) {
             if (items.isEmpty) {
@@ -247,7 +265,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 padding: const EdgeInsets.only(bottom: 12),
                 child: Text(
                   'No tienes clips todavía.',
-                  style: TextStyle(color: Colors.grey.shade600, fontStyle: FontStyle.italic),
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontStyle: FontStyle.italic,
+                  ),
                 ),
               );
             }
@@ -277,18 +298,34 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         const SizedBox(height: 20),
 
         // Historial de Pichangas
-        Text(
-          'Historial de Pichangas',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w800,
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Historial de Pichangas',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
               ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const PichangaHistoryScreen(),
+                ),
+              ),
+              child: const Text('Ver todo'),
+            ),
+          ],
         ),
         const SizedBox(height: 8),
         historyAsync.when(
-          loading: () => const Center(child: Padding(
-            padding: EdgeInsets.all(16),
-            child: CircularProgressIndicator(),
-          )),
+          loading: () => const Center(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: CircularProgressIndicator(),
+            ),
+          ),
           error: (error, _) => Text('Error al cargar historial: $error'),
           data: (items) {
             if (items.isEmpty) {
@@ -296,26 +333,55 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 padding: const EdgeInsets.only(bottom: 12),
                 child: Text(
                   'Sin historial todavía.',
-                  style: TextStyle(color: Colors.grey.shade600, fontStyle: FontStyle.italic),
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontStyle: FontStyle.italic,
+                  ),
                 ),
               );
             }
 
             return Column(
-              children: items.whereType<Map>().take(10).map((item) {
-                final title = (item['title'] ?? 'Pichanga #${item['id']}').toString();
-                final startsAt = (item['starts_at'] ?? '').toString().replaceFirst('T', ' ');
-                final status = (item['status'] ?? '').toString();
+              children: items.whereType<Map>().take(3).map((item) {
+                final title = (item['title'] ?? 'Pichanga #${item['id']}')
+                    .toString();
+                final startsAt = SpanishDateFormatter.pichangaDate(
+                  item['starts_at']?.toString(),
+                );
+                final status = SpanishDateFormatter.status(
+                  item['status']?.toString(),
+                );
 
+                final id = int.tryParse(item['id'].toString()) ?? 0;
                 return ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: CircleAvatar(
                     radius: 18,
-                    backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                    backgroundColor: Theme.of(
+                      context,
+                    ).colorScheme.primaryContainer,
                     child: const Icon(Icons.sports_soccer_outlined, size: 18),
                   ),
-                  title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                  subtitle: Text('$startsAt · $status', style: const TextStyle(fontSize: 12)),
+                  title: Text(
+                    title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                  subtitle: Text(
+                    '$startsAt · $status',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: id <= 0
+                      ? null
+                      : () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) =>
+                                PichangaDetailScreen(pichangaId: id),
+                          ),
+                        ),
                 );
               }).toList(),
             );
@@ -328,16 +394,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         // Canchas Favoritas
         Text(
           'Mis Canchas Favoritas',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 8),
         favoritesAsync.when(
-          loading: () => const Center(child: Padding(
-            padding: EdgeInsets.all(16),
-            child: CircularProgressIndicator(),
-          )),
+          loading: () => const Center(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: CircularProgressIndicator(),
+            ),
+          ),
           error: (error, _) => Text('Error al cargar favoritos: $error'),
           data: (items) {
             if (items.isEmpty) {
@@ -345,25 +413,39 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 padding: const EdgeInsets.only(bottom: 12),
                 child: Text(
                   'Aún no tienes canchas favoritas agregadas.',
-                  style: TextStyle(color: Colors.grey.shade600, fontStyle: FontStyle.italic),
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontStyle: FontStyle.italic,
+                  ),
                 ),
               );
             }
 
             return Column(
               children: items.whereType<Map>().take(10).map((item) {
-                final field = (item['field'] as Map?)?.cast<String, dynamic>() ?? {};
+                final field =
+                    (item['field'] as Map?)?.cast<String, dynamic>() ?? {};
                 final fieldName = (field['nombre'] ?? '').toString();
-                final fieldId = int.tryParse(item['polideportivo_id'].toString());
+                final fieldId = int.tryParse(
+                  item['polideportivo_id'].toString(),
+                );
 
                 return ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: CircleAvatar(
                     radius: 18,
-                    backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
+                    backgroundColor: Theme.of(
+                      context,
+                    ).colorScheme.secondaryContainer,
                     child: const Icon(Icons.star_outline, size: 18),
                   ),
-                  title: Text(fieldName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                  title: Text(
+                    fieldName,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
                   subtitle: Text(
                     (field['descripcion'] ?? '').toString(),
                     maxLines: 1,
@@ -394,14 +476,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         SwitchListTile.adaptive(
           contentPadding: EdgeInsets.zero,
           secondary: Icon(
-            themeMode == ThemeMode.dark ? Icons.dark_mode_outlined : Icons.light_mode_outlined,
+            themeMode == ThemeMode.dark
+                ? Icons.dark_mode_outlined
+                : Icons.light_mode_outlined,
             color: Theme.of(context).colorScheme.primary,
           ),
           title: const Text(
             'Modo Oscuro',
             style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
           ),
-          subtitle: const Text('Tema visual de la interfaz.', style: TextStyle(fontSize: 12)),
+          subtitle: const Text(
+            'Tema visual de la interfaz.',
+            style: TextStyle(fontSize: 12),
+          ),
           value: themeMode == ThemeMode.dark,
           onChanged: (value) =>
               ref.read(themeModeProvider.notifier).setDarkMode(value),
@@ -410,7 +497,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
         // Botón Cerrar Sesión
         OutlinedButton.icon(
-          onPressed: () => ref.read(sessionControllerProvider.notifier).logout(),
+          onPressed: () =>
+              ref.read(sessionControllerProvider.notifier).logout(),
           style: OutlinedButton.styleFrom(
             padding: const EdgeInsets.symmetric(vertical: 14),
             shape: RoundedRectangleBorder(
@@ -438,16 +526,24 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: color?.withValues(alpha: 0.1) ?? Theme.of(context).colorScheme.surfaceContainerHighest,
+        color:
+            color?.withValues(alpha: 0.1) ??
+            Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: color?.withValues(alpha: 0.3) ?? Theme.of(context).colorScheme.outlineVariant,
+          color:
+              color?.withValues(alpha: 0.3) ??
+              Theme.of(context).colorScheme.outlineVariant,
         ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: color ?? Theme.of(context).colorScheme.primary),
+          Icon(
+            icon,
+            size: 16,
+            color: color ?? Theme.of(context).colorScheme.primary,
+          ),
           const SizedBox(width: 6),
           Text(
             label,
@@ -818,11 +914,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       return;
     }
 
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => const EditProfileScreen(),
-      ),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const EditProfileScreen()));
   }
 }
 

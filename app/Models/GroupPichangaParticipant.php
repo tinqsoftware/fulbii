@@ -14,6 +14,7 @@ class GroupPichangaParticipant extends Model
         'confirmed_at' => 'datetime',
         'withdrawn_at' => 'datetime',
         'team_slot' => 'integer',
+        'formation_order' => 'integer',
     ];
 
     public function pichanga()

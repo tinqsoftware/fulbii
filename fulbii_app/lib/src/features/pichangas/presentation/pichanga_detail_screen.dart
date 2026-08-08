@@ -47,6 +47,11 @@ final pichangaWatchSessionsProvider = FutureProvider.autoDispose
           .watchSessionsByPichangaMe(pichangaId);
     });
 
+final pichangaMatchSummaryProvider = FutureProvider.autoDispose
+    .family<Map<String, dynamic>, int>((ref, pichangaId) {
+      return ref.watch(pichangasRepositoryProvider).matchSummary(pichangaId);
+    });
+
 class PichangaDetailScreen extends ConsumerStatefulWidget {
   const PichangaDetailScreen({required this.pichangaId, super.key});
 
@@ -138,6 +143,7 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
               pichanga: pichanga,
               teams: teams,
               isMember: isMember,
+              isAdmin: isAdmin,
               selectedTeamCode: selectedTeamCode,
               myTeamCode: meTeamCode,
             ),
@@ -222,6 +228,7 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
     required Map<String, dynamic> pichanga,
     required List<Map<String, dynamic>> teams,
     required bool isMember,
+    required bool isAdmin,
     required String? selectedTeamCode,
     required String? myTeamCode,
   }) {
@@ -296,9 +303,14 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
             teams: teams,
             clubId: int.tryParse(pichanga['club_id'].toString()) ?? 0,
             isMember: isMember,
+            isAdmin: isAdmin,
             selectedTeamCode: selectedTeamCode,
             myTeamCode: myTeamCode,
           ),
+          if ((pichanga['phase'] ?? '').toString() == 'finished') ...[
+            const SizedBox(height: 20),
+            _buildMatchSummaryCard(context, ref, pichanga),
+          ],
         ],
       ),
     );
@@ -654,7 +666,7 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
       'Jueves',
       'Viernes',
       'Sábado',
-      'Domingo'
+      'Domingo',
     ];
     const months = [
       'enero',
@@ -668,7 +680,7 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
       'septiembre',
       'octubre',
       'noviembre',
-      'diciembre'
+      'diciembre',
     ];
     final dayName = days[local.weekday - 1];
     final monthName = months[local.month - 1];
@@ -956,11 +968,133 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
     );
   }
 
+  Widget _buildMatchSummaryCard(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic> pichanga,
+  ) {
+    final summary = ref.watch(pichangaMatchSummaryProvider(widget.pichangaId));
+    final clubId = int.tryParse(pichanga['club_id'].toString()) ?? 0;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: summary.when(
+          loading: () => const LinearProgressIndicator(minHeight: 2),
+          error: (error, _) => const Text(
+            'El resumen del partido no está disponible para este usuario.',
+          ),
+          data: (data) {
+            final score =
+                (data['score'] as List?)
+                    ?.whereType<Map>()
+                    .map((item) => item.cast<String, dynamic>())
+                    .toList() ??
+                [];
+            final events =
+                (data['events'] as List?)
+                    ?.whereType<Map>()
+                    .map((item) => item.cast<String, dynamic>())
+                    .toList() ??
+                [];
+            if (data['has_watch_data'] != true) {
+              return const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Resumen del partido',
+                    style: TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Aún no hay eventos Watch sincronizados para este partido.',
+                  ),
+                ],
+              );
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Resumen del partido',
+                  style: TextStyle(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  score
+                      .map(
+                        (item) =>
+                            'Equipo ${item['team_code']} ${item['goals']}',
+                      )
+                      .join('  ·  '),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 10),
+                ...events.map((event) {
+                  final player =
+                      (event['player'] as Map?)?.cast<String, dynamic>() ?? {};
+                  final name = (player['nick'] ?? player['name'] ?? 'Jugador')
+                      .toString();
+                  final userId = int.tryParse(player['id'].toString()) ?? 0;
+                  final type = event['type'] == 'goal' ? 'Gol' : 'Pase gol';
+                  final minute = event['minute'] == null
+                      ? ''
+                      : "${event['minute']}'";
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      event['type'] == 'goal'
+                          ? Icons.sports_soccer
+                          : Icons.assistant_outlined,
+                    ),
+                    title: Text('$type · $name'),
+                    subtitle: Text(
+                      'Equipo ${event['team_code']} ${minute.isEmpty ? '' : '· $minute'}',
+                    ),
+                    onTap: clubId <= 0 || userId <= 0
+                        ? null
+                        : () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => PublicPlayerProfileScreen(
+                                clubId: clubId,
+                                userId: userId,
+                              ),
+                            ),
+                          ),
+                  );
+                }),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openFormation(
+    BuildContext context,
+    String teamCode,
+    bool isAdmin,
+  ) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _FormationSheet(
+        pichangaId: widget.pichangaId,
+        teamCode: teamCode,
+        isAdmin: isAdmin,
+        onApplied: () => _refreshDetail(ref),
+      ),
+    );
+  }
+
   Widget _buildTeamBoardCard(
     BuildContext context, {
     required List<Map<String, dynamic>> teams,
     required int clubId,
     required bool isMember,
+    required bool isAdmin,
     required String? selectedTeamCode,
     required String? myTeamCode,
   }) {
@@ -987,219 +1121,266 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
                 .map((e) => e.cast<String, dynamic>())
                 .toList()
           : <Map<String, dynamic>>[];
-      final confirmedSlots =
-          slots.where((slot) => slot['user'] is Map).toList();
+      final confirmedSlots = slots
+          .where((slot) => slot['user'] is Map)
+          .toList();
       final selected = selectedTeamCode == code;
       final isMyTeam = myTeamCode == code;
 
-      return InkWell(
-        onTap: isMember
-            ? () => setState(() {
-                _selectedTeamCode = code;
-              })
-            : null,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          width: cardWidth,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: selected
-                  ? Theme.of(context).colorScheme.primary
-                  : Theme.of(context).dividerColor,
-              width: selected ? 2 : 1,
-            ),
-            color: selected
-                ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.06)
+      return Stack(
+        clipBehavior: Clip.none,
+        children: [
+          InkWell(
+            onTap: isMember
+                ? () => setState(() {
+                    _selectedTeamCode = code;
+                  })
                 : null,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w900,
-                            fontSize: 14,
-                          ),
-                    ),
-                  ),
-                  if (selected)
-                    Icon(
-                      Icons.check_circle,
-                      size: 16,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Text(
-                    avgText,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Theme.of(context).colorScheme.primary,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const Spacer(),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: Theme.of(
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              width: cardWidth,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: selected
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).dividerColor,
+                  width: selected ? 2 : 1,
+                ),
+                color: selected
+                    ? Theme.of(
                         context,
-                      ).colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      '$confirmedCount/$baseSize',
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 10,
-                          ),
-                    ),
-                  ),
-                ],
+                      ).colorScheme.primary.withValues(alpha: 0.06)
+                    : null,
               ),
-              const SizedBox(height: 8),
-              const Divider(height: 1),
-              const SizedBox(height: 8),
-              Expanded(
-                child: confirmedSlots.isEmpty
-                    ? Center(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
                         child: Text(
-                          'Sin miembros',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(context).colorScheme.outline,
-                                fontStyle: FontStyle.italic,
-                                fontSize: 11,
+                          label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 14,
                               ),
                         ),
-                      )
-                    : ListView.builder(
-                        physics: const BouncingScrollPhysics(),
-                        itemCount: confirmedSlots.length,
-                        padding: EdgeInsets.zero,
-                        itemBuilder: (context, idx) {
-                          final slot = confirmedSlots[idx];
-                          final user =
-                              (slot['user'] as Map).cast<String, dynamic>();
-                          final name =
-                              (user['nick'] ?? user['name'] ?? 'Jugador')
-                                  .toString();
-                          final userId =
-                              int.tryParse(user['id'].toString()) ?? 0;
-                          final isMe = user['is_me'] == true;
-
-                          final userRatingRaw = user['avg_rating'];
-                          final userRatingStr = userRatingRaw is num
-                              ? userRatingRaw.toDouble().toStringAsFixed(1)
-                              : '-';
-
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 6),
-                            child: Row(
-                              children: [
-                                InkResponse(
-                                  onTap: (clubId <= 0 || userId <= 0)
-                                      ? null
-                                      : () => Navigator.of(context).push(
-                                            MaterialPageRoute<void>(
-                                              builder: (_) =>
-                                                  PublicPlayerProfileScreen(
-                                                    clubId: clubId,
-                                                    userId: userId,
-                                                  ),
-                                            ),
-                                          ),
-                                  radius: 18,
-                                  child: Container(
-                                    width: 24,
-                                    height: 24,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .primary
-                                          .withValues(alpha: 0.15),
-                                      border: Border.all(
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .primary,
-                                        width: 1.2,
-                                      ),
-                                    ),
-                                    alignment: Alignment.center,
-                                    child: Text(
-                                      userRatingStr,
-                                      style: TextStyle(
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.w900,
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .primary,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    name,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodySmall
-                                        ?.copyWith(
-                                          fontWeight: isMe
-                                              ? FontWeight.w900
-                                              : FontWeight.w500,
-                                          fontSize: 12,
-                                          color: isMe
-                                              ? Theme.of(context)
-                                                  .colorScheme
-                                                  .primary
-                                              : Theme.of(context)
-                                                  .colorScheme
-                                                  .onSurface,
-                                        ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
                       ),
+                      if (selected)
+                        Icon(
+                          Icons.check_circle,
+                          size: 16,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Text(
+                        avgText,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Theme.of(context).colorScheme.primary,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const Spacer(),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 1,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          '$confirmedCount/$baseSize',
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 10,
+                              ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Divider(height: 1),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: confirmedSlots.isEmpty
+                        ? Center(
+                            child: Text(
+                              'Sin miembros',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.outline,
+                                    fontStyle: FontStyle.italic,
+                                    fontSize: 11,
+                                  ),
+                            ),
+                          )
+                        : ListView.builder(
+                            physics: const BouncingScrollPhysics(),
+                            itemCount: confirmedSlots.length,
+                            padding: EdgeInsets.zero,
+                            itemBuilder: (context, idx) {
+                              final slot = confirmedSlots[idx];
+                              final user = (slot['user'] as Map)
+                                  .cast<String, dynamic>();
+                              final name =
+                                  (user['nick'] ?? user['name'] ?? 'Jugador')
+                                      .toString();
+                              final userId =
+                                  int.tryParse(user['id'].toString()) ?? 0;
+                              final isMe = user['is_me'] == true;
+
+                              final userRatingRaw = user['avg_rating'];
+                              final userRatingStr = userRatingRaw is num
+                                  ? userRatingRaw.toDouble().toStringAsFixed(1)
+                                  : '-';
+
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 6),
+                                child: Row(
+                                  children: [
+                                    InkResponse(
+                                      onTap: (clubId <= 0 || userId <= 0)
+                                          ? null
+                                          : () => Navigator.of(context).push(
+                                              MaterialPageRoute<void>(
+                                                builder: (_) =>
+                                                    PublicPlayerProfileScreen(
+                                                      clubId: clubId,
+                                                      userId: userId,
+                                                    ),
+                                              ),
+                                            ),
+                                      radius: 18,
+                                      child: Container(
+                                        width: 24,
+                                        height: 24,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary
+                                              .withValues(alpha: 0.15),
+                                          border: Border.all(
+                                            color: Theme.of(
+                                              context,
+                                            ).colorScheme.primary,
+                                            width: 1.2,
+                                          ),
+                                        ),
+                                        alignment: Alignment.center,
+                                        child: Text(
+                                          userRatingStr,
+                                          style: TextStyle(
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.w900,
+                                            color: Theme.of(
+                                              context,
+                                            ).colorScheme.primary,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        name,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall
+                                            ?.copyWith(
+                                              fontWeight: isMe
+                                                  ? FontWeight.w900
+                                                  : FontWeight.w500,
+                                              fontSize: 12,
+                                              color: isMe
+                                                  ? Theme.of(
+                                                      context,
+                                                    ).colorScheme.primary
+                                                  : Theme.of(
+                                                      context,
+                                                    ).colorScheme.onSurface,
+                                            ),
+                                      ),
+                                    ),
+                                    if (isAdmin && !isMe)
+                                      IconButton(
+                                        tooltip: 'Mover de equipo',
+                                        icon: const Icon(
+                                          Icons.swap_horiz,
+                                          size: 17,
+                                        ),
+                                        visualDensity: VisualDensity.compact,
+                                        onPressed: () => _openMovePlayer(
+                                          context,
+                                          userId,
+                                          name,
+                                          teams,
+                                          code,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    isMyTeam
+                        ? '★ Tu equipo'
+                        : (baseSize > confirmedCount
+                              ? '${baseSize - confirmedCount} cupos libres'
+                              : 'Equipo lleno'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isMyTeam || baseSize > confirmedCount
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(context).colorScheme.outline,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 6),
-              Text(
-                isMyTeam
-                    ? '★ Tu equipo'
-                    : (baseSize > confirmedCount
-                          ? '${baseSize - confirmedCount} cupos libres'
-                          : 'Equipo lleno'),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: isMyTeam || baseSize > confirmedCount
-                      ? Theme.of(context).colorScheme.primary
-                      : Theme.of(context).colorScheme.outline,
-                  fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (isAdmin || isMyTeam)
+            Positioned(
+              top: 0,
+              right: 8,
+              child: Material(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                shape: const CircleBorder(),
+                child: IconButton(
+                  tooltip: 'Ver formación sugerida',
+                  icon: const Icon(Icons.stadium_outlined, size: 19),
+                  onPressed: confirmedCount == 0
+                      ? null
+                      : () => _openFormation(context, code, isAdmin),
                 ),
               ),
-            ],
-          ),
-        ),
+            ),
+        ],
       );
     }
 
@@ -1243,6 +1424,45 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
     );
   }
 
+  Future<void> _openMovePlayer(
+    BuildContext context,
+    int userId,
+    String name,
+    List<Map<String, dynamic>> teams,
+    String currentTeam,
+  ) async {
+    final target = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(title: Text('Mover a $name')),
+            ...teams
+                .where((team) => team['code']?.toString() != currentTeam)
+                .map((team) {
+                  final code = team['code']?.toString() ?? '';
+                  return ListTile(
+                    leading: const Icon(Icons.groups_outlined),
+                    title: Text('Equipo $code'),
+                    onTap: () => Navigator.of(context).pop(code),
+                  );
+                }),
+          ],
+        ),
+      ),
+    );
+    if (target == null || userId <= 0) return;
+    if (!context.mounted) return;
+    await _runAction(
+      context,
+      ref,
+      action: () => ref
+          .read(pichangasRepositoryProvider)
+          .moveParticipantTeam(widget.pichangaId, userId, target),
+      successMessage: '$name fue movido a Equipo $target.',
+    );
+  }
 
   Future<void> _confirmInTeam(
     BuildContext context,
@@ -2176,5 +2396,181 @@ class _WatchHeatmapPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _WatchHeatmapPainter oldDelegate) {
     return oldDelegate.points != points;
+  }
+}
+
+class _FormationSheet extends ConsumerStatefulWidget {
+  const _FormationSheet({
+    required this.pichangaId,
+    required this.teamCode,
+    required this.isAdmin,
+    required this.onApplied,
+  });
+  final int pichangaId;
+  final String teamCode;
+  final bool isAdmin;
+  final VoidCallback onApplied;
+  @override
+  ConsumerState<_FormationSheet> createState() => _FormationSheetState();
+}
+
+class _FormationSheetState extends ConsumerState<_FormationSheet> {
+  late Future<List<Map<String, dynamic>>> _future;
+  List<Map<String, dynamic>>? _positions;
+  bool _saving = false;
+  static const _labels = {
+    'goalkeeper': 'Arquero',
+    'defender': 'Defensa',
+    'midfielder': 'Mediocampo',
+    'forward': 'Delantero',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _future = ref
+        .read(pichangasRepositoryProvider)
+        .formationSuggestion(widget.pichangaId, widget.teamCode);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: SizedBox(
+        height: MediaQuery.sizeOf(context).height * .76,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+          child: FutureBuilder<List<Map<String, dynamic>>>(
+            future: _future,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done)
+                return const Center(child: CircularProgressIndicator());
+              if (snapshot.hasError)
+                return Center(
+                  child: Text(
+                    'No se pudo generar la sugerencia: ${snapshot.error}',
+                  ),
+                );
+              _positions ??= snapshot.data ?? [];
+              if (_positions!.isEmpty)
+                return const Center(
+                  child: Text(
+                    'Aún no hay jugadores confirmados para sugerir una formación.',
+                  ),
+                );
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Formación sugerida · Equipo ${widget.teamCode}',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Basada en las estrellas globales y habilidades registradas. Puedes ajustar las posiciones de tu equipo antes de aplicar.',
+                  ),
+                  const SizedBox(height: 14),
+                  Expanded(
+                    child: ListView.separated(
+                      itemCount: _positions!.length,
+                      separatorBuilder: (_, _) => const Divider(),
+                      itemBuilder: (context, index) {
+                        final item = _positions![index];
+                        final name = (item['nick'] ?? item['name'] ?? 'Jugador')
+                            .toString();
+                        final role = (item['formation_role'] ?? 'midfielder')
+                            .toString();
+                        return Row(
+                          children: [
+                            Container(
+                              width: 34,
+                              height: 34,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.primaryContainer,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Text('${index + 1}'),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                name,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            DropdownButton<String>(
+                              value: role,
+                              underline: const SizedBox.shrink(),
+                              items: _labels.entries
+                                  .map(
+                                    (entry) => DropdownMenuItem(
+                                      value: entry.key,
+                                      child: Text(entry.value),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (value) {
+                                if (value != null)
+                                  setState(
+                                    () => item['formation_role'] = value,
+                                  );
+                              },
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: _saving ? null : _apply,
+                      icon: const Icon(Icons.check_circle_outline),
+                      label: Text(_saving ? 'Guardando…' : 'Aplicar formación'),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _apply() async {
+    setState(() => _saving = true);
+    try {
+      final positions = _positions!
+          .asMap()
+          .entries
+          .map(
+            (entry) => {
+              'user_id': entry.value['user_id'],
+              'formation_role': entry.value['formation_role'],
+              'formation_order': entry.key + 1,
+            },
+          )
+          .toList();
+      await ref
+          .read(pichangasRepositoryProvider)
+          .updateFormation(widget.pichangaId, widget.teamCode, positions);
+      widget.onApplied();
+      if (mounted) Navigator.of(context).pop();
+    } on ApiError catch (error) {
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 }

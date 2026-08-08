@@ -10,6 +10,8 @@ class FieldSubmissionPhoto extends Model
 
     protected $guarded = ['id'];
 
+    protected $casts = ['sort_order' => 'integer'];
+
     public function submission()
     {
         return $this->belongsTo(FieldSubmission::class, 'field_submission_id');

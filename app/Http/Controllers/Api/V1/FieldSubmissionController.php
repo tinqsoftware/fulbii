@@ -64,10 +64,15 @@ class FieldSubmissionController extends Controller
             'canchas.*.nombre' => ['required_with:canchas', 'string', 'max:250'],
             'canchas.*.anchom2' => ['nullable', 'numeric', 'min:1', 'max:200'],
             'canchas.*.largom2' => ['nullable', 'numeric', 'min:1', 'max:300'],
-            'photos' => ['nullable', 'array', 'max:1'],
+            // `photos` and `photo_files` are the legacy court-photo contract.
+            'photos' => ['nullable', 'array', 'max:3'],
             'photos.*' => ['string', 'max:500'],
-            'photo_files' => ['nullable', 'array', 'max:1'],
+            'photo_files' => ['nullable', 'array', 'max:3'],
             'photo_files.*' => ['file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+            'venue_photo_files' => ['nullable', 'array', 'max:5'],
+            'venue_photo_files.*' => ['file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+            'court_photo_files' => ['nullable', 'array', 'max:3'],
+            'court_photo_files.*' => ['file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
         ]);
 
         // A selected centre is authoritative. This also protects submissions
@@ -108,21 +113,18 @@ class FieldSubmissionController extends Controller
                 ],
             ]);
 
-            foreach (($data['photos'] ?? []) as $photoUrl) {
+            foreach (($data['photos'] ?? []) as $index => $photoUrl) {
                 FieldSubmissionPhoto::create([
                     'field_submission_id' => $submission->id,
                     'photo_url' => $photoUrl,
+                    'asset_type' => 'court',
+                    'sort_order' => $index,
                     'status' => 'active',
                 ]);
             }
-            foreach ($request->file('photo_files', []) as $photo) {
-                $path = $photo->store('field-submissions/' . $user->id, 'public');
-                FieldSubmissionPhoto::create([
-                    'field_submission_id' => $submission->id,
-                    'photo_url' => Storage::disk('public')->url($path),
-                    'status' => 'active',
-                ]);
-            }
+            $this->storePhotos($submission, $request->file('photo_files', []), 'court', $user->id);
+            $this->storePhotos($submission, $request->file('venue_photo_files', []), 'venue', $user->id);
+            $this->storePhotos($submission, $request->file('court_photo_files', []), 'court', $user->id);
 
             return $submission;
         });
@@ -150,5 +152,25 @@ class FieldSubmissionController extends Controller
             'message' => 'Solicitud de cancha enviada.',
             'submission' => $submission->load('photos'),
         ], 201);
+    }
+
+    /** @param array<int,\Illuminate\Http\UploadedFile> $photos */
+    private function storePhotos(FieldSubmission $submission, array $photos, string $assetType, int $userId): void
+    {
+        $lastOrder = $submission->photos()
+            ->where('asset_type', $assetType)
+            ->max('sort_order');
+        $offset = $lastOrder === null ? 0 : ((int) $lastOrder + 1);
+
+        foreach ($photos as $index => $photo) {
+            $path = $photo->store('field-submissions/' . $userId, 'public');
+            FieldSubmissionPhoto::create([
+                'field_submission_id' => $submission->id,
+                'photo_url' => Storage::disk('public')->url($path),
+                'asset_type' => $assetType,
+                'sort_order' => $offset + $index,
+                'status' => 'active',
+            ]);
+        }
     }
 }

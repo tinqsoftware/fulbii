@@ -36,7 +36,6 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
   GoogleMapController? _mapController;
   final FieldClusterer _clusterer = const FieldClusterer();
   final Map<String, BitmapDescriptor> _markerIconCache = {};
-  final GlobalKey _mapAreaKey = GlobalKey();
   int _step = 0;
   LatLng _pin = const LatLng(-12.0464, -77.0428);
   List<Map<String, dynamic>> _suggestions = const [];
@@ -53,11 +52,10 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
   String? _confirmedPolideportivoName;
   Future<Set<Marker>>? _markersFuture;
   double _cameraZoom = 15;
-  Offset? _pinScreenOffset;
-  int _dragRevision = 0;
   int _searchRevision = 0;
   bool _hasSelectedLocation = false;
-  File? _photo;
+  final List<File> _venuePhotos = [];
+  final List<File> _courtPhotos = [];
   String _surface = 'sintetico';
   String _capacity = '7';
   bool _addDimensions = false;
@@ -65,6 +63,10 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
   bool _loading = false;
 
   bool get _hasExistingPolideportivo => _confirmedPolideportivoId != null;
+  bool get _isNewPolideportivo => !_hasExistingPolideportivo;
+  int get _totalSteps => _isNewPolideportivo ? 4 : 3;
+  bool get _isReviewStep => _step == _totalSteps - 1;
+  bool get _isCourtStep => _isNewPolideportivo ? _step == 2 : _step == 1;
 
   bool get _hasMapSelectedPolideportivo => _existingPolideportivoId != null;
 
@@ -114,7 +116,7 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: List.generate(
-                  4,
+                  _totalSteps,
                   (index) => Expanded(
                     child: Container(
                       height: 5,
@@ -151,7 +153,7 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
                           ? null
                           : _next,
                       child: Text(
-                        _step == 3
+                        _isReviewStep
                             ? 'Enviar solicitud'
                             : _step == 0
                             ? !_hasMapSelectedPolideportivo
@@ -175,9 +177,11 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
       case 0:
         return _locationStep();
       case 1:
-        return _detailsStep();
+        return _hasExistingPolideportivo
+            ? _courtDetailsStep()
+            : _venueDetailsStep();
       case 2:
-        return _photosStep();
+        return _hasExistingPolideportivo ? _reviewStep() : _courtDetailsStep();
       default:
         return _reviewStep();
     }
@@ -239,37 +243,29 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
       const SizedBox(height: 12),
       SizedBox(
         height: 300,
-        child: Stack(
-          key: _mapAreaKey,
-          clipBehavior: Clip.none,
-          children: [
-            FutureBuilder<Set<Marker>>(
-              future: _markersFuture,
-              builder: (context, snapshot) => GoogleMap(
-                initialCameraPosition: CameraPosition(target: _pin, zoom: 15),
-                onMapCreated: (controller) {
-                  _mapController = controller;
-                  _refreshMarkers();
-                  if (_hasSelectedLocation) {
-                    unawaited(_focusSelectedLocation(zoom: 16));
-                  }
-                },
-                style: Theme.of(context).brightness == Brightness.dark
-                    ? _darkMapStyle
-                    : null,
-                markers: snapshot.data ?? const <Marker>{},
-                myLocationButtonEnabled: false,
-                rotateGesturesEnabled: true,
-                zoomGesturesEnabled: true,
-                scrollGesturesEnabled: true,
-                onCameraMove: (position) => _cameraZoom = position.zoom,
-                onCameraIdle: _handleCameraIdle,
-                onTap: (_) => _clearSelectedPolideportivo(),
-              ),
-            ),
-            if (_hasSelectedLocation && _pinScreenOffset != null)
-              _buildDraggableOverlayPin(_pinScreenOffset!),
-          ],
+        child: FutureBuilder<Set<Marker>>(
+          future: _markersFuture,
+          builder: (context, snapshot) => GoogleMap(
+            initialCameraPosition: CameraPosition(target: _pin, zoom: 15),
+            onMapCreated: (controller) {
+              _mapController = controller;
+              _refreshMarkers();
+              if (_hasSelectedLocation) {
+                unawaited(_focusSelectedLocation(zoom: 16));
+              }
+            },
+            style: Theme.of(context).brightness == Brightness.dark
+                ? _darkMapStyle
+                : null,
+            markers: snapshot.data ?? const <Marker>{},
+            myLocationButtonEnabled: false,
+            rotateGesturesEnabled: true,
+            zoomGesturesEnabled: true,
+            scrollGesturesEnabled: true,
+            onCameraMove: (position) => _cameraZoom = position.zoom,
+            onCameraIdle: _handleCameraIdle,
+            onTap: (_) => _clearSelectedPolideportivo(),
+          ),
         ),
       ),
       TextButton.icon(
@@ -284,76 +280,85 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
     ],
   );
 
-  Widget _detailsStep() => Column(
+  Widget _venueDetailsStep() => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const Text(
+        '2. Datos del polideportivo',
+        style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+      ),
+      const SizedBox(height: 18),
+      TextField(
+        controller: _centerName,
+        decoration: _compactDecoration('Nombre del polideportivo *'),
+      ),
+      const SizedBox(height: 14),
+      TextField(
+        controller: _address,
+        readOnly: true,
+        decoration: _compactDecoration(
+          'Dirección seleccionada',
+          suffixIcon: const Icon(Icons.lock_outline, size: 18),
+        ),
+      ),
+      const SizedBox(height: 14),
+      TextField(
+        controller: _phone,
+        keyboardType: TextInputType.phone,
+        onChanged: (value) {
+          if (value.trim().isEmpty && _wsp) setState(() => _wsp = false);
+        },
+        decoration: _compactDecoration('Celular (opcional)'),
+      ),
+      const SizedBox(height: 10),
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        dense: true,
+        title: const Text('Tiene WhatsApp'),
+        subtitle: const Text('Disponible cuando indiques un celular.'),
+        value: _wsp,
+        onChanged: _phone.text.trim().isEmpty
+            ? null
+            : (v) => setState(() => _wsp = v),
+      ),
+      const SizedBox(height: 10),
+      TextField(
+        controller: _description,
+        maxLines: 3,
+        decoration: _compactDecoration('Descripción (opcional)'),
+      ),
+      const SizedBox(height: 18),
+      _photoGallery(
+        title: 'Fotos del polideportivo',
+        helper: 'Hasta 5 fotos. La primera será la portada.',
+        photos: _venuePhotos,
+        limit: 5,
+      ),
+    ],
+  );
+
+  Widget _courtDetailsStep() => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       Text(
-        !_hasExistingPolideportivo
-            ? '2. Datos del polideportivo y cancha'
-            : '2. Nueva cancha en $_existingPolideportivoLabel',
+        '${_isNewPolideportivo ? '3' : '2'}. Datos de la cancha',
         style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
       ),
-      const SizedBox(height: 18),
       if (_hasExistingPolideportivo) ...[
+        const SizedBox(height: 12),
         Card(
           child: ListTile(
             leading: const Icon(Icons.business),
             title: Text(_existingPolideportivoLabel),
-            subtitle: Text('Polideportivo destino #$_confirmedPolideportivoId'),
+            subtitle: const Text('Polideportivo seleccionado'),
             trailing: const Icon(Icons.lock_outline, size: 20),
           ),
         ),
-        const SizedBox(height: 16),
       ],
-      if (!_hasExistingPolideportivo) ...[
-        TextField(
-          controller: _centerName,
-          decoration: _compactDecoration('Nombre del polideportivo *'),
-        ),
-        const SizedBox(height: 14),
-        TextField(
-          controller: _address,
-          readOnly: true,
-          decoration: _compactDecoration(
-            'Dirección seleccionada',
-            suffixIcon: const Icon(Icons.lock_outline, size: 18),
-          ),
-        ),
-        const SizedBox(height: 14),
-        TextField(
-          controller: _phone,
-          keyboardType: TextInputType.phone,
-          decoration: _compactDecoration('Celular'),
-        ),
-        TextField(
-          controller: _description,
-          maxLines: 2,
-          decoration: _compactDecoration('Descripción (opcional)'),
-        ),
-        const SizedBox(height: 14),
-      ],
-      Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            flex: _hasExistingPolideportivo ? 100 : 65,
-            child: TextField(
-              controller: _courtName,
-              decoration: _compactDecoration('Nombre de la cancha *'),
-            ),
-          ),
-          if (!_hasExistingPolideportivo) ...[
-            const SizedBox(width: 10),
-            Expanded(
-              flex: 35,
-              child: TextField(
-                controller: _price,
-                keyboardType: TextInputType.number,
-                decoration: _compactDecoration('Precio desde'),
-              ),
-            ),
-          ],
-        ],
+      const SizedBox(height: 18),
+      TextField(
+        controller: _courtName,
+        decoration: _compactDecoration('Nombre de la cancha *'),
       ),
       const SizedBox(height: 16),
       const Text('Superficie'),
@@ -424,16 +429,13 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
           ],
         ),
       ],
-      if (!_hasExistingPolideportivo) ...[
-        const SizedBox(height: 8),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          dense: true,
-          title: const Text('Tiene WhatsApp'),
-          value: _wsp,
-          onChanged: (v) => setState(() => _wsp = v),
-        ),
-      ],
+      const SizedBox(height: 18),
+      _photoGallery(
+        title: 'Fotos de la cancha',
+        helper: 'Hasta 3 fotos. La primera será la portada.',
+        photos: _courtPhotos,
+        limit: 3,
+      ),
     ],
   );
 
@@ -476,46 +478,122 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
     );
   }
 
-  Widget _photosStep() => Column(
+  Widget _photoGallery({
+    required String title,
+    required String helper,
+    required List<File> photos,
+    required int limit,
+  }) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      const Text(
-        '3. Fotos de la cancha',
-        style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-      ),
-      const SizedBox(height: 8),
-      const Text('Adjunta una foto de la cancha. Se comprime antes de subir.'),
-      const SizedBox(height: 12),
-      if (_photo != null)
-        Stack(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: Image.file(
-                _photo!,
-                width: double.infinity,
-                height: 190,
-                fit: BoxFit.cover,
-              ),
-            ),
-            Positioned(
-              top: 8,
-              right: 8,
-              child: IconButton.filled(
-                tooltip: 'Eliminar foto',
-                onPressed: () => setState(() => _photo = null),
-                icon: const Icon(Icons.close),
-              ),
-            ),
-          ],
+      Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+      const SizedBox(height: 4),
+      Text(helper, style: const TextStyle(color: Colors.white70)),
+      const SizedBox(height: 10),
+      if (photos.isNotEmpty)
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: List.generate(
+            photos.length,
+            (index) => _photoTile(photos, index),
+          ),
         ),
-      const SizedBox(height: 12),
-      OutlinedButton.icon(
-        onPressed: _pickPhoto,
-        icon: Icon(_photo == null ? Icons.add_a_photo : Icons.refresh),
-        label: Text(_photo == null ? 'Agregar foto' : 'Reemplazar foto'),
+      const SizedBox(height: 10),
+      Wrap(
+        spacing: 8,
+        children: [
+          OutlinedButton.icon(
+            onPressed: photos.length >= limit
+                ? null
+                : () => _pickPhotos(photos, limit, ImageSource.camera),
+            icon: const Icon(Icons.camera_alt_outlined),
+            label: const Text('Cámara'),
+          ),
+          OutlinedButton.icon(
+            onPressed: photos.length >= limit
+                ? null
+                : () => _pickPhotos(photos, limit, ImageSource.gallery),
+            icon: const Icon(Icons.photo_library_outlined),
+            label: const Text('Galería'),
+          ),
+        ],
       ),
     ],
+  );
+
+  Widget _photoTile(List<File> photos, int index) => SizedBox(
+    width: 116,
+    height: 116,
+    child: Stack(
+      fit: StackFit.expand,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Image.file(photos[index], fit: BoxFit.cover),
+        ),
+        if (index == 0)
+          const Positioned(
+            left: 4,
+            top: 4,
+            child: Chip(
+              label: Text('Portada', style: TextStyle(fontSize: 10)),
+              visualDensity: VisualDensity.compact,
+            ),
+          ),
+        Positioned(
+          right: 0,
+          top: 0,
+          child: IconButton.filled(
+            visualDensity: VisualDensity.compact,
+            onPressed: () => setState(() => photos.removeAt(index)),
+            icon: const Icon(Icons.close, size: 16),
+          ),
+        ),
+        if (index > 0)
+          Positioned(
+            left: 0,
+            bottom: 0,
+            child: IconButton.filled(
+              visualDensity: VisualDensity.compact,
+              tooltip: 'Hacer portada',
+              onPressed: () => setState(() {
+                final photo = photos.removeAt(index);
+                photos.insert(0, photo);
+              }),
+              icon: const Icon(Icons.star, size: 16),
+            ),
+          ),
+        if (index > 0)
+          Positioned(
+            right: 36,
+            bottom: 0,
+            child: IconButton.filled(
+              visualDensity: VisualDensity.compact,
+              tooltip: 'Mover antes',
+              onPressed: () => setState(() {
+                final photo = photos.removeAt(index);
+                photos.insert(index - 1, photo);
+              }),
+              icon: const Icon(Icons.chevron_left, size: 16),
+            ),
+          ),
+        if (index < photos.length - 1)
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: IconButton.filled(
+              visualDensity: VisualDensity.compact,
+              tooltip: 'Mover después',
+              onPressed: () => setState(() {
+                final photo = photos.removeAt(index);
+                photos.insert(index + 1, photo);
+              }),
+              icon: const Icon(Icons.chevron_right, size: 16),
+            ),
+          ),
+      ],
+    ),
   );
 
   Widget _reviewStep() => Column(
@@ -591,7 +669,9 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
         title: Text(_courtName.text),
         subtitle: Text('${_capacity}v$_capacity · $_surface'),
       ),
-      Text(_photo == null ? 'Sin foto adjunta' : '1 foto adjunta'),
+      Text(
+        '${_venuePhotos.length} foto(s) del polideportivo · ${_courtPhotos.length} foto(s) de la cancha',
+      ),
       const SizedBox(height: 12),
       const Text(
         'Tu aporte será revisado antes de publicarse.',
@@ -720,6 +800,25 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
 
   Future<Set<Marker>> _buildMarkers() async {
     final markers = <Marker>{};
+
+    if (_hasSelectedLocation) {
+      markers.add(
+        Marker(
+          markerId: const MarkerId('draft-location'),
+          position: _pin,
+          draggable: true,
+          zIndexInt: 1000,
+          icon: await _markerIcon(
+            'draft-location',
+            size: 72,
+            selected: true,
+            label: '',
+            pointed: true,
+          ),
+          onDragEnd: (point) => _movePin(point, focusMap: true),
+        ),
+      );
+    }
 
     final nearbyIds = _nearby.map((field) => field.id).toSet();
     final fields = [..._mapFields]
@@ -856,7 +955,6 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
       _existingPolideportivoName = field.nombre;
       _pin = LatLng(field.x, field.y);
       _hasSelectedLocation = true;
-      _pinScreenOffset = null;
       _address.text = field.direccion?.trim().isNotEmpty == true
           ? field.direccion!
           : field.nombre;
@@ -865,8 +963,6 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
       _searchError = null;
     });
     await _centerOnPin();
-    await Future<void>.delayed(const Duration(milliseconds: 250));
-    await _syncOverlayPin();
     _refreshMarkers();
   }
 
@@ -884,126 +980,14 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
     await _focusSelectedLocation(zoom: _cameraZoom < 15 ? 15 : _cameraZoom);
   }
 
-  /// Shows the pin immediately while Google Maps finishes moving its camera.
   Future<void> _focusSelectedLocation({required double zoom}) async {
-    _placeOverlayAtMapCenter();
     final controller = _mapController;
     if (controller == null || !mounted) return;
     await controller.animateCamera(CameraUpdate.newLatLngZoom(_pin, zoom));
-    if (!mounted) return;
-    await _syncOverlayPin();
-  }
-
-  void _placeOverlayAtMapCenter() {
-    final box = _mapAreaKey.currentContext?.findRenderObject() as RenderBox?;
-    if (box == null || !box.hasSize) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _hasSelectedLocation) {
-          _placeOverlayAtMapCenter();
-        }
-      });
-      return;
-    }
-    final center = Offset(box.size.width / 2, box.size.height / 2);
-    if (_pinScreenOffset != center) {
-      setState(() => _pinScreenOffset = center);
-    }
   }
 
   void _handleCameraIdle() {
     _refreshMarkers();
-    _syncOverlayPin();
-  }
-
-  Widget _buildDraggableOverlayPin(Offset coordinate) {
-    const pinWidth = 84.0;
-    const pinHeight = 84.0;
-    return Positioned(
-      left: coordinate.dx - pinWidth / 2,
-      // The rotated diamond's lower point is the geographic anchor.
-      top: coordinate.dy - pinHeight + 22,
-      width: pinWidth,
-      height: pinHeight,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onPanUpdate: _dragOverlayPin,
-        onPanEnd: (_) => _finishOverlayPinDrag(),
-        onPanCancel: _finishOverlayPinDrag,
-        child: const _FulbiiLocationPin(),
-      ),
-    );
-  }
-
-  // Android returns physical map pixels while iOS returns Flutter logical
-  // points. The overlay must use the coordinate system of its Stack.
-  double get _mapCoordinateScale =>
-      Platform.isAndroid ? MediaQuery.devicePixelRatioOf(context) : 1;
-
-  Future<void> _syncOverlayPin() async {
-    final controller = _mapController;
-    if (controller == null || !mounted) return;
-    if (!_hasSelectedLocation) {
-      if (_pinScreenOffset != null) {
-        setState(() => _pinScreenOffset = null);
-      }
-      return;
-    }
-    try {
-      final coordinate = await controller.getScreenCoordinate(_pin);
-      if (!mounted) return;
-      final scale = _mapCoordinateScale;
-      final local = Offset(coordinate.x / scale, coordinate.y / scale);
-      final box = _mapAreaKey.currentContext?.findRenderObject() as RenderBox?;
-      if (box != null &&
-          (local.dx < 0 ||
-              local.dy < 0 ||
-              local.dx > box.size.width ||
-              local.dy > box.size.height)) {
-        // Keep the optimistic, centred pin visible if Maps reports a stale
-        // screen coordinate while its camera animation is still finishing.
-        _placeOverlayAtMapCenter();
-        return;
-      }
-      setState(() => _pinScreenOffset = local);
-    } catch (_) {
-      // The map can be recreated while a camera animation is finishing.
-    }
-  }
-
-  Future<void> _dragOverlayPin(DragUpdateDetails details) async {
-    final controller = _mapController;
-    final mapContext = _mapAreaKey.currentContext;
-    if (controller == null || mapContext == null) return;
-    final box = mapContext.findRenderObject() as RenderBox?;
-    if (box == null) return;
-    final local = box.globalToLocal(details.globalPosition);
-    final revision = ++_dragRevision;
-    try {
-      final scale = _mapCoordinateScale;
-      final point = await controller.getLatLng(
-        ScreenCoordinate(
-          x: (local.dx * scale).round(),
-          y: (local.dy * scale).round(),
-        ),
-      );
-      if (!mounted || revision != _dragRevision) return;
-      setState(() {
-        _pin = point;
-        _pinScreenOffset = local;
-        _hasSelectedLocation = true;
-        _existing = null;
-        _existingPolideportivoId = null;
-        _existingPolideportivoName = null;
-      });
-    } catch (_) {
-      // Ignore a transient coordinate conversion failure during map gestures.
-    }
-  }
-
-  Future<void> _finishOverlayPinDrag() async {
-    _dragRevision++;
-    await _movePin(_pin);
-    await _syncOverlayPin();
   }
 
   Future<void> _zoomIntoCluster(FieldCluster cluster) async {
@@ -1209,9 +1193,8 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
         }
       } catch (_) {}
     }
-    await _loadNearby();
     _refreshMarkers();
-    await _syncOverlayPin();
+    await _loadNearby();
   }
 
   FieldModel? _nearestFieldWithin(LatLng point, double radiusMeters) {
@@ -1261,10 +1244,44 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
     if (p == LocationPermission.denied) {
       p = await Geolocator.requestPermission();
     }
+    if (p == LocationPermission.deniedForever) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Permite la ubicación desde Ajustes para centrar el mapa.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
     if (p == LocationPermission.always || p == LocationPermission.whileInUse) {
-      final pos = await Geolocator.getCurrentPosition();
-      await _movePin(LatLng(pos.latitude, pos.longitude));
-      await _mapController?.animateCamera(CameraUpdate.newLatLngZoom(_pin, 16));
+      try {
+        final pos = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 12),
+          ),
+        );
+        await _movePin(LatLng(pos.latitude, pos.longitude), focusMap: true);
+      } on TimeoutException {
+        if (mounted)
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'La ubicación tardó demasiado. Inténtalo nuevamente.',
+              ),
+            ),
+          );
+      } catch (_) {
+        if (mounted)
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No pudimos obtener tu ubicación actual.'),
+            ),
+          );
+      }
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1276,60 +1293,42 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
     }
   }
 
-  Future<void> _pickPhoto() async {
-    final source = await showModalBottomSheet<ImageSource>(
-      context: context,
-      builder: (c) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.camera_alt),
-              title: const Text('Cámara'),
-              onTap: () => Navigator.pop(c, ImageSource.camera),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library),
-              title: const Text('Galería'),
-              onTap: () => Navigator.pop(c, ImageSource.gallery),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (source == null) {
-      return;
-    }
-    final image = await ImagePicker().pickImage(source: source);
-    if (image == null) {
-      return;
-    }
-    final compressed = await _compressPhoto(image);
-    if (compressed != null && mounted) {
-      setState(() => _photo = compressed);
+  Future<void> _pickPhotos(
+    List<File> destination,
+    int limit,
+    ImageSource source,
+  ) async {
+    final picker = ImagePicker();
+    final images = source == ImageSource.gallery
+        ? await picker.pickMultiImage()
+        : [if (await picker.pickImage(source: source) case final image?) image];
+    for (final image in images.take(limit - destination.length)) {
+      final compressed = await _compressPhoto(image);
+      if (compressed != null && mounted)
+        setState(() => destination.add(compressed));
     }
   }
 
   Future<File?> _compressPhoto(XFile image) async {
-    for (final quality in [80, 60, 45]) {
+    for (final quality in [60, 45]) {
       final target =
           '${Directory.systemTemp.path}/fulbii_${DateTime.now().microsecondsSinceEpoch}_$quality.jpg';
       final output = await FlutterImageCompress.compressAndGetFile(
         image.path,
         target,
-        minWidth: 1600,
-        minHeight: 1600,
+        minWidth: 1280,
+        minHeight: 1280,
         quality: quality,
         format: CompressFormat.jpeg,
       );
-      if (output != null && await output.length() <= 1572864) {
+      if (output != null && await output.length() <= 716800) {
         return File(output.path);
       }
     }
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('No se pudo comprimir la foto a menos de 1.5 MB.'),
+          content: Text('No se pudo comprimir la foto a menos de 700 KB.'),
         ),
       );
     }
@@ -1358,16 +1357,20 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
       return;
     }
     if (_step == 1 &&
-        (_courtName.text.trim().isEmpty ||
-            (!_hasExistingPolideportivo &&
-                (_centerName.text.trim().isEmpty ||
-                    _address.text.trim().isEmpty)))) {
+        _isNewPolideportivo &&
+        (_centerName.text.trim().isEmpty || _address.text.trim().isEmpty)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Completa los campos obligatorios.')),
       );
       return;
     }
-    if (_step < 3) {
+    if (_isCourtStep && _courtName.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Indica el nombre de la cancha.')),
+      );
+      return;
+    }
+    if (!_isReviewStep) {
       setState(() => _step++);
       return;
     }
@@ -1407,10 +1410,10 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
             descripcion: _hasExistingPolideportivo
                 ? ''
                 : _description.text.trim(),
-            precioDesde: _hasExistingPolideportivo ? '' : _price.text.trim(),
             canchaAncho: _addDimensions ? _width.text.trim() : '',
             canchaLargo: _addDimensions ? _length.text.trim() : '',
-            photoFile: _photo,
+            venuePhotoFiles: _isNewPolideportivo ? _venuePhotos : const [],
+            courtPhotoFiles: _courtPhotos,
           );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1447,6 +1450,8 @@ class _ExistingPolideportivoSelectionException implements Exception {
   const _ExistingPolideportivoSelectionException();
 }
 
+// Retained for the native marker artwork fallback used by older cached builds.
+// ignore: unused_element
 class _FulbiiLocationPin extends StatelessWidget {
   const _FulbiiLocationPin();
 

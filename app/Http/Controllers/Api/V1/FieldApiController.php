@@ -229,7 +229,8 @@ class FieldApiController extends Controller
         $hasCanchaLargo = Schema::hasColumn('cancha', 'largom2');
 
         $field->loadCount('canchas');
-        $field->load([
+        $hasPhotoGalleries = Schema::hasTable('polideportivo_photos') && Schema::hasTable('cancha_photos');
+        $relations = [
             'canchas' => function ($canchasQuery) use ($hasTipoSuperficie, $hasFormatoVs, $hasEquiposVs, $hasCanchaAncho, $hasCanchaLargo) {
                     $columns = ['id', 'id_polideportivo', 'nombre', 'url_foto'];
                     if ($hasTipoSuperficie) {
@@ -249,7 +250,12 @@ class FieldApiController extends Controller
                     }
                     $canchasQuery->select($columns);
             },
-        ]);
+        ];
+        if ($hasPhotoGalleries) {
+            $relations['photos'] = fn ($query) => $query;
+            $relations['canchas.photos'] = fn ($query) => $query;
+        }
+        $field->load($relations);
 
         return response()->json([
             'field' => $this->serializeField(
@@ -311,6 +317,9 @@ class FieldApiController extends Controller
             'precio_desde' => $field->precio_desde,
             'precio_desde_num' => $hasPrecioDesdeNum && $field->precio_desde_num !== null ? (float) $field->precio_desde_num : null,
             'url_foto' => $field->url_foto,
+            'photos' => $field->relationLoaded('photos')
+                ? $field->photos->map(fn ($photo) => $photo->photo_url)->values()->all()
+                : [],
             'celular' => $field->celular,
             'wsp' => (bool) ($field->wsp ?? false),
             'id_distrito' => $field->id_distrito,
@@ -333,6 +342,9 @@ class FieldApiController extends Controller
                         'id' => $cancha->id,
                         'nombre' => $cancha->nombre,
                         'url_foto' => $cancha->url_foto,
+                        'photos' => $cancha->relationLoaded('photos')
+                            ? $cancha->photos->map(fn ($photo) => $photo->photo_url)->values()->all()
+                            : [],
                         'tipo_superficie' => $hasTipoSuperficie ? $cancha->tipo_superficie : null,
                         'vs_format' => $format,
                         'anchom2' => $hasCanchaAncho && $cancha->anchom2 !== null ? (float) $cancha->anchom2 : null,

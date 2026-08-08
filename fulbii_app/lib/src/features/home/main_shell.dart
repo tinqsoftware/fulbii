@@ -93,64 +93,10 @@ class _MainShellState extends ConsumerState<MainShell>
       const ProfileScreen(),
     ];
 
-    final titles = [
-      'Canchas',
-      'Grupos',
-      'Pichangas',
-      'Notificaciones',
-      'Perfil',
-    ];
-
     final currentIndex = ref.watch(mainShellTabProvider);
 
     return Scaffold(
-      appBar: currentIndex == 0 ||
-              currentIndex == 1 ||
-              currentIndex == 2 ||
-              currentIndex == 4
-          ? null
-          : AppBar(
-              title: Text(titles[currentIndex]),
-              actions: [
-                IconButton(
-                  onPressed: _openInboxFromBell,
-                  icon: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      const Icon(Icons.notifications_none),
-                      if (unreadCount > 0)
-                        Positioned(
-                          right: -7,
-                          top: -7,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 5,
-                              vertical: 2,
-                            ),
-                            decoration: const BoxDecoration(
-                              color: Colors.red,
-                              shape: BoxShape.rectangle,
-                              borderRadius: BorderRadius.all(
-                                Radius.circular(10),
-                              ),
-                            ),
-                            constraints: const BoxConstraints(minWidth: 18),
-                            child: Text(
-                              unreadCount > 99 ? '99+' : '$unreadCount',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+      appBar: null,
       body: IndexedStack(index: currentIndex, children: pages),
       bottomNavigationBar: _FulbiiBottomNavigation(
         selectedIndex: currentIndex,

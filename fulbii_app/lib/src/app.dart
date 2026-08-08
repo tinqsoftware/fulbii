@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'config/app_config.dart';
@@ -146,6 +147,9 @@ class _FulbiiAppState extends ConsumerState<FulbiiApp>
     return MaterialApp(
       title: 'Fulbii',
       debugShowCheckedModeBanner: false,
+      locale: const Locale('es'),
+      supportedLocales: const [Locale('es'), Locale('en')],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
       navigatorKey: navigatorKey,
       themeMode: themeMode,
       theme: _fulbiiTheme(Brightness.light),

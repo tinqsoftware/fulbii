@@ -22,4 +22,9 @@ class Cancha extends Model
     {
         return $this->hasMany(Evento::class, 'id_cancha');
     }
+
+    public function photos()
+    {
+        return $this->hasMany(CanchaPhoto::class, 'cancha_id')->orderBy('sort_order');
+    }
 }

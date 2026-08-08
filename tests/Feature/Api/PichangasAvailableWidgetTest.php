@@ -166,6 +166,66 @@ class PichangasAvailableWidgetTest extends TestCase
         ]);
     }
 
+    public function test_club_agenda_separates_pending_and_past_with_six_item_pages(): void
+    {
+        \Illuminate\Support\Carbon::setTestNow('2026-08-05 12:00:00');
+        try {
+            [$member, , $club] = $this->seedBaseGraph();
+            foreach (range(1, 7) as $index) {
+                $this->insertPichanga($club, "Pendiente {$index}", now()->addDays($index));
+            }
+            $past = $this->insertPichanga($club, 'Pasada', now()->subDays(2));
+            Sanctum::actingAs($member);
+
+            $firstPage = $this->getJson("/api/v1/clubs/{$club}/pichangas?tab=pending&page=1&per_page=6")
+                ->assertOk()
+                ->assertJsonPath('meta.per_page', 6)
+                ->assertJsonPath('meta.total', 7)
+                ->json('items');
+            $this->assertCount(6, $firstPage);
+            $this->assertNotContains($past, collect($firstPage)->pluck('id')->all());
+            $this->getJson("/api/v1/clubs/{$club}/pichangas?tab=pending&page=2&per_page=6")
+                ->assertOk()
+                ->assertJsonCount(1, 'items');
+            $this->getJson("/api/v1/clubs/{$club}/pichangas?tab=past&per_page=6")
+                ->assertOk()
+                ->assertJsonPath('items.0.id', $past);
+        } finally {
+            \Illuminate\Support\Carbon::setTestNow();
+        }
+    }
+
+    public function test_public_finished_pichanga_exposes_only_real_watch_match_events(): void
+    {
+        \Illuminate\Support\Carbon::setTestNow('2026-08-05 12:00:00');
+        try {
+            [$member, , $club] = $this->seedBaseGraph();
+            $pichanga = $this->insertPichanga($club, 'Resultado Watch', now()->subHours(3), true);
+            DB::table('group_pichanga_participants')->insert([
+                'pichanga_id' => $pichanga, 'user_id' => $member->id, 'origin' => 'member', 'status' => 'confirmed',
+                'confirmed_at' => now()->subHours(3), 'team_code' => 'A', 'team_slot' => 1,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+            $session = DB::table('watch_match_sessions')->insertGetId([
+                'user_id' => $member->id, 'group_pichanga_id' => $pichanga, 'start_time' => now()->subHours(3), 'status' => 'finished',
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+            DB::table('watch_match_events')->insert([
+                ['session_id' => $session, 'event_type' => 'goal', 'event_at' => now()->subHours(2), 'minute' => 12, 'created_at' => now(), 'updated_at' => now()],
+                ['session_id' => $session, 'event_type' => 'assist', 'event_at' => now()->subHours(2)->addMinute(), 'minute' => 13, 'created_at' => now(), 'updated_at' => now()],
+            ]);
+
+            $this->getJson("/api/v1/pichangas/{$pichanga}/match-summary")
+                ->assertOk()
+                ->assertJsonPath('has_watch_data', true)
+                ->assertJsonPath('totals.goals', 1)
+                ->assertJsonPath('totals.assists', 1)
+                ->assertJsonPath('events.0.player.id', $member->id);
+        } finally {
+            \Illuminate\Support\Carbon::setTestNow();
+        }
+    }
+
     public function test_available_applies_days_filter_and_returns_member_metadata(): void
     {
         [$member, $external, $clubA] = $this->seedBaseGraph();
@@ -571,6 +631,8 @@ class PichangasAvailableWidgetTest extends TestCase
             $table->dateTime('withdrawn_at')->nullable();
             $table->string('team_code', 1)->nullable();
             $table->unsignedSmallInteger('team_slot')->nullable();
+            $table->string('formation_role', 16)->nullable();
+            $table->unsignedSmallInteger('formation_order')->nullable();
             $table->timestamps();
         });
 
@@ -607,6 +669,25 @@ class PichangasAvailableWidgetTest extends TestCase
             $table->decimal('delantero', 4, 2)->nullable();
             $table->decimal('mediocampo', 4, 2)->nullable();
             $table->decimal('defensa', 4, 2)->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('watch_match_sessions', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('user_id');
+            $table->unsignedBigInteger('group_pichanga_id')->nullable();
+            $table->dateTime('start_time');
+            $table->string('status');
+            $table->timestamps();
+        });
+        Schema::create('watch_match_events', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('session_id');
+            $table->string('event_type');
+            $table->dateTime('event_at');
+            $table->unsignedSmallInteger('minute')->nullable();
+            $table->string('clock_time')->nullable();
+            $table->json('metadata_json')->nullable();
             $table->timestamps();
         });
     }

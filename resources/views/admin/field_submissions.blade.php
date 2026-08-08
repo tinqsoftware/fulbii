@@ -109,10 +109,17 @@
                 @endif
               </td>
               <td>
-                {{ $item->photos->count() }}
-                @if($item->photos->isNotEmpty())
-                  <a href="{{ $item->photos->first()->photo_url }}" target="_blank" rel="noopener">ver</a>
+                @php
+                  $venuePhotos = $item->photos->where('asset_type', 'venue');
+                  $courtPhotos = $item->photos->where('asset_type', 'court');
+                @endphp
+                @if($venuePhotos->isNotEmpty())
+                  <div><small class="text-muted">Polideportivo ({{ $venuePhotos->count() }}):</small> <a href="{{ $venuePhotos->first()->photo_url }}" target="_blank" rel="noopener">ver</a></div>
                 @endif
+                @if($courtPhotos->isNotEmpty())
+                  <div><small class="text-muted">Cancha ({{ $courtPhotos->count() }}):</small> <a href="{{ $courtPhotos->first()->photo_url }}" target="_blank" rel="noopener">ver</a></div>
+                @endif
+                @if($item->photos->isEmpty()) <small class="text-muted">Sin fotos</small> @endif
               </td>
               <td>
                 <form method="POST" action="{{ route('admin.field-submissions.decide', $item) }}" class="d-flex gap-1">

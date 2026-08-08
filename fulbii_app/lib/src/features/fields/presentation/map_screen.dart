@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -10,6 +11,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../profile/data/profile_repository.dart';
 import '../../auth/presentation/login_required_sheet.dart';
 import '../../auth/session_controller.dart';
+import '../../pichangas/data/pichangas_repository.dart';
 import '../data/fields_repository.dart';
 import '../domain/field_cluster.dart';
 import '../domain/field_model.dart';
@@ -179,6 +181,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
   BitmapDescriptor? _userLocationIconCache;
 
   bool _showList = false;
+  String _mapContent = 'both';
+  String _pichangaRange = 'today';
+  DateTimeRange? _customPichangaRange;
+  Future<List<Map<String, dynamic>>>? _pichangasFuture;
   FieldModel? _selectedField;
   Future<FieldModel>? _selectedFieldDetail;
   GoogleMapController? _mapController;
@@ -225,16 +231,17 @@ class _MapScreenState extends ConsumerState<MapScreen>
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-    )..addListener(() {
-        if (_selectedField != null && mounted) {
-          setState(() {
-            _cameraRevision++;
-          });
-        }
-      });
+    _pulseController =
+        AnimationController(
+          vsync: this,
+          duration: const Duration(milliseconds: 900),
+        )..addListener(() {
+          if (_selectedField != null && mounted) {
+            setState(() {
+              _cameraRevision++;
+            });
+          }
+        });
     _restoreLocationLayer();
   }
 
@@ -311,7 +318,9 @@ class _MapScreenState extends ConsumerState<MapScreen>
             ? LatLng(validFields.first.x, validFields.first.y)
             : const LatLng(-12.0464, -77.0428);
 
-        _ensureMarkersFuture(validFields);
+        _ensureMarkersFuture(
+          _mapContent == 'pichangas' ? const [] : validFields,
+        );
         _scheduleResultsFit(validFields);
 
         return Column(
@@ -350,11 +359,13 @@ class _MapScreenState extends ConsumerState<MapScreen>
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
             child: Row(
               children: [
-                OutlinedButton.icon(
+                IconButton(
                   onPressed: _openFiltersSheet,
-                  icon: const Icon(Icons.tune, size: 17),
-                  label: Text(
-                    activeFilters == 0 ? 'Filtros' : 'Filtros $activeFilters',
+                  tooltip: 'Filtros',
+                  icon: Badge(
+                    isLabelVisible: activeFilters > 0,
+                    label: Text('$activeFilters'),
+                    child: const Icon(Icons.tune),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -377,10 +388,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                   ),
                 ),
                 const SizedBox(width: 8),
-                IconButton(
-                  onPressed: widget.onOpenInbox,
-                  icon: const Icon(Icons.notifications_none),
-                ),
+                _MapContentBadge(content: _mapContent),
               ],
             ),
           ),
@@ -415,23 +423,35 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
   Widget _buildMapView(List<FieldModel> fields, LatLng initial) {
     _lastMapFields = fields;
+    if (_mapContent != 'fields' && _pichangasFuture == null) {
+      _pichangasFuture = _loadMapPichangas();
+    }
     return Stack(
       children: [
-        FutureBuilder<Set<Marker>>(
-          future: _markersFuture,
-          builder: (context, snapshot) => GoogleMap(
-            initialCameraPosition: CameraPosition(target: initial, zoom: 11.5),
-            markers: snapshot.data ?? <Marker>{},
-            style: Theme.of(context).brightness == Brightness.dark
-                ? _mapStyle
-                : null,
-            myLocationEnabled: _myLocationEnabled,
-            myLocationButtonEnabled: false,
-            mapToolbarEnabled: true,
-            onMapCreated: _onMapCreated,
-            onCameraMove: (position) => _cameraZoom = position.zoom,
-            onCameraIdle: _handleCameraIdle,
-            onTap: (_) => _clearSelectedField(),
+        FutureBuilder<List<Map<String, dynamic>>>(
+          future: _mapContent == 'fields' ? null : _pichangasFuture,
+          builder: (context, pichangasSnapshot) => FutureBuilder<Set<Marker>>(
+            future: _markersFuture,
+            builder: (context, snapshot) => GoogleMap(
+              initialCameraPosition: CameraPosition(
+                target: initial,
+                zoom: 11.5,
+              ),
+              markers: {
+                ...?snapshot.data,
+                ..._pichangaMarkers(pichangasSnapshot.data ?? const []),
+              },
+              style: Theme.of(context).brightness == Brightness.dark
+                  ? _mapStyle
+                  : null,
+              myLocationEnabled: _myLocationEnabled,
+              myLocationButtonEnabled: false,
+              mapToolbarEnabled: true,
+              onMapCreated: _onMapCreated,
+              onCameraMove: (position) => _cameraZoom = position.zoom,
+              onCameraIdle: _handleCameraIdle,
+              onTap: (_) => _clearSelectedField(),
+            ),
           ),
         ),
         if (_hasActiveFilters)
@@ -469,6 +489,101 @@ class _MapScreenState extends ConsumerState<MapScreen>
           ),
         ),
       ],
+    );
+  }
+
+  Set<Marker> _pichangaMarkers(List<Map<String, dynamic>> venues) {
+    if (_mapContent == 'fields') return const {};
+    final buckets = <String, List<Map<String, dynamic>>>{};
+    final scale = 256 * math.pow(2, _cameraZoom.clamp(0, 22));
+    for (final venue in venues) {
+      final lat = (venue['latitude'] as num).toDouble();
+      final lng = (venue['longitude'] as num).toDouble();
+      final x = ((lng + 180) / 360 * scale / 68).floor();
+      final y =
+          ((1 -
+                      math.log(
+                            math.tan(lat * math.pi / 180) +
+                                1 / math.cos(lat * math.pi / 180),
+                          ) /
+                          math.pi) /
+                  2 *
+                  scale /
+                  68)
+              .floor();
+      (buckets['$x:$y'] ??= []).add(venue);
+    }
+    return buckets.entries.map((entry) {
+      final grouped = entry.value;
+      if (grouped.length > 1) {
+        final total = grouped.fold<int>(
+          0,
+          (sum, item) =>
+              sum +
+              ((item['mine_count'] as num? ?? 0).toInt()) +
+              ((item['public_count'] as num? ?? 0).toInt()),
+        );
+        final lat =
+            grouped
+                .map((item) => (item['latitude'] as num).toDouble())
+                .reduce((a, b) => a + b) /
+            grouped.length;
+        final lng =
+            grouped
+                .map((item) => (item['longitude'] as num).toDouble())
+                .reduce((a, b) => a + b) /
+            grouped.length;
+        return Marker(
+          markerId: MarkerId('pichanga-cluster-${entry.key}'),
+          position: LatLng(lat, lng),
+          icon: BitmapDescriptor.defaultMarkerWithHue(
+            BitmapDescriptor.hueViolet,
+          ),
+          infoWindow: InfoWindow(title: '$total pichangas'),
+          onTap: () => _mapController?.animateCamera(
+            CameraUpdate.newLatLngZoom(LatLng(lat, lng), _cameraZoom + 2),
+          ),
+        );
+      }
+      final venue = grouped.single;
+      final mine = (venue['mine_count'] as num? ?? 0) > 0;
+      final total =
+          (venue['mine_count'] as num? ?? 0).toInt() +
+          (venue['public_count'] as num? ?? 0).toInt();
+      return Marker(
+        markerId: MarkerId('pichanga-${venue['field_id']}'),
+        position: _pichangaAnchor(venue),
+        // Anchor below the pin: the pichanga marker sits above the green
+        // field badge (or its visible cluster), never on top of its centre.
+        anchor: const Offset(0.5, 1.62),
+        icon: BitmapDescriptor.defaultMarkerWithHue(
+          mine ? BitmapDescriptor.hueRed : BitmapDescriptor.hueAzure,
+        ),
+        infoWindow: InfoWindow(
+          title: '$total pichanga${total == 1 ? '' : 's'}',
+          snippet: venue['field_name']?.toString(),
+        ),
+        onTap: () {
+          final fieldId = (venue['field_id'] as num?)?.toInt();
+          final field = _lastMapFields
+              .where((item) => item.id == fieldId)
+              .firstOrNull;
+          if (field != null) _selectField(field);
+        },
+      );
+    }).toSet();
+  }
+
+  LatLng _pichangaAnchor(Map<String, dynamic> venue) {
+    final fieldId = (venue['field_id'] as num?)?.toInt();
+    final cluster = _clusterer
+        .cluster(_lastMapFields, _cameraZoom)
+        .where((item) => item.fields.any((field) => field.id == fieldId))
+        .firstOrNull;
+    if (cluster != null) return LatLng(cluster.latitude, cluster.longitude);
+    return LatLng(
+      (venue['latitude'] as num).toDouble(),
+      (venue['longitude'] as num).toDouble(),
     );
   }
 
@@ -528,23 +643,74 @@ class _MapScreenState extends ConsumerState<MapScreen>
   }
 
   Widget _buildListView(List<FieldModel> fields) {
-    if (fields.isEmpty) {
-      return const Center(
-        child: Text('No hay polideportivos con estos filtros.'),
-      );
-    }
-    return RefreshIndicator(
-      onRefresh: () async => ref.invalidate(fieldsProvider),
-      child: ListView.separated(
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-        itemCount: fields.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 12),
-        itemBuilder: (_, index) => _buildFieldCard(fields[index]),
-      ),
+    // The list and the map intentionally share this request. This keeps every
+    // venue's count aligned with the pichanga date filter currently selected.
+    _pichangasFuture ??= _loadMapPichangas();
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _pichangasFuture,
+      builder: (context, snapshot) {
+        if (_mapContent == 'pichangas' &&
+            snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final pichangas = snapshot.data ?? const <Map<String, dynamic>>[];
+        final countByField = _pichangaCountsByField(pichangas);
+        final visibleFields = _mapContent == 'pichangas'
+            ? fields
+                  .where((field) => (countByField[field.id] ?? 0) > 0)
+                  .toList()
+            : fields;
+
+        if (visibleFields.isEmpty) {
+          return Center(
+            child: Text(
+              _mapContent == 'pichangas'
+                  ? 'No hay pichangas para este rango de fechas.'
+                  : 'No hay polideportivos con estos filtros.',
+            ),
+          );
+        }
+
+        return RefreshIndicator(
+          onRefresh: () async {
+            ref.invalidate(fieldsProvider);
+            setState(() => _pichangasFuture = _loadMapPichangas());
+            await _pichangasFuture;
+          },
+          child: ListView.separated(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+            itemCount: visibleFields.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 12),
+            itemBuilder: (_, index) {
+              final field = visibleFields[index];
+              return _buildFieldCard(
+                field,
+                pichangaCount: countByField[field.id] ?? 0,
+              );
+            },
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildFieldCard(FieldModel field) {
+  Map<int, int> _pichangaCountsByField(List<Map<String, dynamic>> venues) {
+    final result = <int, int>{};
+    for (final venue in venues) {
+      final fieldId = (venue['field_id'] as num?)?.toInt();
+      if (fieldId == null) continue;
+      final items = venue['items'];
+      final count = items is List
+          ? items.length
+          : (venue['mine_count'] as num? ?? 0).toInt() +
+                (venue['public_count'] as num? ?? 0).toInt();
+      result[fieldId] = count;
+    }
+    return result;
+  }
+
+  Widget _buildFieldCard(FieldModel field, {required int pichangaCount}) {
     final isAuthenticated = ref
         .watch(sessionControllerProvider)
         .isAuthenticated;
@@ -623,6 +789,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
+                    const SizedBox(height: 7),
+                    _PichangaCountBadge(count: pichangaCount),
                     if (_priceLabel(field) != null)
                       Align(
                         alignment: Alignment.centerRight,
@@ -665,7 +833,6 @@ class _MapScreenState extends ConsumerState<MapScreen>
   Widget _buildSelectedPreview(FieldModel field) {
     final image = (field.urlFoto ?? '').trim();
     final price = _priceLabel(field);
-    final summary = _courtSummary(field);
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -683,14 +850,46 @@ class _MapScreenState extends ConsumerState<MapScreen>
                   SizedBox(
                     width: 76,
                     height: 76,
-                    child: image.isEmpty
-                        ? const _FieldPlaceholder()
-                        : Image.network(
-                            image,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) =>
-                                const _FieldPlaceholder(),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        image.isEmpty
+                            ? const _FieldPlaceholder()
+                            : Image.network(
+                                image,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) =>
+                                    const _FieldPlaceholder(),
+                              ),
+                        if (price != null)
+                          Positioned(
+                            left: 5,
+                            right: 5,
+                            bottom: 5,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: Colors.black87,
+                                borderRadius: BorderRadius.circular(7),
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 3,
+                                ),
+                                child: Text(
+                                  price == 'GRATIS' ? 'Gratis' : 'Desde $price',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
+                      ],
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -716,20 +915,6 @@ class _MapScreenState extends ConsumerState<MapScreen>
                               color: Theme.of(
                                 context,
                               ).colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                        if (price != null || summary != null) ...[
-                          const SizedBox(height: 8),
-                          Text(
-                            [price, summary].whereType<String>().join('  ·  '),
-                            style: TextStyle(
-                              color: price != null
-                                  ? const Color(0xFF249D31)
-                                  : Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant,
-                              fontWeight: FontWeight.w700,
                             ),
                           ),
                         ],
@@ -852,6 +1037,9 @@ class _MapScreenState extends ConsumerState<MapScreen>
       appliedMin,
       appliedMax < appliedMin ? 200 : appliedMax,
     );
+    var draftContent = _mapContent;
+    var draftRange = _pichangaRange;
+    var draftCustomRange = _customPichangaRange;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -867,6 +1055,67 @@ class _MapScreenState extends ConsumerState<MapScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
+                        'Mostrar',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 8),
+                      SegmentedButton<String>(
+                        segments: const [
+                          ButtonSegment(
+                            value: 'fields',
+                            label: Text('Solo canchas'),
+                          ),
+                          ButtonSegment(
+                            value: 'pichangas',
+                            label: Text('Solo pichangas'),
+                          ),
+                          ButtonSegment(value: 'both', label: Text('Ambos')),
+                        ],
+                        selected: {draftContent},
+                        onSelectionChanged: (value) =>
+                            setSheetState(() => draftContent = value.first),
+                      ),
+                      if (draftContent != 'fields') ...[
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Pichangas',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        Wrap(
+                          spacing: 8,
+                          children: ['today', 'today_tomorrow', 'custom']
+                              .map(
+                                (value) => ChoiceChip(
+                                  label: Text(
+                                    value == 'today'
+                                        ? 'Hoy'
+                                        : value == 'today_tomorrow'
+                                        ? 'Hoy y mañana'
+                                        : 'Rango personalizado',
+                                  ),
+                                  selected: draftRange == value,
+                                  onSelected: (_) async {
+                                    if (value == 'custom') {
+                                      final selected =
+                                          await showDateRangePicker(
+                                            context: context,
+                                            firstDate: DateTime.now(),
+                                            lastDate: DateTime.now().add(
+                                              const Duration(days: 365),
+                                            ),
+                                          );
+                                      if (selected == null) return;
+                                      draftCustomRange = selected;
+                                    }
+                                    setSheetState(() => draftRange = value);
+                                  },
+                                ),
+                              )
+                              .toList(),
+                        ),
+                      ],
+                      const SizedBox(height: 18),
+                      const Text(
                         'Buscar',
                         style: TextStyle(
                           fontSize: 22,
@@ -874,37 +1123,43 @@ class _MapScreenState extends ConsumerState<MapScreen>
                         ),
                       ),
                       const SizedBox(height: 18),
-                      const Text(
-                        'Tipo de superficie',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      _buildChoiceGrid(
-                        columns: 3,
-                        height: 64,
-                        children: _surfaceTypeOptions
-                            .map(
-                              (type) => _FilterChoice(
-                                label: _surfaceTypeLabel(type),
-                                selected: draftSurfaces.contains(type),
-                                fontSize: 12,
-                                maxLines: 2,
-                                onTap: () => setSheetState(() {
-                                  final selected = draftSurfaces.contains(type);
-                                  if (selected) {
-                                    draftSurfaces.remove(type);
-                                  } else {
-                                    draftSurfaces.add(type);
-                                  }
-                                }),
-                              ),
-                            )
-                            .toList(),
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Formato',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
+                      if (draftContent != 'pichangas')
+                        const Text(
+                          'Tipo de superficie',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      if (draftContent != 'pichangas')
+                        _buildChoiceGrid(
+                          columns: 3,
+                          height: 64,
+                          children: _surfaceTypeOptions
+                              .map(
+                                (type) => _FilterChoice(
+                                  label: _surfaceTypeLabel(type),
+                                  selected: draftSurfaces.contains(type),
+                                  fontSize: 12,
+                                  maxLines: 2,
+                                  onTap: () => setSheetState(() {
+                                    final selected = draftSurfaces.contains(
+                                      type,
+                                    );
+                                    if (selected) {
+                                      draftSurfaces.remove(type);
+                                    } else {
+                                      draftSurfaces.add(type);
+                                    }
+                                  }),
+                                ),
+                              )
+                              .toList(),
+                        ),
+                      if (draftContent != 'pichangas')
+                        const SizedBox(height: 16),
+                      if (draftContent != 'pichangas')
+                        const Text(
+                          'Formato',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
                       _buildChoiceGrid(
                         columns: 5,
                         height: 42,
@@ -933,70 +1188,74 @@ class _MapScreenState extends ConsumerState<MapScreen>
                         'Precio por hora',
                         style: TextStyle(fontWeight: FontWeight.w700),
                       ),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text('S/ ${_formatPrice(draftPrice.start)}'),
-                          Text(
-                            draftPrice.end >= 200
-                                ? 'S/ 200+'
-                                : 'S/ ${_formatPrice(draftPrice.end)}',
-                          ),
-                        ],
-                      ),
-                      SliderTheme(
-                        data: SliderTheme.of(context).copyWith(
-                          activeTrackColor: const Color(0xFF38D430),
-                          inactiveTrackColor: const Color(0xFF344139),
-                          thumbColor: Colors.white,
-                          overlayColor: const Color(
-                            0xFF38D430,
-                          ).withValues(alpha: 0.18),
+                      if (draftContent != 'pichangas')
+                        const SizedBox(height: 8),
+                      if (draftContent != 'pichangas')
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('S/ ${_formatPrice(draftPrice.start)}'),
+                            Text(
+                              draftPrice.end >= 200
+                                  ? 'S/ 200+'
+                                  : 'S/ ${_formatPrice(draftPrice.end)}',
+                            ),
+                          ],
                         ),
-                        child: RangeSlider(
-                          values: draftPrice,
-                          min: 0,
-                          max: 200,
-                          divisions: 20,
-                          onChanged: (value) =>
-                              setSheetState(() => draftPrice = value),
+                      if (draftContent != 'pichangas')
+                        SliderTheme(
+                          data: SliderTheme.of(context).copyWith(
+                            activeTrackColor: const Color(0xFF38D430),
+                            inactiveTrackColor: const Color(0xFF344139),
+                            thumbColor: Colors.white,
+                            overlayColor: const Color(
+                              0xFF38D430,
+                            ).withValues(alpha: 0.18),
+                          ),
+                          child: RangeSlider(
+                            values: draftPrice,
+                            min: 0,
+                            max: 200,
+                            divisions: 20,
+                            onChanged: (value) =>
+                                setSheetState(() => draftPrice = value),
+                          ),
                         ),
-                      ),
-                      _buildChoiceGrid(
-                        columns: 4,
-                        height: 42,
-                        children: [
-                          _pricePreset(
-                            '0 - 60',
-                            const RangeValues(0, 60),
-                            draftPrice,
-                            setSheetState,
-                            (value) => draftPrice = value,
-                          ),
-                          _pricePreset(
-                            '60 - 100',
-                            const RangeValues(60, 100),
-                            draftPrice,
-                            setSheetState,
-                            (value) => draftPrice = value,
-                          ),
-                          _pricePreset(
-                            '100 - 200',
-                            const RangeValues(100, 200),
-                            draftPrice,
-                            setSheetState,
-                            (value) => draftPrice = value,
-                          ),
-                          _pricePreset(
-                            '200+',
-                            const RangeValues(200, 200),
-                            draftPrice,
-                            setSheetState,
-                            (value) => draftPrice = value,
-                          ),
-                        ],
-                      ),
+                      if (draftContent != 'pichangas')
+                        _buildChoiceGrid(
+                          columns: 4,
+                          height: 42,
+                          children: [
+                            _pricePreset(
+                              '0 - 60',
+                              const RangeValues(0, 60),
+                              draftPrice,
+                              setSheetState,
+                              (value) => draftPrice = value,
+                            ),
+                            _pricePreset(
+                              '60 - 100',
+                              const RangeValues(60, 100),
+                              draftPrice,
+                              setSheetState,
+                              (value) => draftPrice = value,
+                            ),
+                            _pricePreset(
+                              '100 - 200',
+                              const RangeValues(100, 200),
+                              draftPrice,
+                              setSheetState,
+                              (value) => draftPrice = value,
+                            ),
+                            _pricePreset(
+                              '200+',
+                              const RangeValues(200, 200),
+                              draftPrice,
+                              setSheetState,
+                              (value) => draftPrice = value,
+                            ),
+                          ],
+                        ),
                       const SizedBox(height: 20),
                       Row(
                         children: [
@@ -1004,6 +1263,12 @@ class _MapScreenState extends ConsumerState<MapScreen>
                             child: FilledButton(
                               onPressed: () {
                                 Navigator.pop(sheetContext);
+                                setState(() {
+                                  _mapContent = draftContent;
+                                  _pichangaRange = draftRange;
+                                  _customPichangaRange = draftCustomRange;
+                                  _pichangasFuture = _loadMapPichangas();
+                                });
                                 _commitFilters(
                                   draftSurfaces,
                                   draftFormats,
@@ -1053,6 +1318,14 @@ class _MapScreenState extends ConsumerState<MapScreen>
     _priceMaxController.text = price.end >= 200 ? '' : _formatPrice(price.end);
     _applyFilters();
   }
+
+  Future<List<Map<String, dynamic>>> _loadMapPichangas() => ref
+      .read(pichangasRepositoryProvider)
+      .mapItems(
+        range: _pichangaRange,
+        from: _customPichangaRange?.start,
+        to: _customPichangaRange?.end,
+      );
 
   Widget _pricePreset(
     String label,
@@ -1135,6 +1408,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
     setState(() {
       _selectedSurfaceTypes.clear();
       _selectedVsFormats.clear();
+      _mapContent = 'both';
+      _pichangaRange = 'today';
+      _customPichangaRange = null;
+      _pichangasFuture = _loadMapPichangas();
       _selectedField = null;
       _selectedFieldDetail = null;
     });
@@ -1306,7 +1583,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
     final bluePaint = Paint()..color = const Color(0xFF1976D2);
     canvas.drawCircle(center, 9.5, bluePaint);
 
-    final image = await recorder.endRecording().toImage(size.toInt(), size.toInt());
+    final image = await recorder.endRecording().toImage(
+      size.toInt(),
+      size.toInt(),
+    );
     final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
     final icon = BitmapDescriptor.bytes(
       byteData!.buffer.asUint8List(),
@@ -1526,7 +1806,6 @@ class _MapScreenState extends ConsumerState<MapScreen>
       imagePixelRatio: 2.2,
     );
   }
-
 
   String _priceBadgeText(FieldModel field) {
     final priceNum = field.precioDesdeNum;
@@ -1844,5 +2123,95 @@ class _MapScreenState extends ConsumerState<MapScreen>
     if (mounted) {
       ref.invalidate(fieldsProvider);
     }
+  }
+}
+
+/// A compact, text-free summary of the result types currently shown. Keeping
+/// it beside the Map/List switch makes the active filter obvious in either
+/// view without taking away vertical space from the map.
+class _MapContentBadge extends StatelessWidget {
+  const _MapContentBadge({required this.content});
+
+  final String content;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final icons = switch (content) {
+      'fields' => const [Icons.stadium_outlined],
+      'pichangas' => const [Icons.sports_soccer],
+      _ => const [Icons.stadium_outlined, Icons.sports_soccer],
+    };
+    return Semantics(
+      label: switch (content) {
+        'fields' => 'Mostrando solo canchas',
+        'pichangas' => 'Mostrando solo pichangas',
+        _ => 'Mostrando canchas y pichangas',
+      },
+      child: Container(
+        constraints: const BoxConstraints(minWidth: 42, minHeight: 40),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+        decoration: BoxDecoration(
+          color: colorScheme.secondaryContainer,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: colorScheme.outlineVariant),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var index = 0; index < icons.length; index++) ...[
+              if (index > 0) const SizedBox(width: 2),
+              Icon(icons[index], size: icons.length == 1 ? 21 : 17),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PichangaCountBadge extends StatelessWidget {
+  const _PichangaCountBadge({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasPichangas = count > 0;
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: hasPichangas
+            ? colorScheme.primaryContainer
+            : colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.sports_soccer,
+            size: 14,
+            color: hasPichangas
+                ? colorScheme.onPrimaryContainer
+                : colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            hasPichangas
+                ? '$count ${count == 1 ? 'pichanga' : 'pichangas'}'
+                : 'Sin pichangas',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: hasPichangas
+                  ? colorScheme.onPrimaryContainer
+                  : colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

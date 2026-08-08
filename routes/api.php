@@ -62,10 +62,17 @@ Route::prefix('v1')->group(function () {
         ->middleware('auth.optional');
     Route::get('/clubs/{club}/pichangas', [GroupPichangaController::class, 'indexByClub'])
         ->middleware('auth.optional');
+    Route::get('/clubs/{club}/pichangas/calendar', [GroupPichangaController::class, 'calendarByClub'])
+        ->middleware('auth.optional');
     Route::get('/pichangas/{pichanga}', [GroupPichangaController::class, 'show'])
         ->middleware('auth.optional')
         // Keep reserved paths such as /pichangas/my-board from being bound as IDs.
         ->whereNumber('pichanga');
+    Route::get('/pichangas/{pichanga}/match-summary', [GroupPichangaController::class, 'matchSummary'])
+        ->middleware('auth.optional')
+        ->whereNumber('pichanga');
+    Route::get('/pichangas/map', [GroupPichangaController::class, 'map'])
+        ->middleware('auth.optional');
 });
 
 Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
@@ -139,6 +146,9 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
             ->middleware('throttle:pichanga-sensitive');
         Route::post('/pichangas/{pichanga}/confirm', [GroupPichangaController::class, 'confirm'])->middleware('club.active:pichanga');
         Route::post('/pichangas/{pichanga}/withdraw', [GroupPichangaController::class, 'withdraw'])->middleware('club.active:pichanga');
+        Route::get('/pichangas/{pichanga}/teams/{teamCode}/formation-suggestion', [GroupPichangaController::class, 'formationSuggestion']);
+        Route::put('/pichangas/{pichanga}/teams/{teamCode}/formation', [GroupPichangaController::class, 'updateFormation'])->middleware('club.active:pichanga');
+        Route::put('/pichangas/{pichanga}/participants/{user}/team', [GroupPichangaController::class, 'moveParticipantTeam'])->middleware('club.active:pichanga');
         Route::post('/pichangas/{pichanga}/status', [GroupPichangaController::class, 'setStatus'])
             ->middleware('club.active:pichanga')
             ->middleware('throttle:pichanga-sensitive');

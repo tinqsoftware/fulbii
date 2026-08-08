@@ -109,11 +109,11 @@ class FieldsRepository {
     String? celular,
     bool wsp = false,
     String? descripcion,
-    String? precioDesde,
     String sourceType = 'manual_map',
     String? canchaAncho,
     String? canchaLargo,
-    File? photoFile,
+    List<File> venuePhotoFiles = const [],
+    List<File> courtPhotoFiles = const [],
   }) async {
     final data = <String, dynamic>{
       'submission_type': submissionType,
@@ -125,7 +125,6 @@ class FieldsRepository {
       // Multipart values are strings; Laravel's boolean rule accepts 1/0.
       'wsp': wsp ? '1' : '0',
       'descripcion': descripcion,
-      'precio_desde': precioDesde,
       'source_type': sourceType,
       // Multipart form values must be strings. Keeping the ID explicit
       // prevents a selected centre from being serialized as an empty value.
@@ -136,8 +135,15 @@ class FieldsRepository {
       'cancha_anchom2': canchaAncho,
       'cancha_largom2': canchaLargo,
     }..removeWhere((_, value) => value == null || value == '');
-    if (photoFile != null) {
-      data['photo_files[]'] = [await MultipartFile.fromFile(photoFile.path)];
+    if (venuePhotoFiles.isNotEmpty) {
+      data['venue_photo_files[]'] = await Future.wait(
+        venuePhotoFiles.map((file) => MultipartFile.fromFile(file.path)),
+      );
+    }
+    if (courtPhotoFiles.isNotEmpty) {
+      data['court_photo_files[]'] = await Future.wait(
+        courtPhotoFiles.map((file) => MultipartFile.fromFile(file.path)),
+      );
     }
     final form = FormData.fromMap(data);
     await _api.postMultipartMap('/field-submissions', data: form);

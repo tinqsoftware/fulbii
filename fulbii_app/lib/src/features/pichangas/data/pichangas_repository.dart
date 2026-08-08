@@ -55,6 +55,27 @@ class PichangasRepository {
     return (await availableWithMeta(days: days)).items;
   }
 
+  Future<List<Map<String, dynamic>>> mapItems({
+    required String range,
+    DateTime? from,
+    DateTime? to,
+  }) async {
+    String day(DateTime value) =>
+        '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+    final response = await _api.getMap(
+      '/pichangas/map',
+      queryParameters: {
+        'range': range,
+        if (range == 'custom' && from != null) 'from': day(from),
+        if (range == 'custom' && to != null) 'to': day(to),
+      },
+    );
+    return (response['items'] as List? ?? const [])
+        .whereType<Map>()
+        .map((item) => item.cast<String, dynamic>())
+        .toList();
+  }
+
   Future<Map<String, dynamic>> myBoard({
     int days = 7,
     int terminatedLimit = 200,
@@ -124,8 +145,38 @@ class PichangasRepository {
         .toList();
   }
 
-  Future<List<Map<String, dynamic>>> byClub(int clubId) async {
-    final response = await _api.getMap('/clubs/$clubId/pichangas');
+  Future<Map<String, dynamic>> byClubPage(
+    int clubId, {
+    String tab = 'pending',
+    int page = 1,
+  }) async {
+    final response = await _api.getMap(
+      '/clubs/$clubId/pichangas',
+      queryParameters: {'tab': tab, 'page': page, 'per_page': 6},
+    );
+    final items = response['items'] is List ? response['items'] as List : [];
+    return {
+      'items': items
+          .whereType<Map>()
+          .map((item) => item.cast<String, dynamic>())
+          .toList(),
+      'meta': response['meta'] is Map
+          ? (response['meta'] as Map).cast<String, dynamic>()
+          : <String, dynamic>{},
+    };
+  }
+
+  Future<List<Map<String, dynamic>>> clubCalendarMonth(
+    int clubId,
+    DateTime month,
+  ) async {
+    final response = await _api.getMap(
+      '/clubs/$clubId/pichangas/calendar',
+      queryParameters: {
+        'month':
+            '${month.year.toString().padLeft(4, '0')}-${month.month.toString().padLeft(2, '0')}',
+      },
+    );
     final items = response['items'] is List ? response['items'] as List : [];
     return items
         .whereType<Map>()
@@ -142,6 +193,47 @@ class PichangasRepository {
 
   Future<Map<String, dynamic>> detail(int pichangaId) {
     return _api.getMap('/pichangas/$pichangaId');
+  }
+
+  Future<Map<String, dynamic>> matchSummary(int pichangaId) =>
+      _api.getMap('/pichangas/$pichangaId/match-summary');
+
+  Future<List<Map<String, dynamic>>> formationSuggestion(
+    int pichangaId,
+    String teamCode,
+  ) async {
+    final response = await _api.getMap(
+      '/pichangas/$pichangaId/teams/$teamCode/formation-suggestion',
+    );
+    final items = response['formation'] is List
+        ? response['formation'] as List
+        : [];
+    return items
+        .whereType<Map>()
+        .map((item) => item.cast<String, dynamic>())
+        .toList();
+  }
+
+  Future<void> updateFormation(
+    int pichangaId,
+    String teamCode,
+    List<Map<String, dynamic>> positions,
+  ) async {
+    await _api.putMap(
+      '/pichangas/$pichangaId/teams/$teamCode/formation',
+      data: {'positions': positions},
+    );
+  }
+
+  Future<void> moveParticipantTeam(
+    int pichangaId,
+    int userId,
+    String teamCode,
+  ) async {
+    await _api.putMap(
+      '/pichangas/$pichangaId/participants/$userId/team',
+      data: {'team_code': teamCode},
+    );
   }
 
   Future<Map<String, dynamic>> watchActiveSession() {

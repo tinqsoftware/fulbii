@@ -23,6 +23,11 @@ class Polideportivo extends Model
         return $this->hasMany(Cancha::class, 'id_polideportivo');
     }
 
+    public function photos()
+    {
+        return $this->hasMany(PolideportivoPhoto::class, 'polideportivo_id')->orderBy('sort_order');
+    }
+
     public function horarios()
     {
         return $this->hasMany(HorarioAtencion::class, 'id_polideportivo');
