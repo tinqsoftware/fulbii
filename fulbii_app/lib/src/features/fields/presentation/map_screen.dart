@@ -448,7 +448,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
         Positioned(
           right: 16,
           bottom: _selectedField != null && _showSelectedFieldPreview
-              ? 390
+              ? 300
               : 156,
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -911,7 +911,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
       child: InkWell(
         onTap: () => _openFieldDetail(field.id),
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(10),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -920,8 +920,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   SizedBox(
-                    width: 76,
-                    height: 76,
+                    width: 58,
+                    height: 58,
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
@@ -963,7 +963,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                       ],
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -973,12 +973,12 @@ class _MapScreenState extends ConsumerState<MapScreen>
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            fontSize: 17,
+                            fontSize: 16,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
                         if ((field.direccion ?? '').trim().isNotEmpty) ...[
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 2),
                           Text(
                             field.direccion!,
                             maxLines: 1,
@@ -987,6 +987,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                               color: Theme.of(
                                 context,
                               ).colorScheme.onSurfaceVariant,
+                              fontSize: 13,
                             ),
                           ),
                         ],
@@ -995,13 +996,13 @@ class _MapScreenState extends ConsumerState<MapScreen>
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 7),
               FutureBuilder<FieldModel>(
                 future: _selectedFieldDetail,
                 builder: (context, snapshot) {
                   if (snapshot.connectionState != ConnectionState.done) {
                     return const SizedBox(
-                      height: 34,
+                      height: 28,
                       child: Center(child: CircularProgressIndicator()),
                     );
                   }
@@ -1015,9 +1016,9 @@ class _MapScreenState extends ConsumerState<MapScreen>
                         'Canchas',
                         style: TextStyle(fontWeight: FontWeight.w800),
                       ),
-                      const SizedBox(height: 7),
+                      const SizedBox(height: 4),
                       SizedBox(
-                        height: 66,
+                        height: 54,
                         child: ListView.separated(
                           scrollDirection: Axis.horizontal,
                           itemCount: courts.length,
@@ -1040,14 +1041,14 @@ class _MapScreenState extends ConsumerState<MapScreen>
   Widget _buildCourtPreview(FieldCourtModel court) {
     final image = (court.urlFoto ?? '').trim();
     final details = [
-      court.vsFormat,
+      _previewVsFormat(court.vsFormat),
       _surfaceTypeLabel(court.surfaceType ?? ''),
     ].whereType<String>().where((value) => value.trim().isNotEmpty).join(' · ');
 
     final colorScheme = Theme.of(context).colorScheme;
     return Container(
-      width: 152,
-      padding: const EdgeInsets.all(7),
+      width: 144,
+      padding: const EdgeInsets.all(5),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(10),
@@ -1056,7 +1057,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
       child: Row(
         children: [
           SizedBox(
-            width: 42,
+            width: 34,
             height: double.infinity,
             child: image.isEmpty
                 ? const _FieldPlaceholder()
@@ -1066,7 +1067,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                     errorBuilder: (_, __, ___) => const _FieldPlaceholder(),
                   ),
           ),
-          const SizedBox(width: 7),
+          const SizedBox(width: 6),
           Expanded(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -1085,7 +1086,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: colorScheme.onSurfaceVariant,
-                      fontSize: 11,
+                      fontSize: 10,
                     ),
                   ),
               ],
@@ -1093,6 +1094,15 @@ class _MapScreenState extends ConsumerState<MapScreen>
           ),
         ],
       ),
+    );
+  }
+
+  String? _previewVsFormat(String? value) {
+    final format = value?.trim() ?? '';
+    if (format.isEmpty) return null;
+    return format.replaceFirstMapped(
+      RegExp(r'^(\d+)v(?:s)?(\d+)$', caseSensitive: false),
+      (match) => '${match.group(1)}vs${match.group(2)}',
     );
   }
 

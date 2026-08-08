@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_error.dart';
+import '../../../core/theme/fulbii_snackbar.dart';
 import '../../challenges/data/challenges_repository.dart';
 
 class ChallengeClubScreen extends ConsumerStatefulWidget {
@@ -17,7 +18,8 @@ class ChallengeClubScreen extends ConsumerStatefulWidget {
   final List<Map<String, dynamic>> myClubs;
 
   @override
-  ConsumerState<ChallengeClubScreen> createState() => _ChallengeClubScreenState();
+  ConsumerState<ChallengeClubScreen> createState() =>
+      _ChallengeClubScreenState();
 }
 
 class _ChallengeClubScreenState extends ConsumerState<ChallengeClubScreen> {
@@ -30,7 +32,8 @@ class _ChallengeClubScreenState extends ConsumerState<ChallengeClubScreen> {
   @override
   void initState() {
     super.initState();
-    _selectedMyClubId = int.tryParse(widget.myClubs.first['id'].toString()) ?? 0;
+    _selectedMyClubId =
+        int.tryParse(widget.myClubs.first['id'].toString()) ?? 0;
   }
 
   @override
@@ -45,7 +48,9 @@ class _ChallengeClubScreenState extends ConsumerState<ChallengeClubScreen> {
     setState(() => _submitting = true);
 
     try {
-      await ref.read(challengesRepositoryProvider).create(
+      await ref
+          .read(challengesRepositoryProvider)
+          .create(
             fromClubId: _selectedMyClubId,
             challengedClubId: widget.targetClubId,
             teamSize: _teamSize,
@@ -54,12 +59,12 @@ class _ChallengeClubScreenState extends ConsumerState<ChallengeClubScreen> {
                 ? null
                 : _noteController.text.trim(),
           );
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('¡Reto enviado exitosamente!'),
-            backgroundColor: Colors.green,
+          fulbiiSnackBar(
+            '¡Reto enviado exitosamente!',
+            tone: FulbiiSnackBarTone.success,
           ),
         );
         Navigator.pop(context);
@@ -67,18 +72,15 @@ class _ChallengeClubScreenState extends ConsumerState<ChallengeClubScreen> {
     } on ApiError catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.message),
-            backgroundColor: Colors.redAccent,
-          ),
+          fulbiiSnackBar(e.message, tone: FulbiiSnackBarTone.error),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No se pudo enviar el reto.'),
-            backgroundColor: Colors.redAccent,
+          fulbiiSnackBar(
+            'No se pudo enviar el reto.',
+            tone: FulbiiSnackBarTone.error,
           ),
         );
       }
@@ -94,9 +96,7 @@ class _ChallengeClubScreenState extends ConsumerState<ChallengeClubScreen> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Configurar Reto'),
-      ),
+      appBar: AppBar(title: const Text('Configurar Reto')),
       body: _submitting
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -106,9 +106,9 @@ class _ChallengeClubScreenState extends ConsumerState<ChallengeClubScreen> {
                 Text(
                   'Retar a ${widget.targetClubName}',
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: colorScheme.primary,
-                      ),
+                    fontWeight: FontWeight.w800,
+                    color: colorScheme.primary,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -120,7 +120,10 @@ class _ChallengeClubScreenState extends ConsumerState<ChallengeClubScreen> {
                 // Seleccionar Tu Grupo
                 Text(
                   '¿Con cuál de tus grupos retarás?',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 ...widget.myClubs.map((club) {
@@ -169,7 +172,10 @@ class _ChallengeClubScreenState extends ConsumerState<ChallengeClubScreen> {
                   children: [
                     const Text(
                       'Jugadores por equipo',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
                     ),
                     Row(
                       children: [
@@ -185,7 +191,9 @@ class _ChallengeClubScreenState extends ConsumerState<ChallengeClubScreen> {
                             vertical: 8,
                           ),
                           decoration: BoxDecoration(
-                            border: Border.all(color: colorScheme.outlineVariant),
+                            border: Border.all(
+                              color: colorScheme.outlineVariant,
+                            ),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
@@ -244,7 +252,8 @@ class _ChallengeClubScreenState extends ConsumerState<ChallengeClubScreen> {
                   maxLength: 250,
                   decoration: InputDecoration(
                     labelText: 'Mensaje de reto (opcional)',
-                    hintText: 'Ej. ¡Los retamos a jugar un amistoso este sábado en la tarde!',
+                    hintText:
+                        'Ej. ¡Los retamos a jugar un amistoso este sábado en la tarde!',
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),
@@ -287,12 +296,12 @@ class _ChallengeClubScreenState extends ConsumerState<ChallengeClubScreen> {
       },
       selectedColor: colorScheme.primaryContainer,
       labelStyle: TextStyle(
-        color: isSelected ? colorScheme.onPrimaryContainer : colorScheme.onSurface,
+        color: isSelected
+            ? colorScheme.onPrimaryContainer
+            : colorScheme.onSurface,
         fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
       ),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
     );
   }
 }

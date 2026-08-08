@@ -172,6 +172,9 @@ class ClubApiController extends Controller
                 'has_my_confirmed_pichanga' => $isMember && $user && $hasPichangaParticipants
                     ? (int) ($club->my_confirmed_pichangas_count ?? 0) > 0
                     : false,
+                'my_confirmed_pichangas_count' => $isMember && $user && $hasPichangaParticipants
+                    ? (int) ($club->my_confirmed_pichangas_count ?? 0)
+                    : 0,
                 'open_pichangas_count' => $hasGroupPichangas
                     ? (int) ($club->open_pichangas_count ?? 0)
                     : 0,

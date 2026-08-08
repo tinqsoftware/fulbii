@@ -67,6 +67,7 @@ class FieldModel {
     this.ratingCount,
     this.availability,
     this.canchas = const [],
+    this.openPichangas = const [],
     this.distanceM,
   });
 
@@ -88,6 +89,7 @@ class FieldModel {
   final int? ratingCount;
   final dynamic availability;
   final List<FieldCourtModel> canchas;
+  final List<Map<String, dynamic>> openPichangas;
   final int? distanceM;
 
   factory FieldModel.fromJson(Map<String, dynamic> json) {
@@ -146,6 +148,12 @@ class FieldModel {
                   (entry) =>
                       FieldCourtModel.fromJson(entry.cast<String, dynamic>()),
                 )
+                .toList()
+          : const [],
+      openPichangas: (json['open_pichangas'] is List)
+          ? (json['open_pichangas'] as List)
+                .whereType<Map>()
+                .map((entry) => entry.cast<String, dynamic>())
                 .toList()
           : const [],
       distanceM: json['distance_m'] == null

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\GroupPichanga;
 use App\Models\Polideportivo;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -257,18 +258,19 @@ class FieldApiController extends Controller
         }
         $field->load($relations);
 
-        return response()->json([
-            'field' => $this->serializeField(
-                $field,
-                $hasPrecioDesdeNum,
-                $hasTipoSuperficie,
-                $hasFormatoVs,
-                $hasEquiposVs,
-                $hasCanchaAncho,
-                $hasCanchaLargo,
-                includeCanchas: true,
-            ),
-        ]);
+        $payload = $this->serializeField(
+            $field,
+            $hasPrecioDesdeNum,
+            $hasTipoSuperficie,
+            $hasFormatoVs,
+            $hasEquiposVs,
+            $hasCanchaAncho,
+            $hasCanchaLargo,
+            includeCanchas: true,
+        );
+        $payload['open_pichangas'] = $this->openPichangasForField($field);
+
+        return response()->json(['field' => $payload]);
     }
 
     /**
@@ -375,6 +377,79 @@ class FieldApiController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * Lists only future, open pichangas that still have a place available.
+     * Historical and closed matches stay out of venue discovery.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    private function openPichangasForField(Polideportivo $field): array
+    {
+        if (
+            !Schema::hasTable('group_pichangas')
+            || !Schema::hasTable('group_pichanga_participants')
+            || !Schema::hasColumns('group_pichangas', ['status', 'starts_at', 'capacity', 'is_open'])
+            || !Schema::hasColumns('group_pichanga_participants', ['pichanga_id', 'status'])
+        ) {
+            return [];
+        }
+
+        $courtIds = $field->canchas->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->values()
+            ->all();
+        $hasFieldId = Schema::hasColumn('group_pichangas', 'field_id');
+        $hasCourtId = Schema::hasColumn('group_pichangas', 'cancha_id');
+
+        if (!$hasFieldId && (!$hasCourtId || empty($courtIds))) {
+            return [];
+        }
+
+        return GroupPichanga::query()
+            ->whereIn('status', ['published', 'confirmed'])
+            ->where('is_open', true)
+            ->where('starts_at', '>', now())
+            ->where(function ($query) use ($field, $courtIds, $hasFieldId, $hasCourtId) {
+                if ($hasFieldId) {
+                    $query->where('field_id', (int) $field->id);
+                }
+                if ($hasCourtId && !empty($courtIds)) {
+                    $hasFieldId
+                        ? $query->orWhereIn('cancha_id', $courtIds)
+                        : $query->whereIn('cancha_id', $courtIds);
+                }
+            })
+            ->withCount([
+                'participants as confirmed_count' => fn ($query) => $query->where('status', 'confirmed'),
+            ])
+            ->orderBy('starts_at')
+            // Fetch a little extra before discarding full matches.
+            ->limit(24)
+            ->get()
+            ->filter(fn (GroupPichanga $pichanga) => (int) $pichanga->confirmed_count < (int) $pichanga->capacity)
+            ->take(8)
+            ->map(function (GroupPichanga $pichanga) use ($field) {
+                $court = $field->canchas->firstWhere('id', (int) $pichanga->cancha_id);
+                $confirmed = (int) $pichanga->confirmed_count;
+
+                return [
+                    'id' => (int) $pichanga->id,
+                    'title' => (string) ($pichanga->title ?: 'Pichanga abierta'),
+                    'starts_at' => optional($pichanga->starts_at)->toISOString(),
+                    'duration_minutes' => (int) ($pichanga->duration_minutes ?? 0),
+                    'capacity' => (int) $pichanga->capacity,
+                    'confirmed_count' => $confirmed,
+                    'spots_left' => max(0, (int) $pichanga->capacity - $confirmed),
+                    'court_name' => $court?->nombre,
+                    'match_format' => $pichanga->match_format,
+                    'players_per_team' => $pichanga->players_per_team,
+                ];
+            })
+            ->values()
+            ->all();
     }
 
     /**

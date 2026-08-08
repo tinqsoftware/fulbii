@@ -195,6 +195,55 @@ class PichangasAvailableWidgetTest extends TestCase
         }
     }
 
+    public function test_club_agenda_and_calendar_include_my_participation_status(): void
+    {
+        \Illuminate\Support\Carbon::setTestNow('2026-08-05 12:00:00');
+        try {
+            [$member, , $club] = $this->seedBaseGraph();
+            $confirmed = $this->insertPichanga($club, 'Asistiré', now()->addDays(2));
+            $withdrawn = $this->insertPichanga($club, 'No asistiré', now()->addDays(3));
+            DB::table('group_pichanga_participants')->insert([
+                [
+                    'pichanga_id' => $confirmed,
+                    'user_id' => $member->id,
+                    'origin' => 'member',
+                    'status' => 'confirmed',
+                    'confirmed_at' => now(),
+                    'withdrawn_at' => null,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ],
+                [
+                    'pichanga_id' => $withdrawn,
+                    'user_id' => $member->id,
+                    'origin' => 'member',
+                    'status' => 'withdrawn',
+                    'confirmed_at' => null,
+                    'withdrawn_at' => now(),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ],
+            ]);
+            Sanctum::actingAs($member);
+
+            $agenda = collect($this->getJson("/api/v1/clubs/{$club}/pichangas?tab=pending")
+                ->assertOk()
+                ->json('items'))
+                ->keyBy('id');
+            $calendar = collect($this->getJson("/api/v1/clubs/{$club}/pichangas/calendar?month=2026-08")
+                ->assertOk()
+                ->json('items'))
+                ->keyBy('id');
+
+            $this->assertSame('confirmed', $agenda[$confirmed]['me_participant_status']);
+            $this->assertSame('withdrawn', $agenda[$withdrawn]['me_participant_status']);
+            $this->assertSame('confirmed', $calendar[$confirmed]['me_participant_status']);
+            $this->assertSame('withdrawn', $calendar[$withdrawn]['me_participant_status']);
+        } finally {
+            \Illuminate\Support\Carbon::setTestNow();
+        }
+    }
+
     public function test_public_finished_pichanga_exposes_only_real_watch_match_events(): void
     {
         \Illuminate\Support\Carbon::setTestNow('2026-08-05 12:00:00');

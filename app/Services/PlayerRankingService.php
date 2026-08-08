@@ -82,6 +82,8 @@ class PlayerRankingService
     private function bandLabel(string $band): string
     {
         [$start, $end] = explode('-', $band);
-        return "$start–$end años";
+        // The en dash is valid in a PHP variable identifier, so without
+        // delimiters PHP parses "$start–" as one (undefined) variable.
+        return "{$start}–{$end} años";
     }
 }

@@ -981,6 +981,8 @@ class _ClubPichangaCard extends StatelessWidget {
     final field = (item['field_name'] ?? '').toString().trim();
     final venue = [court, field].where((value) => value.isNotEmpty).join(' · ');
     final spots = item['spots_left'] ?? 0;
+    final attending = item['me_participant_status'] == 'confirmed';
+    final colors = Theme.of(context).colorScheme;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
@@ -1023,9 +1025,49 @@ class _ClubPichangaCard extends StatelessWidget {
                       style: const TextStyle(fontWeight: FontWeight.w800),
                     ),
                     const SizedBox(height: 3),
-                    Text(
-                      '$time · $spots cupos libres',
-                      style: Theme.of(context).textTheme.bodySmall,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '$time · $spots cupos libres',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ),
+                        if (attending) const SizedBox(width: 6),
+                        if (attending)
+                          Container(
+                            key: ValueKey(
+                              'club-pichanga-attending-${item['id']}',
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: colors.primaryContainer,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.check_circle_outline,
+                                  size: 12,
+                                  color: colors.onPrimaryContainer,
+                                ),
+                                const SizedBox(width: 3),
+                                Text(
+                                  'Asistiré',
+                                  style: Theme.of(context).textTheme.labelSmall
+                                      ?.copyWith(
+                                        color: colors.onPrimaryContainer,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
                     ),
                     if (venue.isNotEmpty) ...[
                       const SizedBox(height: 3),
@@ -1723,7 +1765,12 @@ class _ClubPichangasCalendarState
                     itemBuilder: (_, index) {
                       if (index < firstWeekday) return const SizedBox.shrink();
                       final day = index - firstWeekday + 1;
-                      final has = byDay.containsKey(day);
+                      final dayItems =
+                          byDay[day] ?? const <Map<String, dynamic>>[];
+                      final has = dayItems.isNotEmpty;
+                      final attending = dayItems.any(
+                        (item) => item['me_participant_status'] == 'confirmed',
+                      );
                       final selected = _selectedDay?.day == day;
                       return InkWell(
                         onTap: has
@@ -1749,17 +1796,28 @@ class _ClubPichangasCalendarState
                             children: [
                               Text('$day'),
                               if (has)
-                                Container(
-                                  width: 5,
-                                  height: 5,
-                                  margin: const EdgeInsets.only(top: 2),
-                                  decoration: BoxDecoration(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.primary,
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
+                                attending
+                                    ? Icon(
+                                        Icons.check_circle,
+                                        key: ValueKey(
+                                          'club-calendar-attending-$day',
+                                        ),
+                                        size: 11,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.primary,
+                                      )
+                                    : Container(
+                                        width: 5,
+                                        height: 5,
+                                        margin: const EdgeInsets.only(top: 2),
+                                        decoration: BoxDecoration(
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.primary,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
                             ],
                           ),
                         ),

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_error.dart';
+import '../../../core/theme/fulbii_snackbar.dart';
 import '../data/clubs_repository.dart';
 
 class ClubInviteScreen extends ConsumerStatefulWidget {
@@ -56,7 +57,7 @@ class _ClubInviteScreenState extends ConsumerState<ClubInviteScreen> {
       final results = await ref
           .read(clubsRepositoryProvider)
           .searchUsers(query: query, clubId: widget.clubId);
-      
+
       setState(() {
         _searchResults = results;
         _searching = false;
@@ -83,16 +84,15 @@ class _ClubInviteScreenState extends ConsumerState<ClubInviteScreen> {
     });
 
     try {
-      await ref.read(clubsRepositoryProvider).inviteByNickOrEmail(
-            widget.clubId,
-            nick: user['nick']?.toString(),
-          );
-      
+      await ref
+          .read(clubsRepositoryProvider)
+          .inviteByNickOrEmail(widget.clubId, nick: user['nick']?.toString());
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Invitación enviada a @${user['nick']}'),
-            backgroundColor: Colors.green,
+          fulbiiSnackBar(
+            'Invitación enviada a @${user['nick']}',
+            tone: FulbiiSnackBarTone.success,
           ),
         );
         // Exclude user from search results since they are invited
@@ -103,18 +103,15 @@ class _ClubInviteScreenState extends ConsumerState<ClubInviteScreen> {
     } on ApiError catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.message),
-            backgroundColor: Colors.redAccent,
-          ),
+          fulbiiSnackBar(e.message, tone: FulbiiSnackBarTone.error),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Error al enviar la invitación.'),
-            backgroundColor: Colors.redAccent,
+          fulbiiSnackBar(
+            'Error al enviar la invitación.',
+            tone: FulbiiSnackBarTone.error,
           ),
         );
       }
@@ -132,9 +129,7 @@ class _ClubInviteScreenState extends ConsumerState<ClubInviteScreen> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Invitar Miembro'),
-      ),
+      appBar: AppBar(title: const Text('Invitar Miembro')),
       body: Column(
         children: [
           Padding(
@@ -165,104 +160,101 @@ class _ClubInviteScreenState extends ConsumerState<ClubInviteScreen> {
             child: _searching
                 ? const Center(child: CircularProgressIndicator())
                 : _errorMessage.isNotEmpty
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        _errorMessage,
+                        style: const TextStyle(color: Colors.redAccent),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  )
+                : _searchController.text.trim().length < 2
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.person_search_outlined,
+                          size: 64,
+                          color: colorScheme.outline,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Escribe al menos 2 letras para buscar',
+                          style: TextStyle(color: colorScheme.outline),
+                        ),
+                      ],
+                    ),
+                  )
+                : _searchResults.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.search_off_outlined,
+                          size: 64,
+                          color: colorScheme.outline,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'No se encontraron jugadores',
+                          style: TextStyle(color: colorScheme.outline),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: _searchResults.length,
+                    separatorBuilder: (_, __) => const Divider(),
+                    itemBuilder: (context, index) {
+                      final user = _searchResults[index];
+                      final userId = int.tryParse(user['id'].toString()) ?? 0;
+                      final isInviting = _sendingInvitation[userId] == true;
+
+                      return ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 4,
+                          horizontal: 8,
+                        ),
+                        leading: CircleAvatar(
+                          backgroundColor: colorScheme.primaryContainer,
                           child: Text(
-                            _errorMessage,
-                            style: const TextStyle(color: Colors.redAccent),
-                            textAlign: TextAlign.center,
+                            user['nick']?.substring(0, 1).toUpperCase() ?? '?',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: colorScheme.onPrimaryContainer,
+                            ),
                           ),
                         ),
-                      )
-                    : _searchController.text.trim().length < 2
-                        ? Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.person_search_outlined,
-                                  size: 64,
-                                  color: colorScheme.outline,
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  'Escribe al menos 2 letras para buscar',
-                                  style: TextStyle(color: colorScheme.outline),
-                                ),
-                              ],
-                            ),
-                          )
-                        : _searchResults.isEmpty
-                            ? Center(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.search_off_outlined,
-                                      size: 64,
-                                      color: colorScheme.outline,
-                                    ),
-                                    const SizedBox(height: 12),
-                                    Text(
-                                      'No se encontraron jugadores',
-                                      style: TextStyle(color: colorScheme.outline),
-                                    ),
-                                  ],
+                        title: Text(
+                          user['name']?.toString() ?? 'Jugador',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        subtitle: Text('@${user['nick']}'),
+                        trailing: isInviting
+                            ? const SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
                                 ),
                               )
-                            : ListView.separated(
-                                padding: const EdgeInsets.symmetric(horizontal: 16),
-                                itemCount: _searchResults.length,
-                                separatorBuilder: (_, __) => const Divider(),
-                                itemBuilder: (context, index) {
-                                  final user = _searchResults[index];
-                                  final userId = int.tryParse(user['id'].toString()) ?? 0;
-                                  final isInviting = _sendingInvitation[userId] == true;
-
-                                  return ListTile(
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      vertical: 4,
-                                      horizontal: 8,
-                                    ),
-                                    leading: CircleAvatar(
-                                      backgroundColor: colorScheme.primaryContainer,
-                                      child: Text(
-                                        user['nick']
-                                                ?.substring(0, 1)
-                                                .toUpperCase() ??
-                                            '?',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: colorScheme.onPrimaryContainer,
-                                        ),
-                                      ),
-                                    ),
-                                    title: Text(
-                                      user['name']?.toString() ?? 'Jugador',
-                                      style: const TextStyle(fontWeight: FontWeight.bold),
-                                    ),
-                                    subtitle: Text('@${user['nick']}'),
-                                    trailing: isInviting
-                                        ? const SizedBox(
-                                            width: 24,
-                                            height: 24,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                            ),
-                                          )
-                                        : FilledButton(
-                                            onPressed: () => _sendInvitation(user),
-                                            style: FilledButton.styleFrom(
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius: BorderRadius.circular(10),
-                                              ),
-                                            ),
-                                            child: const Text('Invitar'),
-                                          ),
-                                  );
-                                },
+                            : FilledButton(
+                                onPressed: () => _sendInvitation(user),
+                                style: FilledButton.styleFrom(
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                                child: const Text('Invitar'),
                               ),
+                      );
+                    },
+                  ),
           ),
         ],
       ),

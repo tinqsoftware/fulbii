@@ -391,78 +391,198 @@ Future<void> _showProfileRatingDialog(
   WidgetRef ref,
   int userId,
 ) async {
-  final comment = TextEditingController();
-  final values = <String, double>{
+  final saved = await showDialog<bool>(
+    context: context,
+    builder: (_) => _ProfileRatingDialog(
+      onSubmit: (values, comment) => ref
+          .read(profileRepositoryProvider)
+          .ratePlayer(userId, {...values, 'comentario': comment}),
+    ),
+  );
+  if (saved == true) {
+    ref.invalidate(publicRatingHistoryProvider(userId));
+    ref.invalidate(publicRatingEligibilityProvider(userId));
+  }
+}
+
+class _ProfileRatingDialog extends StatefulWidget {
+  const _ProfileRatingDialog({required this.onSubmit});
+
+  final Future<void> Function(Map<String, double> values, String comment)
+  onSubmit;
+
+  @override
+  State<_ProfileRatingDialog> createState() => _ProfileRatingDialogState();
+}
+
+class _ProfileRatingDialogState extends State<_ProfileRatingDialog> {
+  static const _skills = <({String key, String label, IconData icon})>[
+    (key: 'fisico', label: 'Físico', icon: Icons.directions_run_rounded),
+    (key: 'arquero', label: 'Arquero', icon: Icons.sports_handball_outlined),
+    (key: 'delantero', label: 'Delantero', icon: Icons.ads_click_rounded),
+    (key: 'mediocampo', label: 'Mediocampo', icon: Icons.hub_outlined),
+    (key: 'defensa', label: 'Defensa', icon: Icons.shield_outlined),
+  ];
+
+  final _commentController = TextEditingController();
+  final _values = <String, double>{
     'fisico': 3,
     'arquero': 3,
     'delantero': 3,
     'mediocampo': 3,
     'defensa': 3,
   };
-  await showDialog<void>(
-    context: context,
-    builder: (dialogContext) => StatefulBuilder(
-      builder: (context, setState) => AlertDialog(
-        title: const Text('Calificar jugador'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ...values.entries.map(
-                (entry) => Row(
-                  children: [
-                    SizedBox(
-                      width: 92,
-                      child: Text(
-                        entry.key[0].toUpperCase() + entry.key.substring(1),
-                      ),
-                    ),
-                    Expanded(
-                      child: Slider(
-                        value: entry.value,
-                        min: 0,
-                        max: 5,
-                        divisions: 10,
-                        label: entry.value.toStringAsFixed(1),
-                        onChanged: (value) =>
-                            setState(() => values[entry.key] = value),
-                      ),
-                    ),
-                  ],
-                ),
+  var _isSubmitting = false;
+
+  double get _average =>
+      _values.values.reduce((total, value) => total + value) / _values.length;
+
+  @override
+  void dispose() {
+    _commentController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_isSubmitting) return;
+    setState(() => _isSubmitting = true);
+    try {
+      await widget.onSubmit(_values, _commentController.text.trim());
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No se pudo guardar la calificación: $error')),
+        );
+        setState(() => _isSubmitting = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      titlePadding: const EdgeInsets.fromLTRB(24, 22, 24, 8),
+      contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 12),
+      title: const Text('Calificar jugador'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Valora cada habilidad de 0 a 5.',
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
+            ),
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: colors.primaryContainer,
+                borderRadius: BorderRadius.circular(14),
               ),
-              TextField(
-                controller: comment,
-                maxLines: 2,
-                decoration: const InputDecoration(
-                  labelText: 'Comentario opcional',
+              child: Row(
+                children: [
+                  Icon(Icons.star_rounded, color: colors.primary),
+                  const SizedBox(width: 8),
+                  const Expanded(child: Text('Promedio de esta calificación')),
+                  Text(
+                    '${_average.toStringAsFixed(1)} / 5',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: colors.primary,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            ..._skills.map(_buildSkillControl),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _commentController,
+              minLines: 2,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Comentario opcional',
+                alignLabelWithHint: true,
+              ),
+            ),
+          ],
+        ),
+      ),
+      actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+      actions: [
+        TextButton(
+          onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton.icon(
+          onPressed: _isSubmitting ? null : _submit,
+          icon: _isSubmitting
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.check_rounded),
+          label: Text(_isSubmitting ? 'Guardando' : 'Guardar'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSkillControl(({String key, String label, IconData icon}) skill) {
+    final colors = Theme.of(context).colorScheme;
+    final value = _values[skill.key] ?? 0;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Icon(skill.icon, size: 19, color: colors.primary),
+              const SizedBox(width: 8),
+              Expanded(child: Text(skill.label)),
+              Container(
+                constraints: const BoxConstraints(minWidth: 42),
+                alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: colors.primaryContainer,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  value.toStringAsFixed(1),
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: colors.primary,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
               ),
             ],
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              await ref.read(profileRepositoryProvider).ratePlayer(userId, {
-                ...values,
-                'comentario': comment.text.trim(),
-              });
-              ref.invalidate(publicRatingHistoryProvider(userId));
-              ref.invalidate(publicRatingEligibilityProvider(userId));
-              if (dialogContext.mounted) Navigator.of(dialogContext).pop();
-            },
-            child: const Text('Guardar'),
+          Slider(
+            value: value,
+            min: 0,
+            max: 5,
+            divisions: 10,
+            label: value.toStringAsFixed(1),
+            semanticFormatterCallback: (value) =>
+                '${skill.label}: ${value.toStringAsFixed(1)} de 5',
+            onChanged: _isSubmitting
+                ? null
+                : (value) => setState(() => _values[skill.key] = value),
           ),
         ],
       ),
-    ),
-  );
-  comment.dispose();
+    );
+  }
 }
 
 String _resolvePublicClipUrl(String raw, String appLinkBaseUrl) {

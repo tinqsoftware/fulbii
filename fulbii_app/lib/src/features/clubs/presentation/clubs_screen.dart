@@ -289,55 +289,55 @@ class _ClubsScreenState extends ConsumerState<ClubsScreen>
                         0;
                     final hasMyConfirmedPichanga =
                         club['has_my_confirmed_pichanga'] == true;
+                    final myConfirmedPichangas =
+                        int.tryParse(
+                          club['my_confirmed_pichangas_count']?.toString() ??
+                              '0',
+                        ) ??
+                        0;
 
-                    return Card(
-                      child: ListTile(
-                        leading: _ClubPhoto(
-                          url: resolveClubImageUrl(
-                            club['logo_url']?.toString(),
-                            config,
-                          ),
-                        ),
-                        title: Text(name),
-                        subtitle: Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Wrap(
-                            spacing: 6,
-                            runSpacing: 4,
-                            children: [
-                              Text(
-                                '${club['miembros_count'] ?? 0} miembros'
-                                '${isActive ? '' : ' • desactivado'}',
-                              ),
-                              if (!discoverMode && pendingPichangas > 0)
-                                _ClubActivityBadge(
-                                  icon: Icons.event_available_outlined,
-                                  label:
-                                      '$pendingPichangas ${pendingPichangas == 1 ? 'pichanga pendiente' : 'pichangas pendientes'}',
-                                ),
-                              if (!discoverMode && hasMyConfirmedPichanga)
-                                const _ClubActivityBadge(
-                                  icon: Icons.check_circle_outline,
-                                  label: 'Confirmaste',
-                                ),
-                              if (discoverMode && openPichangas > 0)
-                                _ClubActivityBadge(
-                                  icon: Icons.sports_soccer_outlined,
-                                  label:
-                                      '$openPichangas ${openPichangas == 1 ? 'pichanga abierta' : 'pichangas abiertas'}',
-                                ),
-                            ],
-                          ),
-                        ),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => ClubDetailScreen(clubId: clubId),
-                            ),
-                          );
-                        },
+                    return _ClubListCard(
+                      name: name,
+                      membersLabel:
+                          '${club['miembros_count'] ?? 0} miembros'
+                          '${isActive ? '' : ' • desactivado'}',
+                      imageUrl: resolveClubImageUrl(
+                        club['logo_url']?.toString(),
+                        config,
                       ),
+                      photoKey: ValueKey('club-photo-$clubId'),
+                      badges: [
+                        if (!discoverMode && pendingPichangas > 0)
+                          _ClubActivityBadge(
+                            key: ValueKey('club-pichangas-badge-$clubId'),
+                            icon: Icons.sports_soccer_outlined,
+                            label:
+                                '$pendingPichangas ${pendingPichangas == 1 ? 'pichanga' : 'pichangas'}',
+                          ),
+                        if (!discoverMode &&
+                            (myConfirmedPichangas > 0 ||
+                                hasMyConfirmedPichanga))
+                          _ClubActivityBadge(
+                            key: ValueKey('club-attending-badge-$clubId'),
+                            icon: Icons.check_circle_outline,
+                            label:
+                                'Asistiré a ${myConfirmedPichangas > 0 ? myConfirmedPichangas : 1}',
+                          ),
+                        if (discoverMode && openPichangas > 0)
+                          _ClubActivityBadge(
+                            key: ValueKey('club-open-pichangas-badge-$clubId'),
+                            icon: Icons.sports_soccer_outlined,
+                            label:
+                                '$openPichangas ${openPichangas == 1 ? 'pichanga abierta' : 'pichangas abiertas'}',
+                          ),
+                      ],
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => ClubDetailScreen(clubId: clubId),
+                          ),
+                        );
+                      },
                     );
                   },
                 ),
@@ -393,8 +393,104 @@ class _ClubsScreenState extends ConsumerState<ClubsScreen>
   }
 }
 
+class _ClubListCard extends StatelessWidget {
+  const _ClubListCard({
+    required this.name,
+    required this.membersLabel,
+    required this.imageUrl,
+    required this.photoKey,
+    required this.badges,
+    required this.onTap,
+  });
+
+  final String name;
+  final String membersLabel;
+  final String? imageUrl;
+  final Key photoKey;
+  final List<Widget> badges;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasBadges = badges.isNotEmpty;
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox(
+          height: hasBadges ? 116 : 94,
+          child: Row(
+            children: [
+              SizedBox(
+                key: photoKey,
+                width: 88,
+                height: double.infinity,
+                child: _ClubPhoto(url: imageUrl, fillsCard: true),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(13, 12, 6, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        membersLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                      if (hasBadges) ...[
+                        const SizedBox(height: 7),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              for (
+                                var index = 0;
+                                index < badges.length;
+                                index++
+                              ) ...[
+                                if (index > 0) const SizedBox(width: 5),
+                                badges[index],
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.only(right: 9),
+                child: Icon(Icons.chevron_right),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ClubActivityBadge extends StatelessWidget {
-  const _ClubActivityBadge({required this.icon, required this.label});
+  const _ClubActivityBadge({
+    super.key,
+    required this.icon,
+    required this.label,
+  });
 
   final IconData icon;
   final String label;
@@ -428,18 +524,19 @@ class _ClubActivityBadge extends StatelessWidget {
 }
 
 class _ClubPhoto extends StatelessWidget {
-  const _ClubPhoto({this.url});
+  const _ClubPhoto({this.url, this.fillsCard = false});
 
   final String? url;
+  final bool fillsCard;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return ClipRRect(
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: fillsCard ? BorderRadius.zero : BorderRadius.circular(10),
       child: SizedBox(
-        width: 48,
-        height: 48,
+        width: fillsCard ? double.infinity : 48,
+        height: fillsCard ? double.infinity : 48,
         child: url == null || url!.isEmpty
             ? ColoredBox(
                 color: colorScheme.surfaceContainerHighest,

@@ -151,8 +151,8 @@ class _FulbiiAppState extends ConsumerState<FulbiiApp>
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
       navigatorKey: navigatorKey,
       themeMode: themeMode,
-      theme: _fulbiiTheme(Brightness.light),
-      darkTheme: _fulbiiTheme(Brightness.dark),
+      theme: fulbiiTheme(Brightness.light),
+      darkTheme: fulbiiTheme(Brightness.dark),
       builder: (context, child) {
         final config = ref.watch(appConfigProvider);
         if (!kDebugMode || config.env != AppEnv.dev) {
@@ -746,12 +746,21 @@ class _FulbiiAppState extends ConsumerState<FulbiiApp>
   }
 }
 
-ThemeData _fulbiiTheme(Brightness brightness) {
+ThemeData fulbiiTheme(Brightness brightness) {
   final isDark = brightness == Brightness.dark;
   final scaffold = isDark ? const Color(0xFF080C0A) : const Color(0xFFF5F8F4);
   final surface = isDark ? const Color(0xFF111613) : Colors.white;
   final outline = isDark ? const Color(0xFF26332B) : const Color(0xFFD1DDD1);
   final green = const Color(0xFF249D31);
+  final snackBackground = isDark
+      ? const Color(0xFF163B24)
+      : const Color(0xFFE4F5E5);
+  final snackForeground = isDark
+      ? const Color(0xFFF1FFF2)
+      : const Color(0xFF12351C);
+  final snackBorder = isDark
+      ? const Color(0xFF70D994)
+      : const Color(0xFF5FAF70);
   final colorScheme = ColorScheme.fromSeed(
     seedColor: green,
     brightness: brightness,
@@ -784,6 +793,24 @@ ThemeData _fulbiiTheme(Brightness brightness) {
       labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
       labelTextStyle: const WidgetStatePropertyAll(
         TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+      ),
+    ),
+    snackBarTheme: SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: snackBackground,
+      actionTextColor: snackBorder,
+      disabledActionTextColor: snackForeground.withValues(alpha: .55),
+      contentTextStyle: TextStyle(
+        color: snackForeground,
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        height: 1.3,
+      ),
+      elevation: 8,
+      insetPadding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: snackBorder),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(

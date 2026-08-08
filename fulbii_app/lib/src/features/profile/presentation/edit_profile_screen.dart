@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 
 import '../../../config/app_config.dart';
 import '../../../core/network/api_error.dart';
+import '../../../core/theme/fulbii_snackbar.dart';
 import '../../auth/session_controller.dart';
 import '../../clubs/data/clubs_repository.dart';
 import '../data/profile_repository.dart';
@@ -24,7 +25,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   late final TextEditingController _nameController;
   late final TextEditingController _nickController;
   late final TextEditingController _heightController;
-  
+
   DateTime? _selectedBirthDate;
   String _selectedSex = 'M';
   File? _avatarFile;
@@ -90,7 +91,10 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     );
 
     if (source == null) return;
-    final image = await ImagePicker().pickImage(source: source, imageQuality: 75);
+    final image = await ImagePicker().pickImage(
+      source: source,
+      imageQuality: 75,
+    );
     if (image == null) return;
 
     setState(() {
@@ -109,8 +113,8 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
         return Theme(
           data: Theme.of(context).copyWith(
             colorScheme: Theme.of(context).colorScheme.copyWith(
-                  primary: Theme.of(context).colorScheme.primary,
-                ),
+              primary: Theme.of(context).colorScheme.primary,
+            ),
           ),
           child: child!,
         );
@@ -126,9 +130,9 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
-    
+
     setState(() => _saving = true);
-    
+
     final payload = {
       'name': _nameController.text.trim(),
       'nick': _nickController.text.trim(),
@@ -139,18 +143,17 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     };
 
     try {
-      await ref.read(profileRepositoryProvider).updateProfileWithAvatar(
-            payload: payload,
-            avatarFile: _avatarFile,
-          );
+      await ref
+          .read(profileRepositoryProvider)
+          .updateProfileWithAvatar(payload: payload, avatarFile: _avatarFile);
       await ref.read(sessionControllerProvider.notifier).refreshMe();
       ref.invalidate(pichangaHistoryProvider);
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('¡Perfil actualizado con éxito!'),
-            backgroundColor: Colors.green,
+          fulbiiSnackBar(
+            '¡Perfil actualizado con éxito!',
+            tone: FulbiiSnackBarTone.success,
           ),
         );
         Navigator.pop(context);
@@ -158,18 +161,15 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     } on ApiError catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.message),
-            backgroundColor: Colors.redAccent,
-          ),
+          fulbiiSnackBar(e.message, tone: FulbiiSnackBarTone.error),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al actualizar el perfil: $e'),
-            backgroundColor: Colors.redAccent,
+          fulbiiSnackBar(
+            'Error al actualizar el perfil: $e',
+            tone: FulbiiSnackBarTone.error,
           ),
         );
       }
@@ -217,7 +217,10 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
           : Form(
               key: _formKey,
               child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 16,
+                ),
                 children: [
                   Center(
                     child: Stack(
@@ -228,7 +231,8 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                           backgroundImage: avatarImage,
                           child: avatarImage == null
                               ? Text(
-                                  user?.nick?.substring(0, 1).toUpperCase() ?? 'U',
+                                  user?.nick?.substring(0, 1).toUpperCase() ??
+                                      'U',
                                   style: TextStyle(
                                     fontSize: 36,
                                     fontWeight: FontWeight.bold,
@@ -261,9 +265,9 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                   Text(
                     'Información Personal',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          color: colorScheme.primary,
-                        ),
+                      fontWeight: FontWeight.w800,
+                      color: colorScheme.primary,
+                    ),
                   ),
                   const SizedBox(height: 16),
                   TextFormField(
@@ -296,7 +300,9 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                       if (val == null || val.trim().isEmpty) {
                         return 'El nick es obligatorio';
                       }
-                      if (!RegExp(r'^[A-Za-z0-9_\-]{3,20}$').hasMatch(val.trim())) {
+                      if (!RegExp(
+                        r'^[A-Za-z0-9_\-]{3,20}$',
+                      ).hasMatch(val.trim())) {
                         return '3-20 caracteres alfanuméricos, guión o subguión';
                       }
                       return null;
@@ -337,7 +343,9 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                       child: Text(
                         _selectedBirthDate == null
                             ? 'Seleccionar fecha'
-                            : DateFormat('dd/MM/yyyy').format(_selectedBirthDate!),
+                            : DateFormat(
+                                'dd/MM/yyyy',
+                              ).format(_selectedBirthDate!),
                         style: TextStyle(
                           fontSize: 16,
                           color: _selectedBirthDate == null
@@ -378,7 +386,10 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                     ),
                     child: const Text(
                       'Guardar Cambios',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ],

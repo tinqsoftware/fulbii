@@ -111,6 +111,27 @@ class FieldApiControllerTest extends TestCase
             $table->string('status')->default('active');
             $table->timestamps();
         });
+        Schema::create('group_pichangas', function (Blueprint $table) {
+            $table->increments('id');
+            $table->unsignedInteger('field_id')->nullable();
+            $table->unsignedInteger('cancha_id')->nullable();
+            $table->string('title')->nullable();
+            $table->string('status')->default('published');
+            $table->boolean('is_open')->default(false);
+            $table->dateTime('starts_at');
+            $table->unsignedInteger('duration_minutes')->default(90);
+            $table->unsignedInteger('capacity')->default(14);
+            $table->string('match_format')->nullable();
+            $table->unsignedInteger('players_per_team')->nullable();
+            $table->timestamps();
+        });
+        Schema::create('group_pichanga_participants', function (Blueprint $table) {
+            $table->increments('id');
+            $table->unsignedInteger('pichanga_id');
+            $table->unsignedInteger('user_id');
+            $table->string('status')->default('pending');
+            $table->timestamps();
+        });
 
         $user = new User();
         $user->forceFill(['id' => 1, 'name' => 'Tester']);
@@ -417,5 +438,36 @@ class FieldApiControllerTest extends TestCase
             'equiposvs' => '8',
             'tipo_superficie' => 'natural',
         ]);
+    }
+
+    public function test_detail_lists_only_future_open_pichangas_with_places(): void
+    {
+        DB::table('polideportivo')->insert([
+            'id' => 80,
+            'nombre' => 'Complejo con pichangas',
+        ]);
+        DB::table('cancha')->insert([
+            'id' => 801,
+            'id_polideportivo' => 80,
+            'nombre' => 'Cancha principal',
+        ]);
+        DB::table('group_pichangas')->insert([
+            ['id' => 1, 'field_id' => 80, 'cancha_id' => 801, 'title' => 'Disponible', 'status' => 'published', 'is_open' => true, 'starts_at' => now()->addDay(), 'duration_minutes' => 90, 'capacity' => 10, 'match_format' => '5v5', 'players_per_team' => 5],
+            ['id' => 2, 'field_id' => 80, 'cancha_id' => 801, 'title' => 'Pasada', 'status' => 'published', 'is_open' => true, 'starts_at' => now()->subDay(), 'duration_minutes' => 90, 'capacity' => 10, 'match_format' => null, 'players_per_team' => null],
+            ['id' => 3, 'field_id' => 80, 'cancha_id' => 801, 'title' => 'Cerrada', 'status' => 'published', 'is_open' => false, 'starts_at' => now()->addDays(2), 'duration_minutes' => 90, 'capacity' => 10, 'match_format' => null, 'players_per_team' => null],
+            ['id' => 4, 'field_id' => 80, 'cancha_id' => 801, 'title' => 'Llena', 'status' => 'published', 'is_open' => true, 'starts_at' => now()->addDays(3), 'duration_minutes' => 90, 'capacity' => 1, 'match_format' => null, 'players_per_team' => null],
+        ]);
+        DB::table('group_pichanga_participants')->insert([
+            'pichanga_id' => 4,
+            'user_id' => 8,
+            'status' => 'confirmed',
+        ]);
+
+        $this->getJson('/api/v1/fields/80')
+            ->assertOk()
+            ->assertJsonCount(1, 'field.open_pichangas')
+            ->assertJsonPath('field.open_pichangas.0.id', 1)
+            ->assertJsonPath('field.open_pichangas.0.spots_left', 10)
+            ->assertJsonPath('field.open_pichangas.0.court_name', 'Cancha principal');
     }
 }

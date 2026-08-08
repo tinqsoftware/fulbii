@@ -111,9 +111,22 @@ class ClubScopeTest extends TestCase
         $this->assertSame(2, $mine['pending_pichangas_count']);
         $this->assertSame(1, $mine['open_pichangas_count']);
         $this->assertTrue($mine['has_my_confirmed_pichanga']);
+        $this->assertSame(1, $mine['my_confirmed_pichangas_count']);
         $this->assertSame(1, $discover['pending_pichangas_count']);
         $this->assertSame(1, $discover['open_pichangas_count']);
         $this->assertFalse($discover['has_my_confirmed_pichanga']);
+        $this->assertSame(0, $discover['my_confirmed_pichangas_count']);
+
+        DB::table('group_pichanga_participants')->insert([
+            'pichanga_id' => 10,
+            'user_id' => $user->id,
+            'status' => 'confirmed',
+        ]);
+
+        $mineAfterSecondConfirmation = $this->getJson('/api/v1/clubs?scope=mine')
+            ->assertOk()
+            ->json('items.0');
+        $this->assertSame(2, $mineAfterSecondConfirmation['my_confirmed_pichangas_count']);
     }
 
     public function test_active_member_can_read_a_disabled_club_but_cannot_mutate_it(): void
@@ -138,6 +151,7 @@ class ClubScopeTest extends TestCase
     {
         $owner = $this->createUser('owner-profile@example.test');
         $member = $this->createUser('member-profile@example.test');
+        $member->update(['fec_nac' => now()->subYears(25)->toDateString()]);
         $this->insertClub(1, 'Grupo visible', $owner->id, true);
         $this->insertClub(2, 'Grupo privado', $owner->id, false);
         $this->insertMembership(1, $member->id, 1, 'miembro');
@@ -147,6 +161,8 @@ class ClubScopeTest extends TestCase
             ->assertOk()
             ->assertJsonPath('member.id', $member->id)
             ->assertJsonPath('member.rol', 'miembro')
+            ->assertJsonPath('ranking.age_band', '21-25')
+            ->assertJsonPath('ranking.age_band_label', '21–25 años')
             ->assertJsonMissingPath('member.email')
             ->assertJsonMissingPath('member.fec_nac')
             ->assertJsonMissingPath('member.altura_cm');

@@ -85,9 +85,14 @@ class GroupPichangaController extends Controller
             ->paginate($perPage);
         $pichangas = $paginator->getCollection();
         $venues = $this->venuesForPichangas($pichangas);
+        $participantStatuses = $this->participantStatusesFor($pichangas, $auth?->id);
         $items = $pichangas->map(fn(GroupPichanga $p) => $this->serializePichanga(
             $p,
-            array_merge($venues[(int) $p->id] ?? [], $this->detailPresentation($p, null, $isMember, null)),
+            array_merge(
+                $venues[(int) $p->id] ?? [],
+                ['me_participant_status' => $participantStatuses[(int) $p->id] ?? null],
+                $this->detailPresentation($p, null, $isMember, null),
+            ),
         ));
 
         return response()->json([
@@ -131,10 +136,15 @@ class GroupPichangaController extends Controller
         }
         $pichangas = $query->orderBy('starts_at')->limit(400)->get();
         $venues = $this->venuesForPichangas($pichangas);
+        $participantStatuses = $this->participantStatusesFor($pichangas, $auth?->id);
         return response()->json([
             'items' => $pichangas->map(fn (GroupPichanga $p) => $this->serializePichanga(
                 $p,
-                array_merge($venues[(int) $p->id] ?? [], $this->detailPresentation($p, null, $isMember, null)),
+                array_merge(
+                    $venues[(int) $p->id] ?? [],
+                    ['me_participant_status' => $participantStatuses[(int) $p->id] ?? null],
+                    $this->detailPresentation($p, null, $isMember, null),
+                ),
             ))->values(),
             'meta' => ['month' => $month],
         ]);
@@ -1600,6 +1610,20 @@ class GroupPichangaController extends Controller
      * @param \Illuminate\Support\Collection<int,GroupPichanga> $pichangas
      * @return array<int,array{court_name:?string,field_name:?string,venue_photo_url:?string,venue_field_id:?int}>
      */
+    private function participantStatusesFor($pichangas, ?int $userId): array
+    {
+        if (!$userId || $pichangas->isEmpty() || !Schema::hasTable('group_pichanga_participants')) {
+            return [];
+        }
+
+        return GroupPichangaParticipant::query()
+            ->where('user_id', $userId)
+            ->whereIn('pichanga_id', $pichangas->pluck('id')->map(fn ($id) => (int) $id))
+            ->pluck('status', 'pichanga_id')
+            ->mapWithKeys(fn ($status, $pichangaId) => [(int) $pichangaId => (string) $status])
+            ->all();
+    }
+
     private function venuesForPichangas($pichangas): array
     {
         $courtIds = $pichangas->pluck('cancha_id')->filter()->map(fn ($id) => (int) $id)->unique()->values();

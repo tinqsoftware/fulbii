@@ -1742,53 +1742,27 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
   }
 
   Future<void> _addPostDialog(BuildContext context, WidgetRef ref) async {
-    final contentController = TextEditingController();
-
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Nueva publicación'),
-          content: TextField(
-            controller: contentController,
-            decoration: const InputDecoration(labelText: 'Contenido'),
-            maxLines: 3,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                final text = contentController.text.trim();
-                if (text.isEmpty) {
-                  return;
-                }
-
-                await _runAction(
-                  context,
-                  ref,
-                  action: () => ref
-                      .read(pichangasRepositoryProvider)
-                      .addTextPost(widget.pichangaId, text),
-                  successMessage: 'Publicación agregada.',
-                );
-                ref.invalidate(pichangaFeedProvider(widget.pichangaId));
-                if (context.mounted) {
-                  Navigator.of(dialogContext).pop();
-                }
-              },
-              child: const Text('Publicar'),
-            ),
-          ],
-        );
-      },
+      builder: (_) => _TextComposerDialog(
+        title: 'Nueva publicación',
+        fieldLabel: 'Contenido',
+        actionLabel: 'Publicar',
+        onSubmit: (text) async {
+          await _runAction(
+            context,
+            ref,
+            action: () => ref
+                .read(pichangasRepositoryProvider)
+                .addTextPost(widget.pichangaId, text),
+            successMessage: 'Publicación agregada.',
+          );
+          if (mounted) {
+            ref.invalidate(pichangaFeedProvider(widget.pichangaId));
+          }
+        },
+      ),
     );
-
-    if (context.mounted) {
-      contentController.dispose();
-    }
   }
 
   Future<void> _addCommentDialog(
@@ -1796,52 +1770,27 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
     WidgetRef ref, {
     required int postId,
   }) async {
-    final contentController = TextEditingController();
-
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Comentar publicación'),
-          content: TextField(
-            controller: contentController,
-            decoration: const InputDecoration(labelText: 'Comentario'),
-            maxLines: 3,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                final text = contentController.text.trim();
-                if (text.isEmpty) {
-                  return;
-                }
-                await _runAction(
-                  context,
-                  ref,
-                  action: () => ref
-                      .read(pichangasRepositoryProvider)
-                      .addComment(widget.pichangaId, postId, text),
-                  successMessage: 'Comentario agregado.',
-                );
-                ref.invalidate(pichangaFeedProvider(widget.pichangaId));
-                if (context.mounted) {
-                  Navigator.of(dialogContext).pop();
-                }
-              },
-              child: const Text('Comentar'),
-            ),
-          ],
-        );
-      },
+      builder: (_) => _TextComposerDialog(
+        title: 'Comentar publicación',
+        fieldLabel: 'Comentario',
+        actionLabel: 'Comentar',
+        onSubmit: (text) async {
+          await _runAction(
+            context,
+            ref,
+            action: () => ref
+                .read(pichangasRepositoryProvider)
+                .addComment(widget.pichangaId, postId, text),
+            successMessage: 'Comentario agregado.',
+          );
+          if (mounted) {
+            ref.invalidate(pichangaFeedProvider(widget.pichangaId));
+          }
+        },
+      ),
     );
-
-    if (context.mounted) {
-      contentController.dispose();
-    }
   }
 
   Future<void> _addRatingDialog(BuildContext context, WidgetRef ref) async {
@@ -2059,6 +2008,75 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
         ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     }
+  }
+}
+
+class _TextComposerDialog extends StatefulWidget {
+  const _TextComposerDialog({
+    required this.title,
+    required this.fieldLabel,
+    required this.actionLabel,
+    required this.onSubmit,
+  });
+
+  final String title;
+  final String fieldLabel;
+  final String actionLabel;
+  final Future<void> Function(String text) onSubmit;
+
+  @override
+  State<_TextComposerDialog> createState() => _TextComposerDialogState();
+}
+
+class _TextComposerDialogState extends State<_TextComposerDialog> {
+  final _contentController = TextEditingController();
+  var _isSubmitting = false;
+
+  @override
+  void dispose() {
+    _contentController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final text = _contentController.text.trim();
+    if (text.isEmpty || _isSubmitting) return;
+
+    setState(() => _isSubmitting = true);
+    await widget.onSubmit(text);
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
+      content: TextField(
+        controller: _contentController,
+        autofocus: true,
+        decoration: InputDecoration(labelText: widget.fieldLabel),
+        maxLines: 3,
+        textInputAction: TextInputAction.newline,
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _isSubmitting ? null : _submit,
+          child: _isSubmitting
+              ? const SizedBox(
+                  height: 18,
+                  width: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Text(widget.actionLabel),
+        ),
+      ],
+    );
   }
 }
 

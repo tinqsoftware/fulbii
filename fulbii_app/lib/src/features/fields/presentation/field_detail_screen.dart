@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/formatters/spanish_date_formatter.dart';
 import '../../pichangas/presentation/create_pichanga_screen.dart';
+import '../../pichangas/presentation/pichanga_detail_screen.dart';
 import '../../profile/data/profile_repository.dart';
 import '../../auth/presentation/login_required_sheet.dart';
 import '../../auth/session_controller.dart';
@@ -216,6 +218,51 @@ class _FieldDetailBody extends ConsumerWidget {
                       (court) => Padding(
                         padding: const EdgeInsets.only(bottom: 10),
                         child: _CourtDetailCard(court: court),
+                      ),
+                    ),
+                  ],
+                  if (field.openPichangas.isNotEmpty) ...[
+                    const SizedBox(height: 28),
+                    const Row(
+                      children: [
+                        Icon(Icons.sports_soccer_outlined, size: 20),
+                        SizedBox(width: 8),
+                        Text(
+                          'Pichangas abiertas',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 18,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      'Disponibles próximamente en este polideportivo.',
+                      style: TextStyle(color: colorScheme.onSurfaceVariant),
+                    ),
+                    const SizedBox(height: 10),
+                    ...field.openPichangas.map(
+                      (pichanga) => Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: _OpenPichangaCard(
+                          pichanga: pichanga,
+                          onTap: () {
+                            final id = switch (pichanga['id']) {
+                              int value => value,
+                              final Object value =>
+                                int.tryParse(value.toString()) ?? 0,
+                              _ => 0,
+                            };
+                            if (id <= 0) return;
+                            Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) =>
+                                    PichangaDetailScreen(pichangaId: id),
+                              ),
+                            );
+                          },
+                        ),
                       ),
                     ),
                   ],
@@ -495,6 +542,131 @@ class _ContactMetric extends StatelessWidget {
     );
   }
 }
+
+class _OpenPichangaCard extends StatelessWidget {
+  const _OpenPichangaCard({required this.pichanga, required this.onTap});
+
+  final Map<String, dynamic> pichanga;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final title = (pichanga['title'] ?? 'Pichanga abierta').toString();
+    final court = (pichanga['court_name'] ?? '').toString().trim();
+    final confirmed = _toInt(pichanga['confirmed_count']);
+    final capacity = _toInt(pichanga['capacity']);
+    final spots = _toInt(pichanga['spots_left']);
+    final format = _displayMatchFormat(pichanga);
+    final summary = [
+      court,
+      format ?? '',
+      '$confirmed/$capacity confirmados',
+    ].where((value) => value.isNotEmpty).join(' · ');
+    final date = SpanishDateFormatter.pichangaDate(
+      pichanga['starts_at']?.toString(),
+    );
+
+    return Material(
+      color: colorScheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        key: ValueKey('field-open-pichanga-${pichanga['id']}'),
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: colorScheme.primary.withValues(alpha: .14),
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: Icon(
+                  Icons.sports_soccer_outlined,
+                  color: colorScheme.primary,
+                ),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      date,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: colorScheme.primary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      summary,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: colorScheme.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Column(
+                children: [
+                  Text(
+                    '$spots cupos',
+                    style: TextStyle(
+                      color: colorScheme.primary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+int _toInt(dynamic value) => switch (value) {
+  int number => number,
+  num number => number.toInt(),
+  _ => int.tryParse(value?.toString() ?? '') ?? 0,
+};
+
+String? _displayMatchFormat(Map<String, dynamic> pichanga) {
+  final raw = (pichanga['match_format'] ?? '').toString().trim();
+  if (raw.isNotEmpty) return _formatVsLabel(raw);
+  final perTeam = _toInt(pichanga['players_per_team']);
+  return perTeam > 0 ? '${perTeam}vs$perTeam' : null;
+}
+
+String _formatVsLabel(String value) => value.replaceAllMapped(
+  RegExp(r'^(\d+)v(?:s)?(\d+)$', caseSensitive: false),
+  (match) => '${match.group(1)}vs${match.group(2)}',
+);
 
 class _CourtDetailCard extends StatelessWidget {
   const _CourtDetailCard({required this.court});
