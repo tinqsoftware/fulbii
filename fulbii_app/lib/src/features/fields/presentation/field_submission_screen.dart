@@ -61,6 +61,7 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
   bool _addDimensions = false;
   bool _wsp = false;
   bool _loading = false;
+  bool _pickingPhotos = false;
 
   bool get _hasExistingPolideportivo => _confirmedPolideportivoId != null;
   bool get _isNewPolideportivo => !_hasExistingPolideportivo;
@@ -305,9 +306,9 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
       TextField(
         controller: _phone,
         keyboardType: TextInputType.phone,
-        onChanged: (value) {
-          if (value.trim().isEmpty && _wsp) setState(() => _wsp = false);
-        },
+        onChanged: (value) => setState(() {
+          if (value.trim().isEmpty) _wsp = false;
+        }),
         decoration: _compactDecoration('Celular (opcional)'),
       ),
       const SizedBox(height: 10),
@@ -504,18 +505,18 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
         spacing: 8,
         children: [
           OutlinedButton.icon(
-            onPressed: photos.length >= limit
+            onPressed: photos.length >= limit || _pickingPhotos
                 ? null
                 : () => _pickPhotos(photos, limit, ImageSource.camera),
             icon: const Icon(Icons.camera_alt_outlined),
             label: const Text('Cámara'),
           ),
           OutlinedButton.icon(
-            onPressed: photos.length >= limit
+            onPressed: photos.length >= limit || _pickingPhotos
                 ? null
                 : () => _pickPhotos(photos, limit, ImageSource.gallery),
             icon: const Icon(Icons.photo_library_outlined),
-            label: const Text('Galería'),
+            label: Text(_pickingPhotos ? 'Cargando…' : 'Galería'),
           ),
         ],
       ),
@@ -1266,7 +1267,7 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
         );
         await _movePin(LatLng(pos.latitude, pos.longitude), focusMap: true);
       } on TimeoutException {
-        if (mounted)
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
@@ -1274,13 +1275,15 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
               ),
             ),
           );
+        }
       } catch (_) {
-        if (mounted)
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('No pudimos obtener tu ubicación actual.'),
             ),
           );
+        }
       }
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1298,18 +1301,55 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
     int limit,
     ImageSource source,
   ) async {
-    final picker = ImagePicker();
-    final images = source == ImageSource.gallery
-        ? await picker.pickMultiImage()
-        : [if (await picker.pickImage(source: source) case final image?) image];
-    for (final image in images.take(limit - destination.length)) {
-      final compressed = await _compressPhoto(image);
-      if (compressed != null && mounted)
+    if (_pickingPhotos || destination.length >= limit) return;
+    setState(() => _pickingPhotos = true);
+
+    try {
+      // Choosing one photo at a time avoids the PHPicker multi-select flow
+      // freezing on some iOS simulator versions. The user can add up to the
+      // existing limit by tapping Galería again.
+      final image = await ImagePicker()
+          .pickImage(
+            source: source,
+            imageQuality: 82,
+            maxWidth: 1920,
+            maxHeight: 1920,
+          )
+          .timeout(const Duration(seconds: 45));
+      if (image == null) return;
+
+      final compressed = await _compressPhoto(
+        image,
+      ).timeout(const Duration(seconds: 30));
+      if (compressed != null && mounted) {
         setState(() => destination.add(compressed));
+      }
+    } on TimeoutException {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'La foto tardó demasiado. Intenta elegir otra imagen.',
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No pudimos abrir o procesar la foto seleccionada.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _pickingPhotos = false);
     }
   }
 
   Future<File?> _compressPhoto(XFile image) async {
+    final original = File(image.path);
+    if (await original.length() <= 716800) return original;
     for (final quality in [60, 45]) {
       final target =
           '${Directory.systemTemp.path}/fulbii_${DateTime.now().microsecondsSinceEpoch}_$quality.jpg';

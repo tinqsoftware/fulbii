@@ -253,6 +253,8 @@ struct FulbiiConfirmedEntry: TimelineEntry {
 struct FulbiiConfirmedItem: Codable, Hashable, Identifiable {
     let id: Int
     let title: String?
+    let dateLabel: String?
+    let timeLabel: String?
     let startsLabel: String?
     let formatLabel: String?
     let teamCount: Int?
@@ -261,6 +263,8 @@ struct FulbiiConfirmedItem: Codable, Hashable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id
         case title
+        case dateLabel = "date_label"
+        case timeLabel = "time_label"
         case startsLabel = "starts_label"
         case formatLabel = "format_label"
         case teamCount = "team_count"
@@ -434,14 +438,14 @@ struct FulbiiConfirmedWidgetEntryView: View {
                 Spacer(minLength: 0)
             }
         }
-        .padding(14)
+        .padding(10)
         .widgetURL(rootURL)
         .foregroundColor(.white)
         .modifier(FulbiiWidgetBackgroundModifier())
     }
 
     private var confirmedChipsRow: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 5) {
             ForEach(entry.items, id: \.id) { item in
                 confirmedChip(item: item)
             }
@@ -452,17 +456,21 @@ struct FulbiiConfirmedWidgetEntryView: View {
     private func confirmedChip(item: FulbiiConfirmedItem) -> some View {
         let selected = item.id == entry.selectedPichangaId
         let chipContent = VStack(alignment: .leading, spacing: 2) {
-            Text(item.startsLabel?.nonEmpty ?? "-")
+            Text(item.dateLabel?.nonEmpty ?? item.startsLabel?.nonEmpty ?? "-")
                 .font(.caption)
                 .fontWeight(.semibold)
                 .lineLimit(1)
-            Text(item.formatLabel?.nonEmpty ?? "-")
+            Text(item.timeLabel?.nonEmpty ?? "--:--")
                 .font(.caption)
+                .fontWeight(.bold)
+                .lineLimit(1)
+            Text(item.formatLabel?.nonEmpty ?? "-")
+                .font(.caption2)
                 .lineLimit(1)
         }
         .foregroundColor(selected ? .white : Color(red: 0.90, green: 0.95, blue: 0.92))
-        .padding(.horizontal, 8)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 7)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(selected ? Color(red: 0.13, green: 0.55, blue: 0.29) : Color(red: 0.12, green: 0.14, blue: 0.13))
         .overlay(

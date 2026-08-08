@@ -12,6 +12,8 @@ use App\Models\GroupPichangaRating;
 use App\Models\User;
 use App\Services\CombinedSkillRatingService;
 use App\Services\GroupPichangaAudienceService;
+use App\Services\PlayerRankingService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -20,7 +22,8 @@ class PichangaSocialController extends Controller
 {
     public function __construct(
         private readonly GroupPichangaAudienceService $audienceService,
-        private readonly CombinedSkillRatingService $combinedSkillRatings
+        private readonly CombinedSkillRatingService $combinedSkillRatings,
+        private readonly PlayerRankingService $rankings
     )
     {
     }
@@ -161,21 +164,23 @@ class PichangaSocialController extends Controller
         abort_if($ratedUserId === (int) $auth->id, 422, 'No puedes calificarte a ti mismo en esta pichanga.');
         abort_unless($this->isConfirmedParticipant((int) $pichanga->id, $ratedUserId), 422, 'Solo puedes calificar asistentes confirmados.');
 
-        $rating = GroupPichangaRating::updateOrCreate(
-            [
-                'pichanga_id' => $pichanga->id,
-                'rater_user_id' => $auth->id,
-                'rated_user_id' => $ratedUserId,
-            ],
-            [
-                'fisico' => $data['fisico'],
-                'arquero' => $data['arquero'],
-                'delantero' => $data['delantero'],
-                'mediocampo' => $data['mediocampo'],
-                'defensa' => $data['defensa'],
-                'comentario' => $data['comentario'] ?? null,
-            ]
-        );
+        abort_if(GroupPichangaRating::query()
+            ->where('pichanga_id', $pichanga->id)
+            ->where('rater_user_id', $auth->id)
+            ->where('rated_user_id', $ratedUserId)
+            ->exists(), 422, 'Ya calificaste a este jugador en esta pichanga.');
+
+        $rating = GroupPichangaRating::create([
+            'pichanga_id' => $pichanga->id,
+            'rater_user_id' => $auth->id,
+            'rated_user_id' => $ratedUserId,
+            'fisico' => $data['fisico'],
+            'arquero' => $data['arquero'],
+            'delantero' => $data['delantero'],
+            'mediocampo' => $data['mediocampo'],
+            'defensa' => $data['defensa'],
+            'comentario' => $data['comentario'] ?? null,
+        ]);
 
         return response()->json([
             'message' => 'Calificación guardada.',
@@ -193,8 +198,93 @@ class PichangaSocialController extends Controller
             ->with(['rater:id,name,nick', 'rated:id,name,nick'])
             ->orderByDesc('id')
             ->get();
+        $confirmed = GroupPichangaParticipant::query()
+            ->where('pichanga_id', $pichanga->id)->where('status', 'confirmed')
+            ->with('user:id,name,nick,avatar_url')->get()
+            ->filter(fn (GroupPichangaParticipant $participant) => (int) $participant->user_id !== (int) $auth->id)
+            ->map(fn (GroupPichangaParticipant $participant) => $participant->user)->values();
+        $myRatedIds = $items->where('rater_user_id', $auth->id)->pluck('rated_user_id')->map(fn ($id) => (int) $id)->all();
+        $leaders = $items->groupBy('rated_user_id')->map(function ($ratings, $userId) {
+            $first = $ratings->first();
+            $score = $ratings->map(fn ($rating) => collect([
+                $rating->fisico, $rating->arquero, $rating->delantero, $rating->mediocampo, $rating->defensa,
+            ])->avg())->avg();
+            return ['user_id' => (int) $userId, 'nick' => $first->rated?->nick ?: $first->rated?->name, 'score' => round((float) $score, 1), 'votes' => $ratings->count()];
+        })->sortByDesc('score')->values();
+        return response()->json([
+            'items' => $items,
+            'eligible_players' => $confirmed,
+            'my_rated_user_ids' => $myRatedIds,
+            'leaders' => $leaders,
+            'can_rate' => $this->isConfirmedParticipant((int) $pichanga->id, (int) $auth->id) && now()->gte($pichanga->starts_at),
+        ]);
+    }
 
-        return response()->json(['items' => $items]);
+    public function ratingHistory(Request $request, User $user)
+    {
+        $request->user() ?? abort(401);
+        $weekly = DB::table('calificaciones as r')->leftJoin('users as rater', 'rater.id', '=', 'r.user_calificador_id')
+            ->where('r.user_calificado_id', $user->id)->whereNull('r.deleted_at')
+            ->whereNull('r.ocultada_por_calificado_at')->whereNull('r.silenciada_por_admin_at')
+            ->selectRaw("'weekly' as source, r.id, r.created_at, COALESCE(rater.nick, rater.name, 'Jugador') as rater_nick, r.fisico, r.arquero, r.delantero, r.mediocampo, r.defensa, r.comentario");
+        $items = DB::table('group_pichanga_ratings as r')->leftJoin('users as rater', 'rater.id', '=', 'r.rater_user_id')
+            ->where('r.rated_user_id', $user->id)
+            ->selectRaw("'pichanga' as source, r.id, r.created_at, COALESCE(rater.nick, rater.name, 'Jugador') as rater_nick, r.fisico, r.arquero, r.delantero, r.mediocampo, r.defensa, r.comentario")
+            ->unionAll($weekly)->orderByDesc('created_at')->paginate(30);
+        return response()->json($items);
+    }
+
+    public function canRateProfile(Request $request, User $user)
+    {
+        $auth = $request->user() ?? abort(401);
+        return response()->json($this->profileRatingEligibility((int) $auth->id, (int) $user->id));
+    }
+
+    public function rateProfile(Request $request, User $user)
+    {
+        $auth = $request->user() ?? abort(401);
+        $eligibility = $this->profileRatingEligibility((int) $auth->id, (int) $user->id);
+        abort_unless($eligibility['allow'], 422, $eligibility['reason']);
+        $data = $request->validate([
+            'fisico' => ['required', 'numeric', 'min:0', 'max:5'], 'arquero' => ['required', 'numeric', 'min:0', 'max:5'],
+            'delantero' => ['required', 'numeric', 'min:0', 'max:5'], 'mediocampo' => ['required', 'numeric', 'min:0', 'max:5'],
+            'defensa' => ['required', 'numeric', 'min:0', 'max:5'], 'comentario' => ['nullable', 'string', 'max:500'],
+        ]);
+        DB::table('calificaciones')->insert([
+            'club_id' => $eligibility['club_id'], 'user_calificador_id' => $auth->id, 'user_calificado_id' => $user->id,
+            ...$data, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        return response()->json(['message' => 'Calificación registrada.'], 201);
+    }
+
+    public function rankings(Request $request)
+    {
+        $auth = $request->user() ?? abort(401);
+        return response()->json($this->rankings->leaderboard($request->query('band', 'total'), (int) $auth->id));
+    }
+
+    public function playerRanking(Request $request, User $user)
+    {
+        $request->user() ?? abort(401);
+        return response()->json($this->rankings->summaryForUser($user));
+    }
+
+    /** @return array{allow:bool,reason:string,club_id?:int} */
+    private function profileRatingEligibility(int $raterId, int $ratedId): array
+    {
+        if ($raterId === $ratedId) return ['allow' => false, 'reason' => 'No puedes calificarte a ti mismo.'];
+        $clubId = ClubUser::query()->where('user_id', $raterId)->active()
+            ->whereIn('club_id', ClubUser::query()->where('user_id', $ratedId)->active()->select('club_id'))
+            ->value('club_id');
+        if (!$clubId) return ['allow' => false, 'reason' => 'Solo puedes calificar compañeros de tus grupos.'];
+        $weekStart = Carbon::now()->startOfWeek(Carbon::MONDAY)->startOfDay();
+        $weekEnd = Carbon::now()->endOfWeek(Carbon::SUNDAY)->endOfDay();
+        $exists = DB::table('calificaciones')->where('user_calificador_id', $raterId)
+            ->where('user_calificado_id', $ratedId)->whereBetween('created_at', [$weekStart, $weekEnd])
+            ->whereNull('deleted_at')->exists();
+        return $exists
+            ? ['allow' => false, 'reason' => 'Ya calificaste a este jugador esta semana.']
+            : ['allow' => true, 'reason' => '', 'club_id' => (int) $clubId];
     }
 
     public function userCard(Request $request, User $user)

@@ -41,6 +41,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Confirmadas (1)'), findsOneWidget);
+    expect(find.text('Asistencia confirmada'), findsOneWidget);
     expect(find.text('Pendientes (0)'), findsOneWidget);
     expect(find.textContaining('Cancha Norte'), findsOneWidget);
     expect(find.text('Pichangas'), findsNothing);
@@ -49,6 +50,48 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Hoy'), findsOneWidget);
+    expect(find.text('Lista'), findsOneWidget);
     expect(find.textContaining('Cancha Norte'), findsOneWidget);
+    expect(
+      find.byKey(
+        Key(
+          'calendar-day-status-${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}',
+        ),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('marks a day with both confirmation states', (tester) async {
+    final pending = {...item, 'id': 8, 'calendar_section': 'pending'};
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          pichangasBoardProvider.overrideWith(
+            (ref) async => {
+              'confirmed_items': const [],
+              'pending_items': [pending],
+              'terminated_items': const [],
+            },
+          ),
+          pichangasCalendarProvider(
+            monthKey,
+          ).overrideWith((ref) async => [item, pending]),
+        ],
+        child: const MaterialApp(home: Scaffold(body: PichangasScreen())),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Ver calendario'));
+    await tester.pumpAndSettle();
+    expect(find.text('No confirmada'), findsOneWidget);
+    expect(
+      find.byKey(
+        Key(
+          'calendar-day-status-${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}',
+        ),
+      ),
+      findsOneWidget,
+    );
   });
 }

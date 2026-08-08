@@ -22,8 +22,8 @@ final pichangaFeedProvider = FutureProvider.autoDispose
     });
 
 final pichangaRatingsProvider = FutureProvider.autoDispose
-    .family<List<Map<String, dynamic>>, int>((ref, pichangaId) {
-      return ref.watch(pichangasRepositoryProvider).ratings(pichangaId);
+    .family<Map<String, dynamic>, int>((ref, pichangaId) {
+      return ref.watch(pichangasRepositoryProvider).ratingsDetail(pichangaId);
     });
 
 final pichangaExternalRequestsProvider = FutureProvider.autoDispose
@@ -849,6 +849,10 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
                         ListTile(
                           contentPadding: EdgeInsets.zero,
                           title: Text(author),
+                          trailing: Text(
+                            _formatLocalDateTime(post['created_at']),
+                            style: Theme.of(context).textTheme.labelSmall,
+                          ),
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -923,10 +927,16 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
-                TextButton.icon(
-                  onPressed: () => _addRatingDialog(context, ref),
-                  icon: const Icon(Icons.star_border),
-                  label: const Text('Calificar'),
+                ratingsAsync.when(
+                  loading: () => const SizedBox(width: 32, height: 32),
+                  error: (_, _) => const SizedBox.shrink(),
+                  data: (data) => TextButton.icon(
+                    onPressed: data['can_rate'] == true
+                        ? () => _addRatingDialog(context, ref)
+                        : null,
+                    icon: const Icon(Icons.star_border),
+                    label: const Text('Calificar'),
+                  ),
                 ),
               ],
             ),
@@ -934,31 +944,54 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
             ratingsAsync.when(
               loading: () => const LinearProgressIndicator(minHeight: 2),
               error: (error, _) => Text('Error ratings: $error'),
-              data: (items) {
+              data: (data) {
+                final items = data['items'] is List
+                    ? data['items'] as List
+                    : [];
+                final leaders = data['leaders'] is List
+                    ? data['leaders'] as List
+                    : [];
                 if (items.isEmpty) {
-                  return const Text('Sin calificaciones todavía.');
+                  return const Text(
+                    'Aún no hay calificaciones. Cuando termine la pichanga, evalúa a tus compañeros confirmados.',
+                  );
                 }
 
-                return Column(
-                  children: items.map((item) {
-                    final rater =
-                        (item['rater'] as Map?)?.cast<String, dynamic>() ?? {};
-                    final rated =
-                        (item['rated'] as Map?)?.cast<String, dynamic>() ?? {};
-                    final raterName = (rater['nick'] ?? rater['name'] ?? '')
-                        .toString();
-                    final ratedName = (rated['nick'] ?? rated['name'] ?? '')
-                        .toString();
+                final ratingTiles = items.map((item) {
+                  final rater =
+                      (item['rater'] as Map?)?.cast<String, dynamic>() ?? {};
+                  final rated =
+                      (item['rated'] as Map?)?.cast<String, dynamic>() ?? {};
+                  final raterName = (rater['nick'] ?? rater['name'] ?? '')
+                      .toString();
+                  final ratedName = (rated['nick'] ?? rated['name'] ?? '')
+                      .toString();
 
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text('$raterName -> $ratedName'),
-                      subtitle: Text(
-                        'F:${item['fisico']} A:${item['arquero']} D:${item['delantero']} '
-                        'M:${item['mediocampo']} Def:${item['defensa']}',
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('$raterName -> $ratedName'),
+                    subtitle: Text(
+                      'F:${item['fisico']} A:${item['arquero']} D:${item['delantero']} '
+                      'M:${item['mediocampo']} Def:${item['defensa']}',
+                    ),
+                  );
+                }).toList();
+                return Column(
+                  children: [
+                    if (leaders.isNotEmpty) ...[
+                      ListTile(
+                        leading: const Icon(Icons.workspace_premium_outlined),
+                        title: Text(
+                          'Mejor jugador: ${(leaders.first as Map)['nick'] ?? 'Jugador'}',
+                        ),
+                        subtitle: Text(
+                          '★ ${((leaders.first as Map)['score'] as num?)?.toStringAsFixed(1) ?? '—'} · ${(leaders.first as Map)['votes'] ?? 0} votos',
+                        ),
                       ),
-                    );
-                  }).toList(),
+                      const Divider(),
+                    ],
+                    ...ratingTiles,
+                  ],
                 );
               },
             ),
@@ -1171,6 +1204,23 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
                               ),
                         ),
                       ),
+                      if ((isAdmin || isMyTeam) && confirmedCount > 0)
+                        IconButton(
+                          key: Key('team-formation-$code'),
+                          tooltip: 'Ver formación',
+                          icon: const Icon(
+                            Icons.sports_soccer_outlined,
+                            size: 18,
+                          ),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints.tightFor(
+                            width: 32,
+                            height: 32,
+                          ),
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () =>
+                              _openFormation(context, code, isAdmin),
+                        ),
                       if (selected)
                         Icon(
                           Icons.check_circle,
@@ -1364,22 +1414,6 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
               ),
             ),
           ),
-          if (isAdmin || isMyTeam)
-            Positioned(
-              top: 0,
-              right: 8,
-              child: Material(
-                color: Theme.of(context).colorScheme.primaryContainer,
-                shape: const CircleBorder(),
-                child: IconButton(
-                  tooltip: 'Ver formación sugerida',
-                  icon: const Icon(Icons.stadium_outlined, size: 19),
-                  onPressed: confirmedCount == 0
-                      ? null
-                      : () => _openFormation(context, code, isAdmin),
-                ),
-              ),
-            ),
         ],
       );
     }
@@ -1811,7 +1845,37 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
   }
 
   Future<void> _addRatingDialog(BuildContext context, WidgetRef ref) async {
-    final userIdController = TextEditingController();
+    final ratingData = await ref.read(
+      pichangaRatingsProvider(widget.pichangaId).future,
+    );
+    final eligible = (ratingData['eligible_players'] as List? ?? [])
+        .whereType<Map>()
+        .map((item) => item.cast<String, dynamic>())
+        .toList();
+    final alreadyRated = (ratingData['my_rated_user_ids'] as List? ?? [])
+        .map((id) => int.tryParse(id.toString()) ?? 0)
+        .toSet();
+    final candidates = eligible
+        .where(
+          (player) => !alreadyRated.contains(
+            int.tryParse(player['id'].toString()) ?? 0,
+          ),
+        )
+        .toList();
+    if (candidates.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'No tienes compañeros confirmados pendientes por calificar.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+    if (!context.mounted) return;
+    int? ratedUserId = int.tryParse(candidates.first['id'].toString());
     double fisico = 2.5;
     double arquero = 2.5;
     double delantero = 2.5;
@@ -1852,12 +1916,23 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    TextField(
-                      controller: userIdController,
+                    DropdownButtonFormField<int>(
+                      initialValue: ratedUserId,
                       decoration: const InputDecoration(
-                        labelText: 'ID del jugador',
+                        labelText: 'Jugador confirmado',
                       ),
-                      keyboardType: TextInputType.number,
+                      items: candidates
+                          .map(
+                            (player) => DropdownMenuItem(
+                              value: int.tryParse(player['id'].toString()),
+                              child: Text(
+                                (player['nick'] ?? player['name'] ?? 'Jugador')
+                                    .toString(),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) => setState(() => ratedUserId = value),
                     ),
                     sliderRow(
                       'Físico',
@@ -1910,9 +1985,6 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
                 ),
                 FilledButton(
                   onPressed: () async {
-                    final ratedUserId = int.tryParse(
-                      userIdController.text.trim(),
-                    );
                     if (ratedUserId == null) {
                       ScaffoldMessenger.of(dialogContext).showSnackBar(
                         const SnackBar(
@@ -1929,7 +2001,7 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
                           .read(pichangasRepositoryProvider)
                           .addOrUpdateRating(
                             widget.pichangaId,
-                            ratedUserId: ratedUserId,
+                            ratedUserId: ratedUserId!,
                             fisico: fisico,
                             arquero: arquero,
                             delantero: delantero,
@@ -1955,7 +2027,6 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
     );
 
     if (context.mounted) {
-      userIdController.dispose();
       comentarioController.dispose();
     }
   }
@@ -2443,21 +2514,25 @@ class _FormationSheetState extends ConsumerState<_FormationSheet> {
           child: FutureBuilder<List<Map<String, dynamic>>>(
             future: _future,
             builder: (context, snapshot) {
-              if (snapshot.connectionState != ConnectionState.done)
+              if (snapshot.connectionState != ConnectionState.done) {
                 return const Center(child: CircularProgressIndicator());
-              if (snapshot.hasError)
+              }
+              if (snapshot.hasError) {
                 return Center(
                   child: Text(
                     'No se pudo generar la sugerencia: ${snapshot.error}',
                   ),
                 );
+              }
               _positions ??= snapshot.data ?? [];
-              if (_positions!.isEmpty)
+              _ensurePitchPositions();
+              if (_positions!.isEmpty) {
                 return const Center(
                   child: Text(
                     'Aún no hay jugadores confirmados para sugerir una formación.',
                   ),
                 );
+              }
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -2469,63 +2544,19 @@ class _FormationSheetState extends ConsumerState<_FormationSheet> {
                   ),
                   const SizedBox(height: 6),
                   const Text(
-                    'Basada en las estrellas globales y habilidades registradas. Puedes ajustar las posiciones de tu equipo antes de aplicar.',
+                    'Arrastra a cada jugador dentro de la cancha y aplica los cambios cuando estés listo.',
                   ),
                   const SizedBox(height: 14),
                   Expanded(
-                    child: ListView.separated(
-                      itemCount: _positions!.length,
-                      separatorBuilder: (_, _) => const Divider(),
-                      itemBuilder: (context, index) {
-                        final item = _positions![index];
-                        final name = (item['nick'] ?? item['name'] ?? 'Jugador')
-                            .toString();
-                        final role = (item['formation_role'] ?? 'midfielder')
-                            .toString();
-                        return Row(
-                          children: [
-                            Container(
-                              width: 34,
-                              height: 34,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.primaryContainer,
-                                shape: BoxShape.circle,
-                              ),
-                              child: Text('${index + 1}'),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                name,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            DropdownButton<String>(
-                              value: role,
-                              underline: const SizedBox.shrink(),
-                              items: _labels.entries
-                                  .map(
-                                    (entry) => DropdownMenuItem(
-                                      value: entry.key,
-                                      child: Text(entry.value),
-                                    ),
-                                  )
-                                  .toList(),
-                              onChanged: (value) {
-                                if (value != null)
-                                  setState(
-                                    () => item['formation_role'] = value,
-                                  );
-                              },
-                            ),
-                          ],
-                        );
-                      },
+                    child: Center(
+                      child: AspectRatio(
+                        aspectRatio: 2 / 3,
+                        child: _FormationPitch(
+                          positions: _positions!,
+                          labels: _labels,
+                          onMove: _movePlayer,
+                        ),
+                      ),
                     ),
                   ),
                   SizedBox(
@@ -2545,6 +2576,47 @@ class _FormationSheetState extends ConsumerState<_FormationSheet> {
     );
   }
 
+  void _ensurePitchPositions() {
+    final byRole = <String, List<Map<String, dynamic>>>{};
+    for (final item in _positions!) {
+      final role = (item['formation_role'] ?? 'midfielder').toString();
+      (byRole[role] ??= []).add(item);
+    }
+    for (final entry in byRole.entries) {
+      for (var index = 0; index < entry.value.length; index++) {
+        final item = entry.value[index];
+        final x = item['formation_x'];
+        final y = item['formation_y'];
+        if (x is num && y is num) continue;
+        final count = entry.value.length;
+        final spread = (index + 1) / (count + 1);
+        item['formation_x'] = entry.key == 'goalkeeper'
+            ? .5
+            : .12 + .76 * spread;
+        item['formation_y'] = switch (entry.key) {
+          'goalkeeper' => .88,
+          'defender' => .68,
+          'forward' => .22,
+          _ => .46,
+        };
+      }
+    }
+  }
+
+  void _movePlayer(int index, Offset delta, Size pitchSize) {
+    final item = _positions![index];
+    final x =
+        ((item['formation_x'] as num).toDouble() + delta.dx / pitchSize.width)
+            .clamp(.06, .94);
+    final y =
+        ((item['formation_y'] as num).toDouble() + delta.dy / pitchSize.height)
+            .clamp(.05, .95);
+    setState(() {
+      item['formation_x'] = x;
+      item['formation_y'] = y;
+    });
+  }
+
   Future<void> _apply() async {
     setState(() => _saving = true);
     try {
@@ -2556,6 +2628,8 @@ class _FormationSheetState extends ConsumerState<_FormationSheet> {
               'user_id': entry.value['user_id'],
               'formation_role': entry.value['formation_role'],
               'formation_order': entry.key + 1,
+              'formation_x': entry.value['formation_x'],
+              'formation_y': entry.value['formation_y'],
             },
           )
           .toList();
@@ -2563,14 +2637,133 @@ class _FormationSheetState extends ConsumerState<_FormationSheet> {
           .read(pichangasRepositoryProvider)
           .updateFormation(widget.pichangaId, widget.teamCode, positions);
       widget.onApplied();
-      if (mounted) Navigator.of(context).pop();
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
     } on ApiError catch (error) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted) {
+        setState(() => _saving = false);
+      }
     }
+  }
+}
+
+class _FormationPitch extends StatelessWidget {
+  const _FormationPitch({
+    required this.positions,
+    required this.labels,
+    required this.onMove,
+  });
+
+  final List<Map<String, dynamic>> positions;
+  final Map<String, String> labels;
+  final void Function(int index, Offset delta, Size pitchSize) onMove;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return LayoutBuilder(
+      builder: (context, constraints) => ClipRRect(
+        key: const Key('formation-pitch'),
+        borderRadius: BorderRadius.circular(18),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.asset(
+              'assets/share/lineup_7v7_template.png',
+              fit: BoxFit.cover,
+            ),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: colors.primary.withValues(alpha: .7),
+                  width: 2,
+                ),
+                borderRadius: BorderRadius.circular(18),
+              ),
+            ),
+            ...positions.asMap().entries.map((entry) {
+              final index = entry.key;
+              final item = entry.value;
+              final x = (item['formation_x'] as num).toDouble();
+              final y = (item['formation_y'] as num).toDouble();
+              final name = (item['nick'] ?? item['name'] ?? 'Jugador')
+                  .toString();
+              final role = (item['formation_role'] ?? 'midfielder').toString();
+              return Positioned(
+                left: x * constraints.maxWidth - 24,
+                top: y * constraints.maxHeight - 25,
+                child: GestureDetector(
+                  key: Key('formation-player-${item['user_id']}'),
+                  onPanUpdate: (details) =>
+                      onMove(index, details.delta, constraints.biggest),
+                  child: Semantics(
+                    label: '$name, ${labels[role] ?? role}',
+                    child: SizedBox(
+                      width: 48,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 34,
+                            height: 34,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: colors.primary,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2),
+                            ),
+                            child: Text(
+                              name.isEmpty
+                                  ? '?'
+                                  : name.substring(0, 1).toUpperCase(),
+                              style: TextStyle(
+                                color: colors.onPrimary,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                              shadows: [
+                                Shadow(color: Colors.black, blurRadius: 3),
+                              ],
+                            ),
+                          ),
+                          Text(
+                            labels[role] ?? role,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 8,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
   }
 }

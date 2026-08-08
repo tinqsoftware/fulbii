@@ -13,7 +13,6 @@ import 'features/clubs/presentation/join_club_by_link_screen.dart';
 import 'features/clubs/presentation/club_detail_screen.dart';
 import 'features/home/main_shell.dart';
 import 'features/pichangas/presentation/pichanga_detail_screen.dart';
-import 'features/pichangas/presentation/pichangas_screen.dart';
 import 'features/pichangas/presentation/pichanga_widget_share_screen.dart';
 import 'features/pichangas/data/pichangas_repository.dart';
 import 'services/deep_links/deep_link_service.dart';
@@ -668,9 +667,10 @@ class _FulbiiAppState extends ConsumerState<FulbiiApp>
 
     _openingPichangasScreen = true;
     try {
-      await navigator.push(
-        MaterialPageRoute<void>(builder: (_) => PichangasScreen()),
-      );
+      // Widget launches must land in the app shell, not in a pushed standalone
+      // screen. That preserves the bottom navigation the user expects.
+      navigator.popUntil((route) => route.isFirst);
+      ref.read(mainShellTabProvider.notifier).state = 2;
     } finally {
       _openingPichangasScreen = false;
     }

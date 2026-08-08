@@ -15,6 +15,7 @@ import '../../auth/session_controller.dart';
 import '../data/profile_repository.dart';
 import '../services/clip_processing_service.dart';
 import 'edit_profile_screen.dart';
+import 'player_rankings_screen.dart';
 import '../../clubs/data/clubs_repository.dart';
 import '../../pichangas/presentation/pichanga_history_screen.dart';
 import '../../pichangas/presentation/pichanga_detail_screen.dart';
@@ -35,6 +36,18 @@ final myProfileClipsProvider =
           .map((item) => item.cast<String, dynamic>())
           .toList();
     });
+
+final myRatingHistoryProvider = FutureProvider.autoDispose
+    .family<List<Map<String, dynamic>>, int>(
+      (ref, userId) =>
+          ref.watch(profileRepositoryProvider).ratingHistory(userId),
+    );
+
+final ownPlayerRankingProvider = FutureProvider.autoDispose
+    .family<Map<String, dynamic>, int>(
+      (ref, userId) =>
+          ref.watch(profileRepositoryProvider).playerRanking(userId),
+    );
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -102,6 +115,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
 
     final topPadding = MediaQuery.of(context).padding.top + 16;
+    final ratingsAsync = ref.watch(myRatingHistoryProvider(user.id));
+    final rankingAsync = ref.watch(ownPlayerRankingProvider(user.id));
 
     return ListView(
       padding: EdgeInsets.fromLTRB(20, topPadding, 20, 24),
@@ -201,6 +216,45 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
           ],
         ),
+        rankingAsync.when(
+          loading: () => const SizedBox.shrink(),
+          error: (_, _) => const SizedBox.shrink(),
+          data: (ranking) => Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Wrap(
+              spacing: 8,
+              children: [
+                _buildInfoChip(
+                  context,
+                  icon: Icons.leaderboard_outlined,
+                  label: ranking['total'] == null
+                      ? 'Ranking total: —'
+                      : 'Ranking total: #${ranking['total']}',
+                ),
+                _buildInfoChip(
+                  context,
+                  icon: Icons.cake_outlined,
+                  label: ranking['age'] == null
+                      ? 'Ranking edad: —'
+                      : '${ranking['age_band_label'] ?? 'Edad'}: #${ranking['age']}',
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const PlayerRankingsScreen(),
+              ),
+            ),
+            icon: const Icon(Icons.leaderboard_outlined),
+            label: const Text('Ver ranking'),
+          ),
+        ),
         const SizedBox(height: 24),
         const Divider(height: 1),
         const SizedBox(height: 20),
@@ -292,6 +346,38 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               },
             );
           },
+        ),
+        const SizedBox(height: 16),
+        const Divider(height: 1),
+        const SizedBox(height: 20),
+
+        Text(
+          'Historial de calificaciones',
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 8),
+        ratingsAsync.when(
+          loading: () => const LinearProgressIndicator(minHeight: 2),
+          error: (_, _) => const Text('No se pudo cargar tu historial.'),
+          data: (items) => items.isEmpty
+              ? const Text('Aún no recibiste calificaciones.')
+              : Column(
+                  children: items
+                      .take(5)
+                      .map(
+                        (item) => ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.star_outline),
+                          title: Text('@${item['rater_nick'] ?? 'Jugador'}'),
+                          subtitle: Text(
+                            'F ${item['fisico']} · A ${item['arquero']} · D ${item['delantero']} · M ${item['mediocampo']} · Def ${item['defensa']}',
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
         ),
         const SizedBox(height: 16),
         const Divider(height: 1),

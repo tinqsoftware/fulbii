@@ -101,6 +101,7 @@ class ChallengeChatNotificationTest extends TestCase
         ]);
 
         $response->assertCreated();
+        $response->assertJsonPath('item.is_mine', true);
         $response->assertJsonPath('dispatch.target_count', 3);
         $response->assertJsonPath('dispatch.muted_skipped_count', 1);
         $response->assertJsonPath('dispatch.active_chat_skipped_count', 1);
@@ -225,4 +226,3 @@ class ChallengeChatNotificationTest extends TestCase
         });
     }
 }
-

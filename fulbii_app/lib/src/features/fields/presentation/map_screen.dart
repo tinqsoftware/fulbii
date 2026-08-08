@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -8,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../../../core/formatters/spanish_date_formatter.dart';
 import '../../profile/data/profile_repository.dart';
 import '../../auth/presentation/login_required_sheet.dart';
 import '../../auth/session_controller.dart';
@@ -16,6 +16,7 @@ import '../data/fields_repository.dart';
 import '../domain/field_cluster.dart';
 import '../domain/field_model.dart';
 import 'field_detail_screen.dart';
+import 'map_filter_controls.dart';
 import 'field_submission_screen.dart';
 
 class MapFilterState {
@@ -59,61 +60,6 @@ class _FieldPlaceholder extends StatelessWidget {
           Icons.sports_soccer_outlined,
           color: colorScheme.primary,
           size: 36,
-        ),
-      ),
-    );
-  }
-}
-
-class _FilterChoice extends StatelessWidget {
-  const _FilterChoice({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-    this.fontSize = 13,
-    this.maxLines = 1,
-    this.padding = const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-  final double fontSize;
-  final int maxLines;
-  final EdgeInsetsGeometry padding;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Material(
-      color: selected ? const Color(0xFF1B8F24) : colorScheme.surface,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: padding,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: selected
-                  ? const Color(0xFF38D430)
-                  : colorScheme.outlineVariant,
-              width: selected ? 1.5 : 1,
-            ),
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            label,
-            maxLines: maxLines,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: selected ? Colors.white : colorScheme.onSurface,
-              fontWeight: FontWeight.w700,
-              fontSize: fontSize,
-            ),
-          ),
         ),
       ),
     );
@@ -181,11 +127,15 @@ class _MapScreenState extends ConsumerState<MapScreen>
   BitmapDescriptor? _userLocationIconCache;
 
   bool _showList = false;
+  // `both` means all fields, while `pichangas` restricts the fields to venues
+  // that have an event in the selected period.
   String _mapContent = 'both';
-  String _pichangaRange = 'today';
+  String _pichangaRange = 'custom';
   DateTimeRange? _customPichangaRange;
   Future<List<Map<String, dynamic>>>? _pichangasFuture;
   FieldModel? _selectedField;
+  int? _selectedPichangaId;
+  bool _showSelectedFieldPreview = false;
   Future<FieldModel>? _selectedFieldDetail;
   GoogleMapController? _mapController;
   StreamSubscription<Position>? _locationSubscription;
@@ -231,6 +181,11 @@ class _MapScreenState extends ConsumerState<MapScreen>
   @override
   void initState() {
     super.initState();
+    final today = DateUtils.dateOnly(DateTime.now());
+    _customPichangaRange = DateTimeRange(
+      start: today,
+      end: today.add(const Duration(days: 6)),
+    );
     _pulseController =
         AnimationController(
           vsync: this,
@@ -318,9 +273,6 @@ class _MapScreenState extends ConsumerState<MapScreen>
             ? LatLng(validFields.first.x, validFields.first.y)
             : const LatLng(-12.0464, -77.0428);
 
-        _ensureMarkersFuture(
-          _mapContent == 'pichangas' ? const [] : validFields,
-        );
         _scheduleResultsFit(validFields);
 
         return Column(
@@ -402,7 +354,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
     required double height,
     required List<Widget> children,
   }) {
-    const spacing = 8.0;
+    const spacing = 6.0;
     return LayoutBuilder(
       builder: (context, constraints) {
         final itemWidth =
@@ -422,37 +374,46 @@ class _MapScreenState extends ConsumerState<MapScreen>
   }
 
   Widget _buildMapView(List<FieldModel> fields, LatLng initial) {
-    _lastMapFields = fields;
-    if (_mapContent != 'fields' && _pichangasFuture == null) {
-      _pichangasFuture = _loadMapPichangas();
-    }
+    _pichangasFuture ??= _loadMapPichangas();
     return Stack(
       children: [
         FutureBuilder<List<Map<String, dynamic>>>(
-          future: _mapContent == 'fields' ? null : _pichangasFuture,
-          builder: (context, pichangasSnapshot) => FutureBuilder<Set<Marker>>(
-            future: _markersFuture,
-            builder: (context, snapshot) => GoogleMap(
-              initialCameraPosition: CameraPosition(
-                target: initial,
-                zoom: 11.5,
+          future: _pichangasFuture,
+          builder: (context, pichangasSnapshot) {
+            final pichangas =
+                pichangasSnapshot.data ?? const <Map<String, dynamic>>[];
+            final countByField = _pichangaCountsByField(pichangas);
+            final visibleFields = _mapContent == 'pichangas'
+                ? fields
+                      .where((field) => (countByField[field.id] ?? 0) > 0)
+                      .toList()
+                : fields;
+            _lastMapFields = visibleFields;
+            _ensureMarkersFuture(visibleFields, countByField.keys.toSet());
+            final cameraTarget = visibleFields.isNotEmpty
+                ? LatLng(visibleFields.first.x, visibleFields.first.y)
+                : initial;
+            return FutureBuilder<Set<Marker>>(
+              future: _markersFuture,
+              builder: (context, snapshot) => GoogleMap(
+                initialCameraPosition: CameraPosition(
+                  target: cameraTarget,
+                  zoom: 11.5,
+                ),
+                markers: snapshot.data ?? const <Marker>{},
+                style: Theme.of(context).brightness == Brightness.dark
+                    ? _mapStyle
+                    : null,
+                myLocationEnabled: _myLocationEnabled,
+                myLocationButtonEnabled: false,
+                mapToolbarEnabled: true,
+                onMapCreated: _onMapCreated,
+                onCameraMove: (position) => _cameraZoom = position.zoom,
+                onCameraIdle: _handleCameraIdle,
+                onTap: (_) => _clearSelectedField(),
               ),
-              markers: {
-                ...?snapshot.data,
-                ..._pichangaMarkers(pichangasSnapshot.data ?? const []),
-              },
-              style: Theme.of(context).brightness == Brightness.dark
-                  ? _mapStyle
-                  : null,
-              myLocationEnabled: _myLocationEnabled,
-              myLocationButtonEnabled: false,
-              mapToolbarEnabled: true,
-              onMapCreated: _onMapCreated,
-              onCameraMove: (position) => _cameraZoom = position.zoom,
-              onCameraIdle: _handleCameraIdle,
-              onTap: (_) => _clearSelectedField(),
-            ),
-          ),
+            );
+          },
         ),
         if (_hasActiveFilters)
           Positioned(
@@ -460,16 +421,35 @@ class _MapScreenState extends ConsumerState<MapScreen>
             left: 12,
             child: _buildResultsBadge(fields.length),
           ),
-        if (_selectedField != null)
-          Positioned(
-            left: 12,
-            right: 12,
-            bottom: 16,
-            child: _buildSelectedPreview(_selectedField!),
+        Positioned(
+          left: 12,
+          right: 12,
+          bottom: 12,
+          child: FutureBuilder<List<Map<String, dynamic>>>(
+            future: _pichangasFuture,
+            builder: (context, snapshot) {
+              final pichangas = _flatMapPichangas(
+                snapshot.data ?? const <Map<String, dynamic>>[],
+              );
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (_selectedField != null && _showSelectedFieldPreview) ...[
+                    _buildSelectedPreview(_selectedField!),
+                    const SizedBox(height: 10),
+                  ],
+                  _buildPichangaCarousel(pichangas),
+                ],
+              );
+            },
           ),
+        ),
         Positioned(
           right: 16,
-          bottom: _selectedField == null ? 20 : 244,
+          bottom: _selectedField != null && _showSelectedFieldPreview
+              ? 390
+              : 156,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -489,101 +469,6 @@ class _MapScreenState extends ConsumerState<MapScreen>
           ),
         ),
       ],
-    );
-  }
-
-  Set<Marker> _pichangaMarkers(List<Map<String, dynamic>> venues) {
-    if (_mapContent == 'fields') return const {};
-    final buckets = <String, List<Map<String, dynamic>>>{};
-    final scale = 256 * math.pow(2, _cameraZoom.clamp(0, 22));
-    for (final venue in venues) {
-      final lat = (venue['latitude'] as num).toDouble();
-      final lng = (venue['longitude'] as num).toDouble();
-      final x = ((lng + 180) / 360 * scale / 68).floor();
-      final y =
-          ((1 -
-                      math.log(
-                            math.tan(lat * math.pi / 180) +
-                                1 / math.cos(lat * math.pi / 180),
-                          ) /
-                          math.pi) /
-                  2 *
-                  scale /
-                  68)
-              .floor();
-      (buckets['$x:$y'] ??= []).add(venue);
-    }
-    return buckets.entries.map((entry) {
-      final grouped = entry.value;
-      if (grouped.length > 1) {
-        final total = grouped.fold<int>(
-          0,
-          (sum, item) =>
-              sum +
-              ((item['mine_count'] as num? ?? 0).toInt()) +
-              ((item['public_count'] as num? ?? 0).toInt()),
-        );
-        final lat =
-            grouped
-                .map((item) => (item['latitude'] as num).toDouble())
-                .reduce((a, b) => a + b) /
-            grouped.length;
-        final lng =
-            grouped
-                .map((item) => (item['longitude'] as num).toDouble())
-                .reduce((a, b) => a + b) /
-            grouped.length;
-        return Marker(
-          markerId: MarkerId('pichanga-cluster-${entry.key}'),
-          position: LatLng(lat, lng),
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-            BitmapDescriptor.hueViolet,
-          ),
-          infoWindow: InfoWindow(title: '$total pichangas'),
-          onTap: () => _mapController?.animateCamera(
-            CameraUpdate.newLatLngZoom(LatLng(lat, lng), _cameraZoom + 2),
-          ),
-        );
-      }
-      final venue = grouped.single;
-      final mine = (venue['mine_count'] as num? ?? 0) > 0;
-      final total =
-          (venue['mine_count'] as num? ?? 0).toInt() +
-          (venue['public_count'] as num? ?? 0).toInt();
-      return Marker(
-        markerId: MarkerId('pichanga-${venue['field_id']}'),
-        position: _pichangaAnchor(venue),
-        // Anchor below the pin: the pichanga marker sits above the green
-        // field badge (or its visible cluster), never on top of its centre.
-        anchor: const Offset(0.5, 1.62),
-        icon: BitmapDescriptor.defaultMarkerWithHue(
-          mine ? BitmapDescriptor.hueRed : BitmapDescriptor.hueAzure,
-        ),
-        infoWindow: InfoWindow(
-          title: '$total pichanga${total == 1 ? '' : 's'}',
-          snippet: venue['field_name']?.toString(),
-        ),
-        onTap: () {
-          final fieldId = (venue['field_id'] as num?)?.toInt();
-          final field = _lastMapFields
-              .where((item) => item.id == fieldId)
-              .firstOrNull;
-          if (field != null) _selectField(field);
-        },
-      );
-    }).toSet();
-  }
-
-  LatLng _pichangaAnchor(Map<String, dynamic> venue) {
-    final fieldId = (venue['field_id'] as num?)?.toInt();
-    final cluster = _clusterer
-        .cluster(_lastMapFields, _cameraZoom)
-        .where((item) => item.fields.any((field) => field.id == fieldId))
-        .firstOrNull;
-    if (cluster != null) return LatLng(cluster.latitude, cluster.longitude);
-    return LatLng(
-      (venue['latitude'] as num).toDouble(),
-      (venue['longitude'] as num).toDouble(),
     );
   }
 
@@ -708,6 +593,193 @@ class _MapScreenState extends ConsumerState<MapScreen>
       result[fieldId] = count;
     }
     return result;
+  }
+
+  List<Map<String, dynamic>> _flatMapPichangas(
+    List<Map<String, dynamic>> venues,
+  ) {
+    final items = <Map<String, dynamic>>[];
+    for (final venue in venues) {
+      final fieldId = (venue['field_id'] as num?)?.toInt();
+      final venueItems = venue['items'];
+      if (fieldId == null || venueItems is! List) continue;
+      for (final rawItem in venueItems.whereType<Map>()) {
+        final item = rawItem.cast<String, dynamic>();
+        items.add({...item, 'field_id': fieldId});
+      }
+    }
+    items.sort((a, b) {
+      final aDate = SpanishDateFormatter.parse(a['starts_at']?.toString());
+      final bDate = SpanishDateFormatter.parse(b['starts_at']?.toString());
+      if (aDate == null && bDate == null) return 0;
+      if (aDate == null) return 1;
+      if (bDate == null) return -1;
+      return aDate.compareTo(bDate);
+    });
+    return items;
+  }
+
+  Widget _buildPichangaCarousel(List<Map<String, dynamic>> pichangas) {
+    final colorScheme = Theme.of(context).colorScheme;
+    if (pichangas.isEmpty) {
+      return Material(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Row(
+            children: [
+              Icon(Icons.sports_soccer_outlined, color: colorScheme.primary),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text('No hay pichangas abiertas en este rango.'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: 104,
+      child: ListView.separated(
+        key: const ValueKey('map-pichangas-carousel'),
+        scrollDirection: Axis.horizontal,
+        itemCount: pichangas.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final item = pichangas[index];
+          final id =
+              (item['id'] as num?)?.toInt() ??
+              int.tryParse(item['id']?.toString() ?? '');
+          final selected = id != null && id == _selectedPichangaId;
+          final date = SpanishDateFormatter.pichangaDate(
+            item['starts_at']?.toString(),
+          );
+          final court = (item['court_name'] ?? 'Cancha por confirmar')
+              .toString();
+          final field = (item['field_name'] ?? 'Polideportivo').toString();
+          return SizedBox(
+            width: 238,
+            child: Card(
+              margin: EdgeInsets.zero,
+              clipBehavior: Clip.antiAlias,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+                side: BorderSide(
+                  color: selected
+                      ? const Color(0xFFFF615B)
+                      : colorScheme.outlineVariant,
+                  width: selected ? 2 : 1,
+                ),
+              ),
+              child: InkWell(
+                onTap: () => _selectMapPichanga(item),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              date,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: selected
+                                    ? const Color(0xFFFF9E99)
+                                    : colorScheme.primary,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                          if (item['is_my_group'] == true)
+                            _mapPichangaTag('Mi grupo'),
+                          if (item['me_participant_status'] == 'confirmed')
+                            Padding(
+                              padding: const EdgeInsets.only(left: 4),
+                              child: _mapPichangaTag('Confirmado'),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        (item['title'] ?? 'Pichanga').toString(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '$court · $field',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const Spacer(),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.groups_2_outlined,
+                            size: 14,
+                            color: colorScheme.primary,
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            '${item['confirmed_count'] ?? 0}/${item['capacity'] ?? 0}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            '${item['spots_left'] ?? 0} cupos',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: colorScheme.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _mapPichangaTag(String label) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xFF27452D),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+        child: Text(
+          label,
+          style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w800),
+        ),
+      ),
+    );
   }
 
   Widget _buildFieldCard(FieldModel field, {required int pichangaCount}) {
@@ -1049,7 +1121,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
           builder: (context, setSheetState) {
             return SafeArea(
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                 child: SingleChildScrollView(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1062,59 +1134,49 @@ class _MapScreenState extends ConsumerState<MapScreen>
                       SegmentedButton<String>(
                         segments: const [
                           ButtonSegment(
-                            value: 'fields',
-                            label: Text('Solo canchas'),
+                            value: 'both',
+                            icon: Icon(Icons.stadium_outlined),
+                            label: Text('Todas las canchas\ny pichangas'),
                           ),
                           ButtonSegment(
                             value: 'pichangas',
-                            label: Text('Solo pichangas'),
+                            icon: Icon(Icons.sports_soccer),
+                            label: Text('Solo canchas\ncon pichangas'),
                           ),
-                          ButtonSegment(value: 'both', label: Text('Ambos')),
                         ],
                         selected: {draftContent},
                         onSelectionChanged: (value) =>
                             setSheetState(() => draftContent = value.first),
                       ),
-                      if (draftContent != 'fields') ...[
-                        const SizedBox(height: 16),
-                        const Text(
-                          'Pichangas',
-                          style: TextStyle(fontWeight: FontWeight.w700),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Pichangas',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 6),
+                      PichangaRangeSelector(
+                        selectedValue: draftRange,
+                        customLabel: _pichangaRangeLabel(
+                          'custom',
+                          draftCustomRange,
                         ),
-                        Wrap(
-                          spacing: 8,
-                          children: ['today', 'today_tomorrow', 'custom']
-                              .map(
-                                (value) => ChoiceChip(
-                                  label: Text(
-                                    value == 'today'
-                                        ? 'Hoy'
-                                        : value == 'today_tomorrow'
-                                        ? 'Hoy y mañana'
-                                        : 'Rango personalizado',
-                                  ),
-                                  selected: draftRange == value,
-                                  onSelected: (_) async {
-                                    if (value == 'custom') {
-                                      final selected =
-                                          await showDateRangePicker(
-                                            context: context,
-                                            firstDate: DateTime.now(),
-                                            lastDate: DateTime.now().add(
-                                              const Duration(days: 365),
-                                            ),
-                                          );
-                                      if (selected == null) return;
-                                      draftCustomRange = selected;
-                                    }
-                                    setSheetState(() => draftRange = value);
-                                  },
-                                ),
-                              )
-                              .toList(),
-                        ),
-                      ],
-                      const SizedBox(height: 18),
+                        onSelected: (value) async {
+                          if (value == 'custom') {
+                            final selected = await showDateRangePicker(
+                              context: context,
+                              initialDateRange: draftCustomRange,
+                              firstDate: DateTime.now(),
+                              lastDate: DateTime.now().add(
+                                const Duration(days: 365),
+                              ),
+                            );
+                            if (selected == null) return;
+                            draftCustomRange = selected;
+                          }
+                          setSheetState(() => draftRange = value);
+                        },
+                      ),
+                      const SizedBox(height: 14),
                       const Text(
                         'Buscar',
                         style: TextStyle(
@@ -1122,7 +1184,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                           fontWeight: FontWeight.w800,
                         ),
                       ),
-                      const SizedBox(height: 18),
+                      const SizedBox(height: 12),
                       if (draftContent != 'pichangas')
                         const Text(
                           'Tipo de superficie',
@@ -1131,13 +1193,15 @@ class _MapScreenState extends ConsumerState<MapScreen>
                       if (draftContent != 'pichangas')
                         _buildChoiceGrid(
                           columns: 3,
-                          height: 64,
+                          height: 62,
                           children: _surfaceTypeOptions
                               .map(
-                                (type) => _FilterChoice(
+                                (type) => CompactFilterChoice(
                                   label: _surfaceTypeLabel(type),
                                   selected: draftSurfaces.contains(type),
-                                  fontSize: 12,
+                                  icon: _surfaceTypeIcon(type),
+                                  controlKey: Key('map-filter-surface-$type'),
+                                  fontSize: 10.5,
                                   maxLines: 2,
                                   onTap: () => setSheetState(() {
                                     final selected = draftSurfaces.contains(
@@ -1154,7 +1218,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                               .toList(),
                         ),
                       if (draftContent != 'pichangas')
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 12),
                       if (draftContent != 'pichangas')
                         const Text(
                           'Formato',
@@ -1162,13 +1226,14 @@ class _MapScreenState extends ConsumerState<MapScreen>
                         ),
                       _buildChoiceGrid(
                         columns: 5,
-                        height: 42,
+                        height: 40,
                         children: ['5v5', '6v6', '7v7', '9v9', '11v11']
                             .map(
-                              (format) => _FilterChoice(
+                              (format) => CompactFilterChoice(
                                 label: format,
                                 selected: draftFormats.contains(format),
-                                fontSize: 12,
+                                controlKey: Key('map-filter-format-$format'),
+                                fontSize: 11,
                                 onTap: () => setSheetState(() {
                                   final selected = draftFormats.contains(
                                     format,
@@ -1183,13 +1248,13 @@ class _MapScreenState extends ConsumerState<MapScreen>
                             )
                             .toList(),
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 12),
                       const Text(
                         'Precio por hora',
                         style: TextStyle(fontWeight: FontWeight.w700),
                       ),
                       if (draftContent != 'pichangas')
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 4),
                       if (draftContent != 'pichangas')
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1224,7 +1289,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                       if (draftContent != 'pichangas')
                         _buildChoiceGrid(
                           columns: 4,
-                          height: 42,
+                          height: 40,
                           children: [
                             _pricePreset(
                               '0 - 60',
@@ -1256,7 +1321,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                             ),
                           ],
                         ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 16),
                       Row(
                         children: [
                           Expanded(
@@ -1327,6 +1392,32 @@ class _MapScreenState extends ConsumerState<MapScreen>
         to: _customPichangaRange?.end,
       );
 
+  String _pichangaRangeLabel(String range, DateTimeRange? customRange) {
+    if (range == 'today') return 'Hoy';
+    if (range == 'today_tomorrow') return 'Hoy y mañana';
+    if (customRange == null) return 'Rango personalizado';
+    const months = [
+      'ene',
+      'feb',
+      'mar',
+      'abr',
+      'may',
+      'jun',
+      'jul',
+      'ago',
+      'sep',
+      'oct',
+      'nov',
+      'dic',
+    ];
+    final start = customRange.start;
+    final end = customRange.end;
+    if (start.month == end.month) {
+      return '${start.day}–${end.day} ${months[end.month - 1]}';
+    }
+    return '${start.day} ${months[start.month - 1]}–${end.day} ${months[end.month - 1]}';
+  }
+
   Widget _pricePreset(
     String label,
     RangeValues value,
@@ -1334,11 +1425,11 @@ class _MapScreenState extends ConsumerState<MapScreen>
     StateSetter setSheetState,
     ValueChanged<RangeValues> onSelected,
   ) {
-    return _FilterChoice(
+    return CompactFilterChoice(
       label: 'S/ $label',
       selected: current == value,
-      fontSize: 10.5,
-      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+      controlKey: Key('map-filter-price-$label'),
+      fontSize: 10,
       onTap: () => setSheetState(() => onSelected(value)),
     );
   }
@@ -1409,11 +1500,17 @@ class _MapScreenState extends ConsumerState<MapScreen>
       _selectedSurfaceTypes.clear();
       _selectedVsFormats.clear();
       _mapContent = 'both';
-      _pichangaRange = 'today';
-      _customPichangaRange = null;
+      _pichangaRange = 'custom';
+      final today = DateUtils.dateOnly(DateTime.now());
+      _customPichangaRange = DateTimeRange(
+        start: today,
+        end: today.add(const Duration(days: 6)),
+      );
       _pichangasFuture = _loadMapPichangas();
       _selectedField = null;
       _selectedFieldDetail = null;
+      _selectedPichangaId = null;
+      _showSelectedFieldPreview = false;
     });
     ref.read(mapFilterStateProvider.notifier).state = const MapFilterState();
   }
@@ -1480,7 +1577,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
     return double.tryParse(normalized);
   }
 
-  void _ensureMarkersFuture(List<FieldModel> fields) {
+  void _ensureMarkersFuture(
+    List<FieldModel> fields,
+    Set<int> pichangaFieldIds,
+  ) {
     final pulseStep = _selectedField != null
         ? (_pulseController.value * 8).round()
         : 0;
@@ -1490,7 +1590,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
     final key = fields
         .map(
           (field) =>
-              '${field.id}:${field.x.toStringAsFixed(6)}:${field.y.toStringAsFixed(6)}:${_priceBadgeText(field)}:${_selectedField?.id == field.id}',
+              '${field.id}:${field.x.toStringAsFixed(6)}:${field.y.toStringAsFixed(6)}:${_priceBadgeText(field)}:${pichangaFieldIds.contains(field.id)}:${_selectedField?.id == field.id}:${_selectedPichangaId != null}',
         )
         .join('|');
     final clusteredKey =
@@ -1498,11 +1598,14 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
     if (_markersFuture == null || clusteredKey != _lastMarkersKey) {
       _lastMarkersKey = clusteredKey;
-      _markersFuture = _buildMarkers(fields);
+      _markersFuture = _buildMarkers(fields, pichangaFieldIds);
     }
   }
 
-  Future<Set<Marker>> _buildMarkers(List<FieldModel> fields) async {
+  Future<Set<Marker>> _buildMarkers(
+    List<FieldModel> fields,
+    Set<int> pichangaFieldIds,
+  ) async {
     final markers = <Marker>{};
 
     for (final cluster in _clusterer.cluster(fields, _cameraZoom)) {
@@ -1511,7 +1614,12 @@ class _MapScreenState extends ConsumerState<MapScreen>
           Marker(
             markerId: MarkerId('cluster-${cluster.id}'),
             position: LatLng(cluster.latitude, cluster.longitude),
-            icon: await _clusterIconForCount(cluster.fields.length),
+            icon: await _clusterIconForCount(
+              cluster.fields.length,
+              hasPichangas: cluster.fields.any(
+                (field) => pichangaFieldIds.contains(field.id),
+              ),
+            ),
             zIndexInt: 1,
             onTap: () => _zoomIntoCluster(cluster),
           ),
@@ -1521,10 +1629,13 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
       final field = cluster.fields.single;
       final isSelected = _selectedField?.id == field.id;
+      final hasPichangas = pichangaFieldIds.contains(field.id);
       final label = _priceBadgeText(field);
       final icon = await _iconForLabel(
         label,
         selected: isSelected,
+        hasPichangas: hasPichangas,
+        pulseRed: _selectedPichangaId != null || hasPichangas,
         pulseProgress: isSelected ? _pulseController.value : 0.0,
       );
 
@@ -1534,7 +1645,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
           position: LatLng(field.x, field.y),
           icon: icon,
           zIndexInt: isSelected ? 100 : 1,
-          onTap: () => _selectField(field),
+          onTap: () {
+            setState(() => _selectedPichangaId = null);
+            _selectField(field);
+          },
         ),
       );
     }
@@ -1596,8 +1710,11 @@ class _MapScreenState extends ConsumerState<MapScreen>
     return icon;
   }
 
-  Future<BitmapDescriptor> _clusterIconForCount(int count) async {
-    final cacheKey = 'cluster:$count';
+  Future<BitmapDescriptor> _clusterIconForCount(
+    int count, {
+    required bool hasPichangas,
+  }) async {
+    final cacheKey = 'cluster:$count:$hasPichangas';
     final cached = _markerIconCache[cacheKey];
     if (cached != null) return cached;
 
@@ -1611,9 +1728,11 @@ class _MapScreenState extends ConsumerState<MapScreen>
       center,
       size / 2 - 3,
       Paint()
-        ..color = const Color(0xFF8FE887)
+        ..color = hasPichangas
+            ? const Color(0xFFD9453D)
+            : const Color(0xFF8FE887)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 3,
+        ..strokeWidth = hasPichangas ? 4 : 3,
     );
 
     // A small football pitch distinguishes a group from an individual field.
@@ -1695,10 +1814,12 @@ class _MapScreenState extends ConsumerState<MapScreen>
   Future<BitmapDescriptor> _iconForLabel(
     String label, {
     required bool selected,
+    required bool hasPichangas,
+    required bool pulseRed,
     double pulseProgress = 0.0,
   }) async {
     final step = selected ? (pulseProgress * 8).round() : 0;
-    final cacheKey = '$label:$selected:$step';
+    final cacheKey = '$label:$selected:$hasPichangas:$pulseRed:$step';
     final cached = _markerIconCache[cacheKey];
     if (cached != null) {
       return cached;
@@ -1707,6 +1828,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
     final icon = await _buildBadgeMarkerIcon(
       label,
       selected: selected,
+      hasPichangas: hasPichangas,
+      pulseRed: pulseRed,
       pulseProgress: pulseProgress,
     );
     _markerIconCache[cacheKey] = icon;
@@ -1716,6 +1839,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
   Future<BitmapDescriptor> _buildBadgeMarkerIcon(
     String text, {
     required bool selected,
+    required bool hasPichangas,
+    required bool pulseRed,
     double pulseProgress = 0.0,
   }) async {
     const horizontalPadding = 18.0;
@@ -1747,11 +1872,13 @@ class _MapScreenState extends ConsumerState<MapScreen>
     final rect = Rect.fromLTWH(margin, margin, baseWidth, baseHeight);
 
     if (selected) {
-      // Outer animated pulsing halo ring
+      final pulseColor = pulseRed
+          ? const Color(0xFFFF5148)
+          : const Color(0xFF38D430);
       final haloExpand = 3.0 + 10.0 * pulseProgress;
       final haloAlpha = (0.5 - pulseProgress * 0.35).clamp(0.0, 1.0);
       final haloPaint = Paint()
-        ..color = const Color(0xFF38D430).withValues(alpha: haloAlpha)
+        ..color = pulseColor.withValues(alpha: haloAlpha)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 6.0 + 8.0 * pulseProgress;
       canvas.drawRRect(
@@ -1769,13 +1896,17 @@ class _MapScreenState extends ConsumerState<MapScreen>
       fillPaint,
     );
 
-    final strokeWidth = selected ? (7.0 + 4.0 * pulseProgress) : 2.0;
+    final strokeWidth = selected
+        ? (7.0 + 4.0 * pulseProgress)
+        : (hasPichangas ? 4.0 : 2.0);
     final strokeColor = selected
         ? Color.lerp(
-            const Color(0xFF38D430),
-            const Color(0xFFB4FFB0),
+            pulseRed ? const Color(0xFFFF5148) : const Color(0xFF38D430),
+            pulseRed ? const Color(0xFFFFB4AF) : const Color(0xFFB4FFB0),
             pulseProgress,
           )!
+        : hasPichangas
+        ? const Color(0xFFD9453D)
         : Colors.white.withValues(alpha: 0.18);
 
     final strokePaint = Paint()
@@ -1861,16 +1992,41 @@ class _MapScreenState extends ConsumerState<MapScreen>
       if (selectedIsGrouped) {
         _selectedField = null;
         _selectedFieldDetail = null;
+        _selectedPichangaId = null;
+        _showSelectedFieldPreview = false;
       }
     });
   }
 
-  void _selectField(FieldModel field) {
+  Future<void> _selectMapPichanga(Map<String, dynamic> item) async {
+    final fieldId =
+        (item['field_id'] as num?)?.toInt() ??
+        int.tryParse(item['field_id']?.toString() ?? '');
+    final pichangaId =
+        (item['id'] as num?)?.toInt() ??
+        int.tryParse(item['id']?.toString() ?? '');
+    if (fieldId == null || pichangaId == null) return;
+    final matches = _lastMapFields.where((field) => field.id == fieldId);
+    if (matches.isEmpty) return;
+    final field = matches.first;
+
+    setState(() => _selectedPichangaId = pichangaId);
+    _selectField(field, showPreview: false);
+    final controller = _mapController;
+    if (controller != null) {
+      await controller.animateCamera(
+        CameraUpdate.newLatLngZoom(LatLng(field.x, field.y), 15),
+      );
+    }
+  }
+
+  void _selectField(FieldModel field, {bool showPreview = true}) {
     setState(() {
       _selectedField = field;
-      _selectedFieldDetail = ref
-          .read(fieldsRepositoryProvider)
-          .detail(field.id);
+      _showSelectedFieldPreview = showPreview;
+      _selectedFieldDetail = showPreview
+          ? ref.read(fieldsRepositoryProvider).detail(field.id)
+          : null;
     });
     if (!_pulseController.isAnimating) {
       _pulseController.repeat(reverse: true);
@@ -1881,6 +2037,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
     setState(() {
       _selectedField = null;
       _selectedFieldDetail = null;
+      _selectedPichangaId = null;
+      _showSelectedFieldPreview = false;
     });
     if (_pulseController.isAnimating) {
       _pulseController.stop();
@@ -2067,6 +2225,20 @@ class _MapScreenState extends ConsumerState<MapScreen>
     }
   }
 
+  IconData _surfaceTypeIcon(String value) {
+    switch (value) {
+      case 'losa':
+        return Icons.grid_view_rounded;
+      case 'sintetico':
+      case 'artificial':
+        return Icons.grass_rounded;
+      case 'natural':
+        return Icons.park_outlined;
+      default:
+        return Icons.stadium_outlined;
+    }
+  }
+
   Future<void> _openFieldDetail(int fieldId) async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -2138,15 +2310,13 @@ class _MapContentBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final icons = switch (content) {
-      'fields' => const [Icons.stadium_outlined],
       'pichangas' => const [Icons.sports_soccer],
       _ => const [Icons.stadium_outlined, Icons.sports_soccer],
     };
     return Semantics(
       label: switch (content) {
-        'fields' => 'Mostrando solo canchas',
-        'pichangas' => 'Mostrando solo pichangas',
-        _ => 'Mostrando canchas y pichangas',
+        'pichangas' => 'Mostrando solo canchas con pichangas',
+        _ => 'Mostrando todas las canchas y pichangas',
       },
       child: Container(
         constraints: const BoxConstraints(minWidth: 42, minHeight: 40),

@@ -25,6 +25,18 @@ final publicPlayerClipsProvider = FutureProvider.autoDispose
           .toList();
     });
 
+final publicRatingHistoryProvider = FutureProvider.autoDispose
+    .family<List<Map<String, dynamic>>, int>(
+      (ref, userId) =>
+          ref.watch(profileRepositoryProvider).ratingHistory(userId),
+    );
+
+final publicRatingEligibilityProvider = FutureProvider.autoDispose
+    .family<Map<String, dynamic>, int>(
+      (ref, userId) =>
+          ref.watch(profileRepositoryProvider).ratingEligibility(userId),
+    );
+
 class PublicPlayerProfileScreen extends ConsumerWidget {
   const PublicPlayerProfileScreen({
     required this.clubId,
@@ -41,6 +53,10 @@ class PublicPlayerProfileScreen extends ConsumerWidget {
       publicPlayerProfileProvider((clubId: clubId, userId: userId)),
     );
     final clips = ref.watch(publicPlayerClipsProvider(userId));
+    final ratingHistory = ref.watch(publicRatingHistoryProvider(userId));
+    final ratingEligibility = ref.watch(
+      publicRatingEligibilityProvider(userId),
+    );
     final appConfig = ref.watch(appConfigProvider);
 
     return Scaffold(
@@ -68,6 +84,8 @@ class PublicPlayerProfileScreen extends ConsumerWidget {
           final stars = stats['star_average'] as num?;
           final playerAverage = stats['player_average'] as num?;
           final goalkeeperAverage = stats['goalkeeper_average'] as num?;
+          final ranking =
+              (data['ranking'] as Map?)?.cast<String, dynamic>() ?? {};
 
           final latestPichangas =
               (data['latest_pichangas'] as List?)
@@ -154,8 +172,88 @@ class PublicPlayerProfileScreen extends ConsumerWidget {
                   ),
                 ],
               ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: _Metric(
+                      label: 'Ranking total',
+                      value: ranking['total'] == null
+                          ? '—'
+                          : '#${ranking['total']}',
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _Metric(
+                      label:
+                          ranking['age_band_label']?.toString() ??
+                          'Ranking edad',
+                      value: ranking['age'] == null
+                          ? '—'
+                          : '#${ranking['age']}',
+                    ),
+                  ),
+                ],
+              ),
+              ratingEligibility.when(
+                loading: () => const SizedBox.shrink(),
+                error: (_, _) => const SizedBox.shrink(),
+                data: (eligibility) => eligibility['allow'] == true
+                    ? Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            onPressed: () =>
+                                _showProfileRatingDialog(context, ref, userId),
+                            icon: const Icon(Icons.star_outline),
+                            label: const Text('Calificar'),
+                          ),
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
               const SizedBox(height: 24),
               const Divider(height: 1),
+              const SizedBox(height: 20),
+
+              Text(
+                'Historial de calificaciones',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 8),
+              ratingHistory.when(
+                loading: () => const LinearProgressIndicator(minHeight: 2),
+                error: (_, _) => const Text('No se pudo cargar el historial.'),
+                data: (items) => items.isEmpty
+                    ? const _EmptyProfileSection(
+                        icon: Icons.history_outlined,
+                        text: 'Aún no tiene calificaciones públicas.',
+                      )
+                    : Column(
+                        children: items
+                            .map(
+                              (item) => ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                leading: Icon(
+                                  item['source'] == 'pichanga'
+                                      ? Icons.sports_soccer_outlined
+                                      : Icons.star_outline,
+                                ),
+                                title: Text(
+                                  '@${item['rater_nick'] ?? 'Jugador'}',
+                                ),
+                                subtitle: Text(
+                                  'F ${item['fisico']} · A ${item['arquero']} · D ${item['delantero']} · M ${item['mediocampo']} · Def ${item['defensa']}${(item['comentario'] ?? '').toString().isEmpty ? '' : '\n${item['comentario']}'}',
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      ),
+              ),
               const SizedBox(height: 20),
 
               // Habilidades
@@ -203,7 +301,7 @@ class PublicPlayerProfileScreen extends ConsumerWidget {
                     child: CircularProgressIndicator(),
                   ),
                 ),
-                error: (_, __) => const _EmptyProfileSection(
+                error: (_, _) => const _EmptyProfileSection(
                   icon: Icons.videocam_off_outlined,
                   text: 'No se pudieron cargar los clips.',
                 ),
@@ -286,6 +384,85 @@ class PublicPlayerProfileScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+Future<void> _showProfileRatingDialog(
+  BuildContext context,
+  WidgetRef ref,
+  int userId,
+) async {
+  final comment = TextEditingController();
+  final values = <String, double>{
+    'fisico': 3,
+    'arquero': 3,
+    'delantero': 3,
+    'mediocampo': 3,
+    'defensa': 3,
+  };
+  await showDialog<void>(
+    context: context,
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (context, setState) => AlertDialog(
+        title: const Text('Calificar jugador'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ...values.entries.map(
+                (entry) => Row(
+                  children: [
+                    SizedBox(
+                      width: 92,
+                      child: Text(
+                        entry.key[0].toUpperCase() + entry.key.substring(1),
+                      ),
+                    ),
+                    Expanded(
+                      child: Slider(
+                        value: entry.value,
+                        min: 0,
+                        max: 5,
+                        divisions: 10,
+                        label: entry.value.toStringAsFixed(1),
+                        onChanged: (value) =>
+                            setState(() => values[entry.key] = value),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              TextField(
+                controller: comment,
+                maxLines: 2,
+                decoration: const InputDecoration(
+                  labelText: 'Comentario opcional',
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              await ref.read(profileRepositoryProvider).ratePlayer(userId, {
+                ...values,
+                'comentario': comment.text.trim(),
+              });
+              ref.invalidate(publicRatingHistoryProvider(userId));
+              ref.invalidate(publicRatingEligibilityProvider(userId));
+              if (dialogContext.mounted) Navigator.of(dialogContext).pop();
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    ),
+  );
+  comment.dispose();
 }
 
 String _resolvePublicClipUrl(String raw, String appLinkBaseUrl) {

@@ -12,6 +12,28 @@ class ProfileRepository {
 
   Future<Map<String, dynamic>> me() => _api.getMap('/me');
 
+  Future<Map<String, dynamic>> rankings({String band = 'total'}) =>
+      _api.getMap('/rankings', queryParameters: {'band': band});
+
+  Future<Map<String, dynamic>> playerRanking(int userId) =>
+      _api.getMap('/users/$userId/player-ranking');
+
+  Future<List<Map<String, dynamic>>> ratingHistory(int userId) async {
+    final response = await _api.getMap('/users/$userId/ratings/history');
+    final raw = response['data'] is List ? response['data'] as List : [];
+    return raw
+        .whereType<Map>()
+        .map((item) => item.cast<String, dynamic>())
+        .toList();
+  }
+
+  Future<Map<String, dynamic>> ratingEligibility(int userId) =>
+      _api.getMap('/users/$userId/ratings/eligibility');
+
+  Future<void> ratePlayer(int userId, Map<String, dynamic> values) async {
+    await _api.postMap('/users/$userId/ratings', data: values);
+  }
+
   Future<Map<String, dynamic>> completeOnboarding({
     required String nick,
     required String sexo,
@@ -41,10 +63,7 @@ class ProfileRepository {
 
     return _api.postMultipartMap(
       '/me',
-      data: FormData.fromMap({
-        ...data,
-        '_method': 'PUT',
-      }),
+      data: FormData.fromMap({...data, '_method': 'PUT'}),
     );
   }
 

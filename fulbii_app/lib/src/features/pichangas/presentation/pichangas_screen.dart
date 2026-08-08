@@ -74,11 +74,6 @@ class _PichangasScreenState extends ConsumerState<PichangasScreen>
       bottom: false,
       child: Column(
         children: [
-          _ActionHeader(
-            isCalendar: _showCalendar,
-            onToggleCalendar: () =>
-                setState(() => _showCalendar = !_showCalendar),
-          ),
           Expanded(child: _showCalendar ? _buildCalendar() : _buildAgenda()),
         ],
       ),
@@ -96,16 +91,39 @@ class _PichangasScreenState extends ConsumerState<PichangasScreen>
         final terminated = _asItems(board['terminated_items']);
         return Column(
           children: [
-            TabBar(
-              controller: _tabController,
-              isScrollable: true,
-              tabAlignment: TabAlignment.center,
-              dividerColor: Theme.of(context).colorScheme.outlineVariant,
-              tabs: [
-                Tab(text: 'Confirmadas (${confirmed.length})'),
-                Tab(text: 'Pendientes (${pending.length})'),
-                Tab(text: 'Terminadas (${terminated.length})'),
-              ],
+            SizedBox(
+              height: 58,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TabBar(
+                      controller: _tabController,
+                      dividerColor: Theme.of(
+                        context,
+                      ).colorScheme.outlineVariant,
+                      labelStyle: const TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      unselectedLabelStyle: const TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      labelPadding: const EdgeInsets.symmetric(horizontal: 2),
+                      tabs: [
+                        Tab(text: 'Confirmadas (${confirmed.length})'),
+                        Tab(text: 'Pendientes (${pending.length})'),
+                        Tab(text: 'Terminadas (${terminated.length})'),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Ver calendario',
+                    onPressed: () => setState(() => _showCalendar = true),
+                    icon: const Icon(Icons.calendar_month_outlined),
+                  ),
+                ],
+              ),
             ),
             Expanded(
               child: TabBarView(
@@ -116,6 +134,7 @@ class _PichangasScreenState extends ConsumerState<PichangasScreen>
                     emptyText: 'No tienes pichangas confirmadas esta semana.',
                     onRefresh: _refreshAll,
                     onOpen: _openDetail,
+                    confirmed: true,
                     showWatch: true,
                   ),
                   _AgendaList(
@@ -155,6 +174,7 @@ class _PichangasScreenState extends ConsumerState<PichangasScreen>
         onPreviousMonth: () => _moveMonth(-1),
         onNextMonth: () => _moveMonth(1),
         onToday: _goToToday,
+        onShowAgenda: () => setState(() => _showCalendar = false),
         onSelectDay: (date) => setState(() => _selectedDay = _dateOnly(date)),
         onOpen: _openDetail,
       ),
@@ -171,43 +191,6 @@ class _PichangasScreenState extends ConsumerState<PichangasScreen>
   }
 }
 
-class _ActionHeader extends StatelessWidget {
-  const _ActionHeader({
-    required this.isCalendar,
-    required this.onToggleCalendar,
-  });
-
-  final bool isCalendar;
-  final VoidCallback onToggleCalendar;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 58,
-      child: Align(
-        alignment: Alignment.centerRight,
-        child: Padding(
-          padding: const EdgeInsets.only(right: 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                tooltip: isCalendar ? 'Ver agenda' : 'Ver calendario',
-                onPressed: onToggleCalendar,
-                icon: Icon(
-                  isCalendar
-                      ? Icons.view_agenda_outlined
-                      : Icons.calendar_month_outlined,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _AgendaList extends ConsumerWidget {
   const _AgendaList({
     required this.items,
@@ -215,6 +198,7 @@ class _AgendaList extends ConsumerWidget {
     required this.onRefresh,
     required this.onOpen,
     this.pending = false,
+    this.confirmed = false,
     this.terminated = false,
     this.showWatch = false,
   });
@@ -224,6 +208,7 @@ class _AgendaList extends ConsumerWidget {
   final Future<void> Function() onRefresh;
   final ValueChanged<int> onOpen;
   final bool pending;
+  final bool confirmed;
   final bool terminated;
   final bool showWatch;
 
@@ -275,6 +260,7 @@ class _AgendaList extends ConsumerWidget {
                     child: _PichangaAgendaCard(
                       item: item,
                       pending: pending,
+                      confirmed: confirmed,
                       terminated: terminated,
                       showWatch: showWatch,
                       onTap: () =>
@@ -355,6 +341,7 @@ class _PichangaAgendaCard extends StatelessWidget {
     required this.item,
     required this.onTap,
     this.pending = false,
+    this.confirmed = false,
     this.terminated = false,
     this.showWatch = false,
   });
@@ -362,6 +349,7 @@ class _PichangaAgendaCard extends StatelessWidget {
   final Map<String, dynamic> item;
   final VoidCallback onTap;
   final bool pending;
+  final bool confirmed;
   final bool terminated;
   final bool showWatch;
 
@@ -384,7 +372,15 @@ class _PichangaAgendaCard extends StatelessWidget {
     }
     if (pending) {
       statusBadges.add(
-        const _PichangaBadge(text: 'Pendiente', color: Color(0xFFD88C00)),
+        const _PichangaBadge(text: 'No confirmada', color: Color(0xFFD88C00)),
+      );
+    }
+    if (confirmed) {
+      statusBadges.add(
+        const _PichangaBadge(
+          text: 'Asistencia confirmada',
+          color: Color(0xFF0A9A4A),
+        ),
       );
     }
     if (terminated) {
@@ -537,6 +533,7 @@ class _PichangasCalendar extends StatelessWidget {
     required this.onPreviousMonth,
     required this.onNextMonth,
     required this.onToday,
+    required this.onShowAgenda,
     required this.onSelectDay,
     required this.onOpen,
   });
@@ -547,6 +544,7 @@ class _PichangasCalendar extends StatelessWidget {
   final VoidCallback onPreviousMonth;
   final VoidCallback onNextMonth;
   final VoidCallback onToday;
+  final VoidCallback onShowAgenda;
   final ValueChanged<DateTime> onSelectDay;
   final ValueChanged<int> onOpen;
 
@@ -565,26 +563,63 @@ class _PichangasCalendar extends StatelessWidget {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+          padding: const EdgeInsets.fromLTRB(12, 2, 12, 4),
           child: Row(
             children: [
               IconButton(
+                tooltip: 'Mes anterior',
                 onPressed: onPreviousMonth,
+                constraints: const BoxConstraints.tightFor(
+                  width: 40,
+                  height: 40,
+                ),
+                padding: EdgeInsets.zero,
                 icon: const Icon(Icons.chevron_left),
               ),
               Expanded(
                 child: Text(
                   '${_monthName(month)} ${month.year}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.center,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
               ),
-              TextButton(onPressed: onToday, child: const Text('Hoy')),
+              TextButton(
+                onPressed: onToday,
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(40, 40),
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                ),
+                child: const Text('Hoy'),
+              ),
               IconButton(
+                tooltip: 'Mes siguiente',
                 onPressed: onNextMonth,
+                constraints: const BoxConstraints.tightFor(
+                  width: 40,
+                  height: 40,
+                ),
+                padding: EdgeInsets.zero,
                 icon: const Icon(Icons.chevron_right),
+              ),
+              const SizedBox(width: 4),
+              Semantics(
+                button: true,
+                label: 'Ver lista de pichangas',
+                child: OutlinedButton.icon(
+                  key: const Key('pichangas-calendar-list'),
+                  onPressed: onShowAgenda,
+                  icon: const Icon(Icons.view_agenda_outlined, size: 17),
+                  label: const Text('Lista'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(72, 40),
+                    padding: const EdgeInsets.symmetric(horizontal: 9),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
               ),
             ],
           ),
@@ -603,9 +638,9 @@ class _PichangasCalendar extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 2),
         SizedBox(
-          height: 270,
+          height: 246,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: GridView.builder(
@@ -613,7 +648,7 @@ class _PichangasCalendar extends StatelessWidget {
               itemCount: firstWeekday + daysInMonth,
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 7,
-                childAspectRatio: 1.15,
+                childAspectRatio: 1.2,
               ),
               itemBuilder: (context, index) {
                 if (index < firstWeekday) return const SizedBox.shrink();
@@ -683,61 +718,115 @@ class _CalendarDay extends StatelessWidget {
     final sections = items
         .map((item) => item['calendar_section']?.toString() ?? 'pending')
         .toSet();
+    final status = _calendarDayStatus(sections);
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        margin: const EdgeInsets.all(2),
-        decoration: BoxDecoration(
-          color: selected ? colors.primaryContainer : null,
-          border: today && !selected ? Border.all(color: colors.primary) : null,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              '${date.day}',
-              style: TextStyle(
-                fontWeight: today || selected
-                    ? FontWeight.w900
-                    : FontWeight.w600,
-              ),
+      borderRadius: BorderRadius.circular(22),
+      child: Center(
+        child: Semantics(
+          label:
+              '${date.day} ${_monthName(date)}${status == 'none' ? '' : ', ${_calendarStatusLabel(status)}'}',
+          selected: selected,
+          child: Container(
+            key: Key('calendar-day-status-${_dateKey(date)}'),
+            width: 40,
+            height: 40,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: selected
+                  ? colors.primaryContainer.withValues(alpha: .72)
+                  : null,
+              shape: BoxShape.circle,
             ),
-            if (sections.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Wrap(
-                spacing: 2,
-                children: sections
-                    .take(3)
-                    .map((section) => _CalendarDot(section: section))
-                    .toList(),
-              ),
-            ],
-          ],
+            child: Stack(
+              alignment: Alignment.center,
+              clipBehavior: Clip.none,
+              children: [
+                CustomPaint(
+                  size: const Size(38, 38),
+                  painter: _CalendarStatusRingPainter(status: status),
+                ),
+                Text(
+                  '${date.day}',
+                  style: TextStyle(
+                    fontWeight: today || selected
+                        ? FontWeight.w900
+                        : FontWeight.w600,
+                  ),
+                ),
+                if (today)
+                  Positioned(
+                    bottom: -1,
+                    child: Container(
+                      width: 4,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: colors.primary,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
 }
 
-class _CalendarDot extends StatelessWidget {
-  const _CalendarDot({required this.section});
-  final String section;
+String _calendarDayStatus(Set<String> sections) {
+  final hasConfirmed = sections.contains('confirmed');
+  final hasPending = sections.contains('pending');
+  if (hasConfirmed && hasPending) return 'mixed';
+  if (hasConfirmed) return 'confirmed';
+  if (hasPending) return 'pending';
+  return sections.contains('terminated') ? 'terminated' : 'none';
+}
+
+String _calendarStatusLabel(String status) => switch (status) {
+  'confirmed' => 'asistencia confirmada',
+  'pending' => 'asistencia no confirmada',
+  'mixed' => 'pichangas confirmadas y no confirmadas',
+  'terminated' => 'pichangas terminadas',
+  _ => '',
+};
+
+class _CalendarStatusRingPainter extends CustomPainter {
+  const _CalendarStatusRingPainter({required this.status});
+  final String status;
 
   @override
-  Widget build(BuildContext context) {
-    final color = switch (section) {
-      'confirmed' => const Color(0xFF0A9A4A),
-      'terminated' => const Color(0xFF7A7F7A),
-      _ => const Color(0xFFD88C00),
-    };
-    return Container(
-      width: 5,
-      height: 5,
-      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-    );
+  void paint(Canvas canvas, Size size) {
+    if (status == 'none') return;
+    final rect = Offset.zero & size;
+    final circle = Rect.fromLTWH(1.5, 1.5, size.width - 3, size.height - 3);
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5;
+    if (status == 'mixed') {
+      paint.shader = const LinearGradient(
+        colors: [
+          Color(0xFFD88C00),
+          Color(0xFFD88C00),
+          Color(0xFF0A9A4A),
+          Color(0xFF0A9A4A),
+        ],
+        stops: [0, .5, .5, 1],
+      ).createShader(rect);
+    } else {
+      paint.color = switch (status) {
+        'confirmed' => const Color(0xFF0A9A4A),
+        'terminated' => const Color(0xFF7A7F7A),
+        _ => const Color(0xFFD88C00),
+      };
+    }
+    canvas.drawOval(circle, paint);
   }
+
+  @override
+  bool shouldRepaint(covariant _CalendarStatusRingPainter oldDelegate) =>
+      oldDelegate.status != status;
 }
 
 class _SelectedDayAgenda extends StatelessWidget {
@@ -774,6 +863,7 @@ class _SelectedDayAgenda extends StatelessWidget {
         return _PichangaAgendaCard(
           item: item,
           pending: section == 'pending',
+          confirmed: section == 'confirmed',
           terminated: section == 'terminated',
           showWatch: true,
           onTap: () => onOpen(int.tryParse(item['id'].toString()) ?? 0),

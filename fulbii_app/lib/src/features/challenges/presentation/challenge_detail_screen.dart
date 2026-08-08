@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/formatters/spanish_date_formatter.dart';
 import '../../../core/network/api_error.dart';
 import '../data/challenges_repository.dart';
 
@@ -18,7 +19,9 @@ final challengeMessagesProvider = FutureProvider.autoDispose
 
 final challengeConfigurationsProvider = FutureProvider.autoDispose
     .family<List<Map<String, dynamic>>, int>((ref, challengeId) {
-      return ref.watch(challengesRepositoryProvider).configurations(challengeId);
+      return ref
+          .watch(challengesRepositoryProvider)
+          .configurations(challengeId);
     });
 
 class ChallengeDetailScreen extends ConsumerStatefulWidget {
@@ -81,7 +84,9 @@ class _ChallengeDetailScreenState extends ConsumerState<ChallengeDetailScreen>
   @override
   Widget build(BuildContext context) {
     final detailAsync = ref.watch(challengeDetailProvider(widget.challengeId));
-    final messagesAsync = ref.watch(challengeMessagesProvider(widget.challengeId));
+    final messagesAsync = ref.watch(
+      challengeMessagesProvider(widget.challengeId),
+    );
     final configurationsAsync = ref.watch(
       challengeConfigurationsProvider(widget.challengeId),
     );
@@ -94,7 +99,9 @@ class _ChallengeDetailScreenState extends ConsumerState<ChallengeDetailScreen>
             onPressed: () {
               ref.invalidate(challengeDetailProvider(widget.challengeId));
               ref.invalidate(challengeMessagesProvider(widget.challengeId));
-              ref.invalidate(challengeConfigurationsProvider(widget.challengeId));
+              ref.invalidate(
+                challengeConfigurationsProvider(widget.challengeId),
+              );
             },
             icon: const Icon(Icons.refresh),
           ),
@@ -108,15 +115,15 @@ class _ChallengeDetailScreenState extends ConsumerState<ChallengeDetailScreen>
               (detail['challenge'] as Map?)?.cast<String, dynamic>() ?? {};
           final fieldOptions = detail['field_options'] is List
               ? (detail['field_options'] as List)
-                  .whereType<Map>()
-                  .map((item) => item.cast<String, dynamic>())
-                  .toList()
+                    .whereType<Map>()
+                    .map((item) => item.cast<String, dynamic>())
+                    .toList()
               : <Map<String, dynamic>>[];
           final timeOptions = detail['time_options'] is List
               ? (detail['time_options'] as List)
-                  .whereType<Map>()
-                  .map((item) => item.cast<String, dynamic>())
-                  .toList()
+                    .whereType<Map>()
+                    .map((item) => item.cast<String, dynamic>())
+                    .toList()
               : <Map<String, dynamic>>[];
 
           final mySide = (challenge['my_side'] ?? '').toString();
@@ -124,10 +131,10 @@ class _ChallengeDetailScreenState extends ConsumerState<ChallengeDetailScreen>
           final status = (challenge['status'] ?? '').toString();
           final challengerClub =
               (challenge['challenger_club'] as Map?)?.cast<String, dynamic>() ??
-                  {};
+              {};
           final challengedClub =
               (challenge['challenged_club'] as Map?)?.cast<String, dynamic>() ??
-                  {};
+              {};
 
           return Column(
             children: [
@@ -140,65 +147,64 @@ class _ChallengeDetailScreenState extends ConsumerState<ChallengeDetailScreen>
                     children: [
                       Text(
                         '${challengerClub['nombre'] ?? 'Grupo A'} vs ${challengedClub['nombre'] ?? 'Grupo B'}',
-                        style: Theme.of(context).textTheme.titleMedium,
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800),
                       ),
-                      const SizedBox(height: 6),
-                      Text('Estado: $status'),
-                      Text('Mi lado: ${mySide.isEmpty ? '-' : mySide}'),
-                      Text('Coordinador: ${isCoordinator ? 'sí' : 'no'}'),
-                      if ((challenge['expires_at'] ?? '').toString().isNotEmpty)
-                        Text(
-                          'Expira: ${(challenge['expires_at'] ?? '').toString().replaceFirst('T', ' ')}',
-                        ),
                       const SizedBox(height: 8),
                       Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
+                        spacing: 6,
+                        runSpacing: 6,
                         children: [
-                          OutlinedButton(
-                            onPressed: status == 'confirmed' || status == 'cancelled'
-                                ? null
-                                : () => _coordinate(),
-                            child: const Text('Coordinar'),
+                          _ChallengeStatusBadge(status: status),
+                          _ChallengeMetaBadge(
+                            icon: isCoordinator
+                                ? Icons.verified_user_outlined
+                                : Icons.group_outlined,
+                            label: isCoordinator
+                                ? 'Eres coordinador'
+                                : 'Participas como ${_sideLabel(mySide)}',
                           ),
-                          OutlinedButton(
-                            onPressed: status == 'pending' ||
-                                    status == 'negotiating' ||
-                                    status == 'configuring'
-                                ? () => _rejectChallenge()
-                                : null,
-                            child: const Text('Rechazar'),
+                        ],
+                      ),
+                      if ((challenge['expires_at'] ?? '').toString().isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text(
+                            'Responde hasta ${SpanishDateFormatter.pichangaDate(challenge['expires_at']?.toString())}',
+                            style: Theme.of(context).textTheme.bodySmall,
                           ),
-                          OutlinedButton(
-                            onPressed: status == 'pending' ||
-                                    status == 'negotiating' ||
-                                    status == 'configuring'
-                                ? () => _cancelChallenge()
-                                : null,
-                            child: const Text('Cancelar'),
+                        ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed: _primaryAction(
+                                status: status,
+                                isCoordinator: isCoordinator,
+                                fieldOptions: fieldOptions,
+                                timeOptions: timeOptions,
+                              ),
+                              icon: Icon(
+                                isCoordinator
+                                    ? Icons.add_location_alt_outlined
+                                    : Icons.handshake_outlined,
+                              ),
+                              label: Text(
+                                isCoordinator ? 'Proponer cancha' : 'Coordinar',
+                              ),
+                            ),
                           ),
-                          OutlinedButton(
-                            onPressed: isCoordinator
-                                ? () => _proposeField(fieldOptions)
-                                : null,
-                            child: const Text('Proponer cancha'),
-                          ),
-                          OutlinedButton(
-                            onPressed: isCoordinator
-                                ? () => _proposeTime(timeOptions)
-                                : null,
-                            child: const Text('Proponer fecha'),
-                          ),
-                          OutlinedButton(
-                            onPressed: isCoordinator &&
-                                    fieldOptions.isNotEmpty &&
-                                    timeOptions.isNotEmpty
-                                ? () => _proposeConfiguration(
-                                    fieldOptions: fieldOptions,
-                                    timeOptions: timeOptions,
-                                  )
-                                : null,
-                            child: const Text('Configurar pichanga'),
+                          const SizedBox(width: 8),
+                          OutlinedButton.icon(
+                            onPressed: () => _showMoreActions(
+                              status: status,
+                              isCoordinator: isCoordinator,
+                              fieldOptions: fieldOptions,
+                              timeOptions: timeOptions,
+                            ),
+                            icon: const Icon(Icons.more_horiz),
+                            label: const Text('Más'),
                           ),
                         ],
                       ),
@@ -254,16 +260,20 @@ class _ChallengeDetailScreenState extends ConsumerState<ChallengeDetailScreen>
                                       spacing: 0,
                                       children: [
                                         IconButton(
-                                          onPressed: () =>
-                                              _decideConfiguration(id, 'accept'),
+                                          onPressed: () => _decideConfiguration(
+                                            id,
+                                            'accept',
+                                          ),
                                           icon: const Icon(
                                             Icons.check,
                                             color: Colors.green,
                                           ),
                                         ),
                                         IconButton(
-                                          onPressed: () =>
-                                              _decideConfiguration(id, 'reject'),
+                                          onPressed: () => _decideConfiguration(
+                                            id,
+                                            'reject',
+                                          ),
                                           icon: const Icon(
                                             Icons.close,
                                             color: Colors.red,
@@ -322,50 +332,90 @@ class _ChallengeDetailScreenState extends ConsumerState<ChallengeDetailScreen>
                                             sender['name'] ??
                                             'Usuario')
                                         .toString();
-                                final content = (item['content'] ?? '').toString();
-                                final createdAt = (item['created_at'] ?? '')
-                                    .toString()
-                                    .replaceFirst('T', ' ');
+                                final content = (item['content'] ?? '')
+                                    .toString();
+                                final createdAt =
+                                    SpanishDateFormatter.pichangaDate(
+                                      item['created_at']?.toString(),
+                                    );
                                 final type = (item['message_type'] ?? 'text')
                                     .toString();
+                                final isMine = item['is_mine'] == true;
 
-                                return ListTile(
-                                  dense: true,
-                                  title: Text(
-                                    type == 'system'
-                                        ? 'Sistema'
-                                        : senderName,
-                                  ),
-                                  subtitle: Text('$content\n$createdAt'),
-                                  isThreeLine: true,
+                                if (type == 'system') {
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 24,
+                                      vertical: 8,
+                                    ),
+                                    child: Text(
+                                      content,
+                                      textAlign: TextAlign.center,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            color: Theme.of(
+                                              context,
+                                            ).colorScheme.onSurfaceVariant,
+                                          ),
+                                    ),
+                                  );
+                                }
+
+                                return _ChallengeMessageBubble(
+                                  senderName: senderName,
+                                  content: content,
+                                  createdAt: createdAt,
+                                  isMine: isMine,
                                 );
                               },
                             );
                           },
                         ),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: _messageController,
-                                minLines: 1,
-                                maxLines: 3,
-                                decoration: const InputDecoration(
-                                  hintText: 'Escribe un mensaje',
-                                  border: OutlineInputBorder(),
+                      SafeArea(
+                        top: false,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: _messageController,
+                                  minLines: 1,
+                                  maxLines: 3,
+                                  textCapitalization:
+                                      TextCapitalization.sentences,
+                                  decoration: const InputDecoration(
+                                    hintText: 'Escribe un mensaje',
+                                    isDense: true,
+                                  ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            FilledButton.icon(
-                              onPressed: _sendingMessage ? null : _sendMessage,
-                              icon: const Icon(Icons.send),
-                              label: const Text('Enviar'),
-                            ),
-                          ],
+                              const SizedBox(width: 8),
+                              FilledButton(
+                                onPressed: _sendingMessage
+                                    ? null
+                                    : _sendMessage,
+                                style: FilledButton.styleFrom(
+                                  minimumSize: const Size(48, 48),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                  ),
+                                ),
+                                child: _sendingMessage
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Icon(Icons.send),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ],
@@ -386,10 +436,9 @@ class _ChallengeDetailScreenState extends ConsumerState<ChallengeDetailScreen>
     }
     setState(() => _sendingMessage = true);
     try {
-      await ref.read(challengesRepositoryProvider).sendMessage(
-            widget.challengeId,
-            text,
-          );
+      await ref
+          .read(challengesRepositoryProvider)
+          .sendMessage(widget.challengeId, text);
       _messageController.clear();
       ref.invalidate(challengeMessagesProvider(widget.challengeId));
       ref.invalidate(challengeDetailProvider(widget.challengeId));
@@ -402,9 +451,92 @@ class _ChallengeDetailScreenState extends ConsumerState<ChallengeDetailScreen>
     }
   }
 
+  String _sideLabel(String side) => switch (side) {
+    'challenger' => 'retador',
+    'challenged' => 'retado',
+    _ => 'participante',
+  };
+
+  VoidCallback? _primaryAction({
+    required String status,
+    required bool isCoordinator,
+    required List<Map<String, dynamic>> fieldOptions,
+    required List<Map<String, dynamic>> timeOptions,
+  }) {
+    final isActive = ['pending', 'negotiating', 'configuring'].contains(status);
+    if (!isActive) return null;
+    if (!isCoordinator) return _coordinate;
+    return () => _proposeField(fieldOptions);
+  }
+
+  Future<void> _showMoreActions({
+    required String status,
+    required bool isCoordinator,
+    required List<Map<String, dynamic>> fieldOptions,
+    required List<Map<String, dynamic>> timeOptions,
+  }) {
+    final isActive = ['pending', 'negotiating', 'configuring'].contains(status);
+    return showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: Wrap(
+            children: [
+              if (isCoordinator)
+                ListTile(
+                  leading: const Icon(Icons.schedule_outlined),
+                  title: const Text('Proponer fecha y hora'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _proposeTime(timeOptions);
+                  },
+                ),
+              if (isCoordinator &&
+                  fieldOptions.isNotEmpty &&
+                  timeOptions.isNotEmpty)
+                ListTile(
+                  leading: const Icon(Icons.tune_outlined),
+                  title: const Text('Configurar pichanga'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _proposeConfiguration(
+                      fieldOptions: fieldOptions,
+                      timeOptions: timeOptions,
+                    );
+                  },
+                ),
+              if (isActive)
+                ListTile(
+                  leading: const Icon(Icons.thumb_down_alt_outlined),
+                  title: const Text('Rechazar reto'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _rejectChallenge();
+                  },
+                ),
+              if (isActive)
+                ListTile(
+                  leading: const Icon(Icons.cancel_outlined),
+                  title: const Text('Cancelar reto'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _cancelChallenge();
+                  },
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _coordinate() async {
     try {
-      await ref.read(challengesRepositoryProvider).coordinate(widget.challengeId);
+      await ref
+          .read(challengesRepositoryProvider)
+          .coordinate(widget.challengeId);
       _snack('Coordinación activada.');
       ref.invalidate(challengeDetailProvider(widget.challengeId));
       ref.invalidate(challengeMessagesProvider(widget.challengeId));
@@ -477,7 +609,9 @@ class _ChallengeDetailScreenState extends ConsumerState<ChallengeDetailScreen>
             FilledButton(
               onPressed: () async {
                 try {
-                  await ref.read(challengesRepositoryProvider).proposeFieldOption(
+                  await ref
+                      .read(challengesRepositoryProvider)
+                      .proposeFieldOption(
                         widget.challengeId,
                         fieldName: nameController.text.trim(),
                         fieldAddress: addressController.text.trim(),
@@ -562,7 +696,9 @@ class _ChallengeDetailScreenState extends ConsumerState<ChallengeDetailScreen>
               onPressed: () async {
                 try {
                   final duration = int.tryParse(durationController.text) ?? 90;
-                  await ref.read(challengesRepositoryProvider).proposeTimeOption(
+                  await ref
+                      .read(challengesRepositoryProvider)
+                      .proposeTimeOption(
                         widget.challengeId,
                         startsAt: selected,
                         durationMinutes: duration,
@@ -639,14 +775,15 @@ class _ChallengeDetailScreenState extends ConsumerState<ChallengeDetailScreen>
                             );
                           })
                           .toList(),
-                      onChanged: (value) => setDialogState(
-                        () => selectedField = value,
-                      ),
+                      onChanged: (value) =>
+                          setDialogState(() => selectedField = value),
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<int>(
                       initialValue: selectedTime,
-                      decoration: const InputDecoration(labelText: 'Fecha/hora'),
+                      decoration: const InputDecoration(
+                        labelText: 'Fecha/hora',
+                      ),
                       items: timeOptions
                           .where(
                             (item) =>
@@ -700,7 +837,9 @@ class _ChallengeDetailScreenState extends ConsumerState<ChallengeDetailScreen>
                               Navigator.of(context).pop();
                             }
                             ref.invalidate(
-                              challengeConfigurationsProvider(widget.challengeId),
+                              challengeConfigurationsProvider(
+                                widget.challengeId,
+                              ),
                             );
                             ref.invalidate(
                               challengeMessagesProvider(widget.challengeId),
@@ -721,13 +860,17 @@ class _ChallengeDetailScreenState extends ConsumerState<ChallengeDetailScreen>
 
   Future<void> _decideConfiguration(int configurationId, String action) async {
     try {
-      await ref.read(challengesRepositoryProvider).decideConfiguration(
+      await ref
+          .read(challengesRepositoryProvider)
+          .decideConfiguration(
             widget.challengeId,
             configurationId,
             action: action,
           );
       _snack(
-        action == 'accept' ? 'Configuración aceptada.' : 'Configuración rechazada.',
+        action == 'accept'
+            ? 'Configuración aceptada.'
+            : 'Configuración rechazada.',
       );
       ref.invalidate(challengeDetailProvider(widget.challengeId));
       ref.invalidate(challengeConfigurationsProvider(widget.challengeId));
@@ -770,7 +913,9 @@ class _ChallengeDetailScreenState extends ConsumerState<ChallengeDetailScreen>
 
   Future<void> _setPresence(bool active) async {
     try {
-      await ref.read(challengesRepositoryProvider).updateChatPresence(
+      await ref
+          .read(challengesRepositoryProvider)
+          .updateChatPresence(
             isActive: active,
             challengeId: active ? widget.challengeId : null,
           );
@@ -783,6 +928,130 @@ class _ChallengeDetailScreenState extends ConsumerState<ChallengeDetailScreen>
     if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+}
+
+class _ChallengeStatusBadge extends StatelessWidget {
+  const _ChallengeStatusBadge({required this.status});
+
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final label = switch (status) {
+      'pending' => 'Pendiente',
+      'negotiating' => 'En coordinación',
+      'configuring' => 'Por confirmar',
+      'confirmed' => 'Confirmado',
+      'rejected' => 'Rechazado',
+      'cancelled' => 'Cancelado',
+      'expired' => 'Vencido',
+      _ => 'Estado pendiente',
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: colorScheme.onPrimaryContainer,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+class _ChallengeMetaBadge extends StatelessWidget {
+  const _ChallengeMetaBadge({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: colorScheme.onSurfaceVariant),
+          const SizedBox(width: 4),
+          Text(label, style: Theme.of(context).textTheme.labelSmall),
+        ],
+      ),
+    );
+  }
+}
+
+class _ChallengeMessageBubble extends StatelessWidget {
+  const _ChallengeMessageBubble({
+    required this.senderName,
+    required this.content,
+    required this.createdAt,
+    required this.isMine,
+  });
+
+  final String senderName;
+  final String content;
+  final String createdAt;
+  final bool isMine;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final bubbleColor = isMine
+        ? colorScheme.primaryContainer
+        : colorScheme.surfaceContainerHighest;
+    final foreground = isMine
+        ? colorScheme.onPrimaryContainer
+        : colorScheme.onSurface;
+    return Align(
+      alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 280),
+        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: bubbleColor,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Column(
+          crossAxisAlignment: isMine
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
+          children: [
+            Text(
+              isMine ? 'Tú' : senderName,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: foreground,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(content, style: TextStyle(color: foreground)),
+            const SizedBox(height: 3),
+            Text(
+              createdAt,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: foreground.withValues(alpha: 0.7),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

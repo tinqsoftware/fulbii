@@ -428,13 +428,16 @@ class PichangasRepository {
   }
 
   Future<List<Map<String, dynamic>>> ratings(int pichangaId) async {
-    final response = await _api.getMap('/pichangas/$pichangaId/ratings');
+    final response = await ratingsDetail(pichangaId);
     final items = response['items'] is List ? response['items'] as List : [];
     return items
         .whereType<Map>()
         .map((item) => item.cast<String, dynamic>())
         .toList();
   }
+
+  Future<Map<String, dynamic>> ratingsDetail(int pichangaId) =>
+      _api.getMap('/pichangas/$pichangaId/ratings');
 
   Future<void> addOrUpdateRating(
     int pichangaId, {

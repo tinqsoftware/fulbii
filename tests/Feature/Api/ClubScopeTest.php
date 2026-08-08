@@ -82,6 +82,40 @@ class ClubScopeTest extends TestCase
         $this->assertNull($discover[0]['my_role']);
     }
 
+    public function test_club_lists_include_future_pichanga_activity_and_my_confirmation(): void
+    {
+        $user = $this->createUser('pichanga-member@example.test');
+        $owner = $this->createUser('pichanga-owner@example.test');
+        $this->insertClub(1, 'Mi grupo activo', $owner->id, true);
+        $this->insertClub(2, 'Grupo para descubrir', $owner->id, true);
+        $this->insertMembership(1, $user->id, 1, 'miembro');
+
+        DB::table('group_pichangas')->insert([
+            ['id' => 10, 'club_id' => 1, 'starts_at' => now()->addDays(2), 'status' => 'published', 'is_open' => 1],
+            ['id' => 11, 'club_id' => 1, 'starts_at' => now()->addDays(3), 'status' => 'confirmed', 'is_open' => 0],
+            ['id' => 12, 'club_id' => 1, 'starts_at' => now()->subDay(), 'status' => 'published', 'is_open' => 1],
+            ['id' => 13, 'club_id' => 1, 'starts_at' => now()->addDays(4), 'status' => 'cancelled', 'is_open' => 1],
+            ['id' => 20, 'club_id' => 2, 'starts_at' => now()->addDays(2), 'status' => 'published', 'is_open' => 1],
+        ]);
+        DB::table('group_pichanga_participants')->insert([
+            'pichanga_id' => 11,
+            'user_id' => $user->id,
+            'status' => 'confirmed',
+        ]);
+
+        Sanctum::actingAs($user);
+
+        $mine = $this->getJson('/api/v1/clubs?scope=mine')->assertOk()->json('items.0');
+        $discover = $this->getJson('/api/v1/clubs?scope=discover')->assertOk()->json('items.0');
+
+        $this->assertSame(2, $mine['pending_pichangas_count']);
+        $this->assertSame(1, $mine['open_pichangas_count']);
+        $this->assertTrue($mine['has_my_confirmed_pichanga']);
+        $this->assertSame(1, $discover['pending_pichangas_count']);
+        $this->assertSame(1, $discover['open_pichangas_count']);
+        $this->assertFalse($discover['has_my_confirmed_pichanga']);
+    }
+
     public function test_active_member_can_read_a_disabled_club_but_cannot_mutate_it(): void
     {
         $user = $this->createUser('disabled-member@example.test');
@@ -206,6 +240,22 @@ class ClubScopeTest extends TestCase
             $table->tinyInteger('estado')->default(1);
             $table->timestamps();
             $table->unique(['club_id', 'user_id']);
+        });
+
+        Schema::create('group_pichangas', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('club_id');
+            $table->string('title')->nullable();
+            $table->dateTime('starts_at');
+            $table->string('status');
+            $table->boolean('is_open')->default(false);
+        });
+
+        Schema::create('group_pichanga_participants', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('pichanga_id');
+            $table->unsignedBigInteger('user_id');
+            $table->string('status');
         });
     }
 }

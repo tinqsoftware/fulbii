@@ -447,7 +447,7 @@ class ClubChallengeController extends Controller
             ->get()
             ->reverse()
             ->values()
-            ->map(fn(ClubChallengeMessage $row) => $this->serializeMessage($row));
+            ->map(fn(ClubChallengeMessage $row) => $this->serializeMessage($row, (int) $auth->id));
 
         $this->markChallengeNotificationsRead((int) $auth->id, (int) $challenge->id);
 
@@ -512,7 +512,7 @@ class ClubChallengeController extends Controller
 
         return response()->json([
             'message' => 'Mensaje enviado.',
-            'item' => $this->serializeMessage($message->load('sender:id,name,nick,avatar_url')),
+            'item' => $this->serializeMessage($message->load('sender:id,name,nick,avatar_url'), (int) $auth->id),
             'dispatch' => $notify,
         ], 201);
     }
@@ -1143,12 +1143,13 @@ class ClubChallengeController extends Controller
     /**
      * @return array<string,mixed>
      */
-    private function serializeMessage(ClubChallengeMessage $message): array
+    private function serializeMessage(ClubChallengeMessage $message, ?int $viewerUserId = null): array
     {
         return [
             'id' => (int) $message->id,
             'challenge_id' => (int) $message->challenge_id,
             'sender_user_id' => (int) $message->sender_user_id,
+            'is_mine' => $viewerUserId !== null && (int) $message->sender_user_id === $viewerUserId,
             'message_type' => (string) $message->message_type,
             'content' => (string) $message->content,
             'metadata_json' => $message->metadata_json,

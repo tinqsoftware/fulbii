@@ -33,11 +33,11 @@ class _CreatePichangaScreenState extends ConsumerState<CreatePichangaScreen> {
   final _addressController = TextEditingController();
   final _fieldIdController = TextEditingController();
   final _canchaIdController = TextEditingController();
-  final _durationController = TextEditingController(text: '90');
 
   DateTime _startsAt = DateTime.now().add(const Duration(days: 1));
   String _matchFormat = 'versus';
   int _playersPerTeam = 7;
+  int _durationMinutes = 90;
   String _confirmationMode = 'auto_by_capacity';
   bool _isOpen = false;
   int _notifyDegree = 1;
@@ -56,8 +56,295 @@ class _CreatePichangaScreenState extends ConsumerState<CreatePichangaScreen> {
     _clubId = widget.clubId;
     _addressController.text = widget.initialAddress ?? '';
     if (widget.initialFieldId != null) {
+      _titleController.text = 'Pichanga en la cancha';
+    }
+    if (widget.initialFieldId != null) {
       _fieldIdController.text = widget.initialFieldId.toString();
     }
+  }
+
+  Widget _sectionTitle(BuildContext context, String text) => Padding(
+    padding: const EdgeInsets.only(bottom: 10),
+    child: Text(
+      text,
+      style: Theme.of(
+        context,
+      ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+    ),
+  );
+
+  Widget _selectedFieldCard(BuildContext context) {
+    final address = _addressController.text.trim();
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.sports_soccer,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Cancha seleccionada',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  address.isEmpty ? 'Polideportivo seleccionado' : address,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          const Icon(Icons.check_circle, color: Color(0xFF0A9A4A)),
+        ],
+      ),
+    );
+  }
+
+  Widget _venueFields() => Column(
+    children: [
+      TextField(
+        controller: _canchaIdController,
+        keyboardType: TextInputType.number,
+        decoration: const InputDecoration(
+          labelText: 'Cancha seleccionada',
+          hintText: 'Ingresa el identificador de la cancha',
+        ),
+      ),
+      const SizedBox(height: 10),
+      TextField(
+        controller: _addressController,
+        decoration: const InputDecoration(labelText: 'Dirección opcional'),
+      ),
+      const SizedBox(height: 14),
+    ],
+  );
+
+  Widget _dateTimeCard(BuildContext context) {
+    final date = _dateTimeLabel(_startsAt);
+    return Material(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: _pickDateTime,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Icon(
+                Icons.calendar_month_outlined,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Fecha y hora',
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(date, style: Theme.of(context).textTheme.titleSmall),
+                  ],
+                ),
+              ),
+              const Icon(Icons.edit_outlined, size: 18),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _formatChoices() {
+    const options = [
+      ('versus', 'Versus', Icons.people_outline),
+      ('triangular', 'Triangular', Icons.change_history_outlined),
+      ('cuadrangular', 'Cuadrangular', Icons.grid_view_outlined),
+    ];
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: options
+          .map(
+            (option) => ChoiceChip(
+              avatar: Icon(option.$3, size: 17),
+              label: Text(option.$2),
+              selected: _matchFormat == option.$1,
+              onSelected: (_) => setState(() => _matchFormat = option.$1),
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  Widget _durationChoices() {
+    const presets = [(60, '1 hora'), (90, '1 h 30 min'), (120, '2 horas')];
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        ...presets.map(
+          (preset) => ChoiceChip(
+            label: Text(preset.$2),
+            selected: _durationMinutes == preset.$1,
+            onSelected: (_) => setState(() => _durationMinutes = preset.$1),
+          ),
+        ),
+        ActionChip(
+          avatar: const Icon(Icons.tune, size: 17),
+          label: Text(
+            _durationMinutes == 60 ||
+                    _durationMinutes == 90 ||
+                    _durationMinutes == 120
+                ? 'Personalizar'
+                : _durationLabel(_durationMinutes),
+          ),
+          onPressed: _pickCustomDuration,
+        ),
+      ],
+    );
+  }
+
+  Widget _switchOption(
+    IconData icon,
+    String title,
+    String subtitle,
+    bool value,
+    ValueChanged<bool> onChanged,
+  ) => SwitchListTile.adaptive(
+    contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+    secondary: Icon(icon),
+    title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+    subtitle: Text(subtitle),
+    value: value,
+    onChanged: onChanged,
+  );
+
+  Widget _advancedOptions() => Card(
+    clipBehavior: Clip.antiAlias,
+    child: ExpansionTile(
+      leading: const Icon(Icons.tune_outlined),
+      title: const Text('Más opciones de convocatoria'),
+      subtitle: const Text('Avisos, recordatorios y filtros'),
+      childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      children: [
+        _switchOption(
+          Icons.notifications_active_outlined,
+          'Avisos automáticos',
+          'Envía recordatorios a las 48 y 24 horas',
+          _autoReminderEnabled,
+          (value) => setState(() => _autoReminderEnabled = value),
+        ),
+        DropdownButtonFormField<int>(
+          initialValue: _notifyDegree,
+          decoration: const InputDecoration(
+            labelText: 'Alcance de notificación',
+          ),
+          items: const [
+            DropdownMenuItem(value: 1, child: Text('1er grado')),
+            DropdownMenuItem(value: 2, child: Text('2do grado')),
+            DropdownMenuItem(value: 3, child: Text('3er grado')),
+          ],
+          onChanged: (value) => setState(() => _notifyDegree = value ?? 1),
+        ),
+        const SizedBox(height: 10),
+        DropdownButtonFormField<String?>(
+          initialValue: _audienceSex,
+          decoration: const InputDecoration(labelText: 'Convocatoria por sexo'),
+          items: const [
+            DropdownMenuItem<String?>(value: null, child: Text('Todos')),
+            DropdownMenuItem<String?>(value: 'M', child: Text('Hombres')),
+            DropdownMenuItem<String?>(value: 'F', child: Text('Mujeres')),
+          ],
+          onChanged: (value) => setState(() => _audienceSex = value),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Edad mínima'),
+                onChanged: (value) => _ageMin = int.tryParse(value),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: TextField(
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Edad máxima'),
+                onChanged: (value) => _ageMax = int.tryParse(value),
+              ),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+
+  Future<void> _pickCustomDuration() async {
+    var selected = _durationMinutes.clamp(30, 600);
+    selected -= selected % 5;
+    final value = await showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Duración personalizada',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<int>(
+                initialValue: selected,
+                decoration: const InputDecoration(labelText: 'Minutos'),
+                items: List.generate(115, (index) => 30 + index * 5)
+                    .map(
+                      (minutes) => DropdownMenuItem(
+                        value: minutes,
+                        child: Text(_durationLabel(minutes)),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (minutes) => selected = minutes ?? selected,
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () => Navigator.of(context).pop(selected),
+                  child: const Text('Usar duración'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (value != null && mounted) setState(() => _durationMinutes = value);
   }
 
   @override
@@ -67,7 +354,6 @@ class _CreatePichangaScreenState extends ConsumerState<CreatePichangaScreen> {
     _addressController.dispose();
     _fieldIdController.dispose();
     _canchaIdController.dispose();
-    _durationController.dispose();
     super.dispose();
   }
 
@@ -75,12 +361,19 @@ class _CreatePichangaScreenState extends ConsumerState<CreatePichangaScreen> {
   Widget build(BuildContext context) {
     final clubsAsync = ref.watch(myClubsForCreateProvider);
 
+    final colors = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('Crear pichanga')),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 112),
           children: [
+            _sectionTitle(context, '1. Dónde y con quién'),
+            if (widget.initialFieldId != null) ...[
+              _selectedFieldCard(context),
+              const SizedBox(height: 14),
+            ] else
+              _venueFields(),
             clubsAsync.when(
               data: (clubs) {
                 if (_clubId == null && clubs.isNotEmpty) {
@@ -88,10 +381,7 @@ class _CreatePichangaScreenState extends ConsumerState<CreatePichangaScreen> {
                 }
                 return DropdownButtonFormField<int>(
                   initialValue: _clubId,
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    labelText: 'Grupo',
-                  ),
+                  decoration: const InputDecoration(labelText: 'Grupo'),
                   items: clubs
                       .map(
                         (club) => DropdownMenuItem<int>(
@@ -112,132 +402,88 @@ class _CreatePichangaScreenState extends ConsumerState<CreatePichangaScreen> {
             TextField(
               controller: _titleController,
               decoration: const InputDecoration(
-                border: OutlineInputBorder(),
                 labelText: 'Título',
+                hintText: 'Ej. Pichanga de los jueves',
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             TextField(
               controller: _descriptionController,
               decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                labelText: 'Descripción',
+                labelText: 'Descripción opcional',
+                hintText: 'Indica el nivel, reglas o información útil',
               ),
-              maxLines: 2,
+              minLines: 2,
+              maxLines: 3,
             ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _fieldIdController,
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      labelText: 'ID cancha',
-                    ),
-                    keyboardType: TextInputType.number,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: _canchaIdController,
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      labelText: 'ID cancha',
-                    ),
-                    keyboardType: TextInputType.number,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: _addressController,
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      labelText: 'Dirección',
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    initialValue: _matchFormat,
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      labelText: 'Formato',
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 'versus', child: Text('Versus')),
-                      DropdownMenuItem(
-                        value: 'triangular',
-                        child: Text('Triangular'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'cuadrangular',
-                        child: Text('Cuadrangular'),
-                      ),
-                    ],
-                    onChanged: (value) =>
-                        setState(() => _matchFormat = value ?? 'versus'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: DropdownButtonFormField<int>(
-                    initialValue: _playersPerTeam,
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      labelText: 'Jugadores por equipo',
-                    ),
-                    items: List.generate(7, (index) => index + 5)
-                        .map(
-                          (value) => DropdownMenuItem<int>(
-                            value: value,
-                            child: Text('$value'),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) => setState(
-                      () => _playersPerTeam = value ?? _playersPerTeam,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 24),
+            _sectionTitle(context, '2. Partido'),
+            _dateTimeCard(context),
+            const SizedBox(height: 14),
             Text(
-              'Cupos: ${_calculatedCapacity()} (${_formatText()})',
-              style: Theme.of(context).textTheme.bodyLarge,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _durationController,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                labelText: 'Duración (min)',
-              ),
-              keyboardType: TextInputType.number,
-            ),
-            const SizedBox(height: 12),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Fecha y hora'),
-              subtitle: Text(_startsAt.toString()),
-              trailing: const Icon(Icons.calendar_month),
-              onTap: _pickDateTime,
+              'Formato',
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
+            _formatChoices(),
+            const SizedBox(height: 14),
+            Text(
+              'Jugadores por equipo',
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 7,
+              runSpacing: 7,
+              children: List.generate(7, (index) => index + 5)
+                  .map(
+                    (value) => ChoiceChip(
+                      label: Text('$value'),
+                      selected: _playersPerTeam == value,
+                      onSelected: (_) =>
+                          setState(() => _playersPerTeam = value),
+                    ),
+                  )
+                  .toList(),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: colors.primaryContainer.withValues(alpha: .45),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.groups_2_outlined, color: colors.primary),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      '${_calculatedCapacity()} cupos · ${_formatText()}',
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Duración',
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
+            _durationChoices(),
+            const SizedBox(height: 24),
+            _sectionTitle(context, '3. Convocatoria'),
             DropdownButtonFormField<String>(
               initialValue: _confirmationMode,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                labelText: 'Modo confirmación',
-              ),
+              decoration: const InputDecoration(labelText: 'Confirmación'),
               items: const [
                 DropdownMenuItem(
                   value: 'auto_by_capacity',
@@ -252,91 +498,49 @@ class _CreatePichangaScreenState extends ConsumerState<CreatePichangaScreen> {
                 () => _confirmationMode = value ?? _confirmationMode,
               ),
             ),
-            SwitchListTile.adaptive(
-              contentPadding: EdgeInsets.zero,
-              value: _isOpen,
-              onChanged: (value) => setState(() => _isOpen = value),
-              title: const Text('Pichanga abierta'),
+            const SizedBox(height: 10),
+            _switchOption(
+              Icons.public_outlined,
+              'Pichanga abierta',
+              'Puede descubrirse desde el mapa',
+              _isOpen,
+              (value) => setState(() => _isOpen = value),
             ),
-            SwitchListTile.adaptive(
-              contentPadding: EdgeInsets.zero,
-              value: _allowExternal,
-              onChanged: (value) => setState(() => _allowExternal = value),
-              title: const Text('Permitir solicitudes externas'),
+            _switchOption(
+              Icons.group_add_outlined,
+              'Solicitudes externas',
+              'Permite participar a jugadores fuera del grupo',
+              _allowExternal,
+              (value) => setState(() => _allowExternal = value),
             ),
-            SwitchListTile.adaptive(
-              contentPadding: EdgeInsets.zero,
-              value: _autoReminderEnabled,
-              onChanged: (value) =>
-                  setState(() => _autoReminderEnabled = value),
-              title: const Text('Activar avisos automáticos 48h/24h'),
-            ),
-            DropdownButtonFormField<int>(
-              initialValue: _notifyDegree,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                labelText: 'Grado de notificación',
-              ),
-              items: const [
-                DropdownMenuItem(value: 1, child: Text('1er grado')),
-                DropdownMenuItem(value: 2, child: Text('2do grado')),
-                DropdownMenuItem(value: 3, child: Text('3er grado')),
-              ],
-              onChanged: (value) => setState(() => _notifyDegree = value ?? 1),
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String?>(
-              initialValue: _audienceSex,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                labelText: 'Filtro sexo (opcional)',
-              ),
-              items: const [
-                DropdownMenuItem<String?>(value: null, child: Text('Todos')),
-                DropdownMenuItem<String?>(value: 'M', child: Text('Hombres')),
-                DropdownMenuItem<String?>(value: 'F', child: Text('Mujeres')),
-              ],
-              onChanged: (value) => setState(() => _audienceSex = value),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      labelText: 'Edad mínima',
-                    ),
-                    keyboardType: TextInputType.number,
-                    onChanged: (value) => _ageMin = int.tryParse(value),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      labelText: 'Edad máxima',
-                    ),
-                    keyboardType: TextInputType.number,
-                    onChanged: (value) => _ageMax = int.tryParse(value),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
-            FilledButton.icon(
-              onPressed: _saving ? null : _save,
-              icon: _saving
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.save),
-              label: const Text('Crear pichanga'),
-            ),
+            const SizedBox(height: 8),
+            _advancedOptions(),
           ],
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          decoration: BoxDecoration(
+            color: colors.surface,
+            border: Border(top: BorderSide(color: colors.outlineVariant)),
+          ),
+          child: FilledButton.icon(
+            onPressed: _saving ? null : _save,
+            icon: _saving
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.sports_soccer),
+            label: Text(
+              _saving
+                  ? 'Creando…'
+                  : 'Crear pichanga · ${_durationLabel(_durationMinutes)}',
+            ),
+          ),
         ),
       ),
     );
@@ -381,7 +585,7 @@ class _CreatePichangaScreenState extends ConsumerState<CreatePichangaScreen> {
     }
 
     final capacity = _calculatedCapacity();
-    final duration = int.tryParse(_durationController.text.trim()) ?? 0;
+    final duration = _durationMinutes;
 
     if (capacity < 2 || duration < 30) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -458,5 +662,42 @@ class _CreatePichangaScreenState extends ConsumerState<CreatePichangaScreen> {
   String _formatText() {
     final teamCount = _teamCountForFormat(_matchFormat);
     return List.generate(teamCount, (_) => '$_playersPerTeam').join(' vs ');
+  }
+
+  String _durationLabel(int minutes) {
+    final hours = minutes ~/ 60;
+    final remainder = minutes % 60;
+    if (hours == 0) return '$minutes min';
+    if (remainder == 0) return hours == 1 ? '1 hora' : '$hours horas';
+    return '$hours h $remainder min';
+  }
+
+  String _dateTimeLabel(DateTime value) {
+    const weekdays = [
+      'lunes',
+      'martes',
+      'miércoles',
+      'jueves',
+      'viernes',
+      'sábado',
+      'domingo',
+    ];
+    const months = [
+      'enero',
+      'febrero',
+      'marzo',
+      'abril',
+      'mayo',
+      'junio',
+      'julio',
+      'agosto',
+      'septiembre',
+      'octubre',
+      'noviembre',
+      'diciembre',
+    ];
+    final hour = value.hour.toString().padLeft(2, '0');
+    final minute = value.minute.toString().padLeft(2, '0');
+    return '${weekdays[value.weekday - 1]} ${value.day} de ${months[value.month - 1]} · $hour:$minute';
   }
 }

@@ -112,7 +112,7 @@ class FulbiiConfirmedWidgetProvider : HomeWidgetProvider() {
             val selected = selectedPichangaId == item.id
             views.setTextViewText(
                 chipId,
-                "${item.startsLabel}\n${item.formatLabel}"
+                "${item.dateLabel}\n${item.timeLabel}\n${item.formatLabel}"
             )
             views.setInt(
                 chipId,
@@ -218,6 +218,8 @@ class FulbiiConfirmedWidgetProvider : HomeWidgetProvider() {
                 add(
                     WidgetItem(
                         id = id,
+                        dateLabel = item.optString("date_label", item.optString("starts_label", "-")),
+                        timeLabel = item.optString("time_label", "--:--"),
                         startsLabel = item.optString("starts_label", "-"),
                         formatLabel = item.optString("format_label", "-"),
                         teams = teams
@@ -318,6 +320,8 @@ class FulbiiConfirmedWidgetProvider : HomeWidgetProvider() {
 
     data class WidgetItem(
         val id: Int,
+        val dateLabel: String,
+        val timeLabel: String,
         val startsLabel: String,
         val formatLabel: String,
         val teams: List<WidgetTeam>

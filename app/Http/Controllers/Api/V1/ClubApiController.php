@@ -41,6 +41,8 @@ class ClubApiController extends Controller
         $hasMembershipState = Schema::hasColumn('club_user', 'estado');
         $hasClubState = Schema::hasColumn('clubs', 'estado');
         $hasCreatedBy = Schema::hasColumn('clubs', 'created_by');
+        $hasGroupPichangas = Schema::hasTable('group_pichangas');
+        $hasPichangaParticipants = Schema::hasTable('group_pichanga_participants');
         $memberClubIds = collect();
         $roles = collect();
         $ownerClubIds = collect();
@@ -89,6 +91,35 @@ class ClubApiController extends Controller
             },
         ]);
 
+        if ($hasGroupPichangas) {
+            $futureActivePichangas = function ($pichangaQuery) {
+                $pichangaQuery
+                    ->where('starts_at', '>=', now())
+                    ->whereIn('status', ['published', 'confirmed']);
+            };
+
+            $query->withCount([
+                'groupPichangas as pending_pichangas_count' => $futureActivePichangas,
+                'groupPichangas as open_pichangas_count' => function ($pichangaQuery) use ($futureActivePichangas) {
+                    $futureActivePichangas($pichangaQuery);
+                    $pichangaQuery->where('is_open', true);
+                },
+            ]);
+
+            if ($user && $hasPichangaParticipants) {
+                $query->withCount([
+                    'groupPichangas as my_confirmed_pichangas_count' => function ($pichangaQuery) use ($futureActivePichangas, $user) {
+                        $futureActivePichangas($pichangaQuery);
+                        $pichangaQuery->whereHas('participants', function ($participantQuery) use ($user) {
+                            $participantQuery
+                                ->where('user_id', (int) $user->id)
+                                ->where('status', 'confirmed');
+                        });
+                    },
+                ]);
+            }
+        }
+
         if ($scope === 'mine') {
             if ($memberClubIds->isEmpty()) {
                 $query->whereRaw('1 = 0');
@@ -116,7 +147,7 @@ class ClubApiController extends Controller
 
         $clubs = $query->orderBy('nombre')->get();
 
-        $items = $clubs->map(function (Club $club) use ($hasClubState, $memberClubIds, $ownerClubIds, $pendingJoinClubIds, $roles) {
+        $items = $clubs->map(function (Club $club) use ($hasClubState, $hasGroupPichangas, $hasPichangaParticipants, $memberClubIds, $ownerClubIds, $pendingJoinClubIds, $roles, $user) {
             $clubId = (int) $club->id;
             $isMember = $memberClubIds->contains($clubId);
             $isOwner = $ownerClubIds->contains($clubId);
@@ -135,6 +166,15 @@ class ClubApiController extends Controller
                 'is_mine' => $isMember,
                 'my_role' => $roles[$clubId] ?? null,
                 'has_pending_join_request' => $pendingJoinClubIds->contains($clubId),
+                'pending_pichangas_count' => $hasGroupPichangas
+                    ? (int) ($club->pending_pichangas_count ?? 0)
+                    : 0,
+                'has_my_confirmed_pichanga' => $isMember && $user && $hasPichangaParticipants
+                    ? (int) ($club->my_confirmed_pichangas_count ?? 0) > 0
+                    : false,
+                'open_pichangas_count' => $hasGroupPichangas
+                    ? (int) ($club->open_pichangas_count ?? 0)
+                    : 0,
             ];
         })->values();
 
@@ -481,6 +521,7 @@ class ClubApiController extends Controller
                     'delantero' => $summary['delantero'],
                 ],
             ],
+            'ranking' => app(\App\Services\PlayerRankingService::class)->summaryForUser($member),
             'latest_pichangas' => $latestPichangas,
         ]);
     }

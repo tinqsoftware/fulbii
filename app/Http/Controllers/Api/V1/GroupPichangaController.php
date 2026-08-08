@@ -254,7 +254,10 @@ class GroupPichangaController extends Controller
             $minePichangaIds = GroupPichangaParticipant::query()->where('user_id', $auth->id)->pluck('pichanga_id')->map(fn ($id) => (int) $id)->all();
             if (Schema::hasColumn('group_pichangas', 'created_by_user_id')) $minePichangaIds = array_values(array_unique(array_merge($minePichangaIds, GroupPichanga::query()->where('created_by_user_id', $auth->id)->pluck('id')->map(fn ($id) => (int) $id)->all())));
         }
-        $query = GroupPichanga::query()->whereIn('status', ['published', 'confirmed'])->whereBetween('starts_at', [$from, $to]);
+        $query = GroupPichanga::query()
+            ->whereIn('status', ['published', 'confirmed'])
+            ->where('is_open', true)
+            ->whereBetween('starts_at', [$from, $to]);
         $query->where(function ($q) use ($mineClubIds, $minePichangaIds) {
             $q->where(function ($public) {
                 $public->where('is_open', true)->whereHas('club', function ($club) {
@@ -265,18 +268,52 @@ class GroupPichangaController extends Controller
             if ($mineClubIds) $q->orWhereIn('club_id', $mineClubIds);
             if ($minePichangaIds) $q->orWhereIn('id', $minePichangaIds);
         });
-        $pichangas = $query->limit(800)->get();
+        $pichangas = $query->orderBy('starts_at')->limit(800)->get();
+        $pichangaIds = $pichangas->pluck('id')->map(fn($id) => (int) $id)->all();
+        $confirmedByPichanga = GroupPichangaParticipant::query()
+            ->selectRaw('pichanga_id, COUNT(*) AS total')
+            ->whereIn('pichanga_id', $pichangaIds)
+            ->where('status', 'confirmed')
+            ->groupBy('pichanga_id')
+            ->pluck('total', 'pichanga_id')
+            ->map(fn($count) => (int) $count);
+        $participantStatusByPichanga = $auth
+            ? GroupPichangaParticipant::query()
+                ->whereIn('pichanga_id', $pichangaIds)
+                ->where('user_id', $auth->id)
+                ->pluck('status', 'pichanga_id')
+                ->map(fn($status) => $status !== null ? (string) $status : null)
+            : collect();
+        $pichangas = $pichangas
+            ->filter(fn(GroupPichanga $pichanga) =>
+                $confirmedByPichanga->get((int) $pichanga->id, 0) < (int) $pichanga->capacity
+            )
+            ->values();
         $venues = $this->venuesForPichangas($pichangas);
         $fieldIds = collect($venues)->pluck('venue_field_id')->filter()->unique();
         $fields = $fieldIds->isEmpty() ? collect() : Polideportivo::query()->whereIn('id', $fieldIds)->get()->keyBy('id');
         $groups = [];
         foreach ($pichangas as $p) {
             $venue = $venues[$p->id] ?? []; $field = $fields->get($venue['venue_field_id'] ?? 0); if (!$field || !$field->x || !$field->y) continue;
-            $mine = in_array((int) $p->id, $minePichangaIds, true) || in_array((int) $p->club_id, $mineClubIds, true);
+            $isMyGroup = $this->isMemberOfPichanga($p, $mineClubIds);
+            $mine = in_array((int) $p->id, $minePichangaIds, true) || $isMyGroup;
+            $confirmed = $confirmedByPichanga->get((int) $p->id, 0);
             $key = (int) $field->id;
             $groups[$key] ??= ['field_id' => $key, 'latitude' => (float) $field->x, 'longitude' => (float) $field->y, 'field_name' => $field->nombre, 'public_count' => 0, 'mine_count' => 0, 'items' => []];
             $groups[$key][$mine ? 'mine_count' : 'public_count']++;
-            $groups[$key]['items'][] = ['id' => (int) $p->id, 'title' => $p->title, 'starts_at' => $p->starts_at?->toISOString(), 'court_name' => $venue['court_name'] ?? null, 'field_name' => $venue['field_name'] ?? $field->nombre, 'is_mine' => $mine];
+            $groups[$key]['items'][] = [
+                'id' => (int) $p->id,
+                'title' => $p->title,
+                'starts_at' => $p->starts_at?->toISOString(),
+                'court_name' => $venue['court_name'] ?? null,
+                'field_name' => $venue['field_name'] ?? $field->nombre,
+                'capacity' => (int) $p->capacity,
+                'confirmed_count' => $confirmed,
+                'spots_left' => max(0, (int) $p->capacity - $confirmed),
+                'is_mine' => $mine,
+                'is_my_group' => $isMyGroup,
+                'me_participant_status' => $participantStatusByPichanga->get((int) $p->id),
+            ];
         }
         return response()->json(['items' => array_values($groups), 'meta' => ['range' => $range, 'from' => $from->toDateString(), 'to' => $to->toDateString()]]);
     }
@@ -972,6 +1009,8 @@ class GroupPichangaController extends Controller
             'positions.*.user_id' => ['required', 'integer'],
             'positions.*.formation_role' => ['required', Rule::in(['goalkeeper', 'defender', 'midfielder', 'forward'])],
             'positions.*.formation_order' => ['required', 'integer', 'min:1', 'max:99'],
+            'positions.*.formation_x' => ['nullable', 'numeric', 'between:0,1'],
+            'positions.*.formation_y' => ['nullable', 'numeric', 'between:0,1'],
         ]);
         $ids = collect($data['positions'])->pluck('user_id')->map(fn ($id) => (int) $id)->unique()->values();
         $teamParticipantIds = GroupPichangaParticipant::query()
@@ -979,15 +1018,22 @@ class GroupPichangaController extends Controller
             ->pluck('user_id')->map(fn ($id) => (int) $id)->sort()->values();
         abort_unless($ids->sort()->values()->all() === $teamParticipantIds->all(), 422, 'Las posiciones deben incluir exactamente a los integrantes del equipo.');
 
-        DB::transaction(function () use ($pichanga, $team, $data) {
+        $hasFormationCoordinates = Schema::hasColumn('group_pichanga_participants', 'formation_x')
+            && Schema::hasColumn('group_pichanga_participants', 'formation_y');
+        DB::transaction(function () use ($pichanga, $team, $data, $hasFormationCoordinates) {
             foreach ($data['positions'] as $position) {
+                $updates = [
+                    'formation_role' => $position['formation_role'],
+                    'formation_order' => (int) $position['formation_order'],
+                ];
+                if ($hasFormationCoordinates) {
+                    $updates['formation_x'] = $position['formation_x'] ?? null;
+                    $updates['formation_y'] = $position['formation_y'] ?? null;
+                }
                 GroupPichangaParticipant::query()
                     ->where('pichanga_id', $pichanga->id)->where('team_code', $team)
                     ->where('user_id', (int) $position['user_id'])->where('status', 'confirmed')
-                    ->update([
-                        'formation_role' => $position['formation_role'],
-                        'formation_order' => (int) $position['formation_order'],
-                    ]);
+                    ->update($updates);
             }
         });
         return response()->json(['message' => 'Formación actualizada.']);
@@ -1696,7 +1742,9 @@ class GroupPichangaController extends Controller
             }
             $roles[] = ['player' => $player, 'role' => $role];
         }
-        return collect($roles)->values()->map(function (array $item, int $index) {
+        $hasFormationCoordinates = Schema::hasColumn('group_pichanga_participants', 'formation_x')
+            && Schema::hasColumn('group_pichanga_participants', 'formation_y');
+        return collect($roles)->values()->map(function (array $item, int $index) use ($hasFormationCoordinates) {
             /** @var GroupPichangaParticipant $participant */
             $participant = $item['player']['participant'];
             $user = $participant->user;
@@ -1704,8 +1752,10 @@ class GroupPichangaController extends Controller
                 'user_id' => (int) $participant->user_id,
                 'nick' => $user?->nick,
                 'name' => $user?->name,
-                'formation_role' => $item['role'],
-                'formation_order' => $index + 1,
+                'formation_role' => $participant->formation_role ?: $item['role'],
+                'formation_order' => $participant->formation_order ?: $index + 1,
+                'formation_x' => $hasFormationCoordinates ? $participant->formation_x : null,
+                'formation_y' => $hasFormationCoordinates ? $participant->formation_y : null,
             ];
         })->all();
     }

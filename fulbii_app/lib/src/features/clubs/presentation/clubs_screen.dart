@@ -276,11 +276,19 @@ class _ClubsScreenState extends ConsumerState<ClubsScreen>
                     final club = visibleItems[index];
                     final clubId = int.tryParse(club['id'].toString()) ?? 0;
                     final name = (club['nombre'] ?? '').toString();
-                    final role = club['my_role']?.toString();
-                    final isVisible = club['is_visible'] == true;
                     final isActive = club['is_active'] != false;
-                    final hasPendingJoinRequest =
-                        club['has_pending_join_request'] == true;
+                    final pendingPichangas =
+                        int.tryParse(
+                          club['pending_pichangas_count']?.toString() ?? '0',
+                        ) ??
+                        0;
+                    final openPichangas =
+                        int.tryParse(
+                          club['open_pichangas_count']?.toString() ?? '0',
+                        ) ??
+                        0;
+                    final hasMyConfirmedPichanga =
+                        club['has_my_confirmed_pichanga'] == true;
 
                     return Card(
                       child: ListTile(
@@ -291,23 +299,37 @@ class _ClubsScreenState extends ConsumerState<ClubsScreen>
                           ),
                         ),
                         title: Text(name),
-                        subtitle: Text(
-                          '${club['miembros_count'] ?? 0} miembros • '
-                          '${isVisible ? 'visible' : 'oculto'}'
-                          '${isActive ? '' : ' • desactivado'}'
-                          '${role != null ? ' • $role' : ''}',
+                        subtitle: Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            children: [
+                              Text(
+                                '${club['miembros_count'] ?? 0} miembros'
+                                '${isActive ? '' : ' • desactivado'}',
+                              ),
+                              if (!discoverMode && pendingPichangas > 0)
+                                _ClubActivityBadge(
+                                  icon: Icons.event_available_outlined,
+                                  label:
+                                      '$pendingPichangas ${pendingPichangas == 1 ? 'pichanga pendiente' : 'pichangas pendientes'}',
+                                ),
+                              if (!discoverMode && hasMyConfirmedPichanga)
+                                const _ClubActivityBadge(
+                                  icon: Icons.check_circle_outline,
+                                  label: 'Confirmaste',
+                                ),
+                              if (discoverMode && openPichangas > 0)
+                                _ClubActivityBadge(
+                                  icon: Icons.sports_soccer_outlined,
+                                  label:
+                                      '$openPichangas ${openPichangas == 1 ? 'pichanga abierta' : 'pichangas abiertas'}',
+                                ),
+                            ],
+                          ),
                         ),
-                        trailing: discoverMode && (role == null || role.isEmpty)
-                            ? hasPendingJoinRequest
-                                  ? const _PendingJoinBadge()
-                                  : TextButton(
-                                      onPressed: () => _requestJoinBySearch(
-                                        clubId: clubId,
-                                        name: name,
-                                      ),
-                                      child: const Text('Solicitar'),
-                                    )
-                            : const Icon(Icons.chevron_right),
+                        trailing: const Icon(Icons.chevron_right),
                         onTap: () {
                           Navigator.of(context).push(
                             MaterialPageRoute<void>(
@@ -325,37 +347,6 @@ class _ClubsScreenState extends ConsumerState<ClubsScreen>
         );
       },
     );
-  }
-
-  Future<void> _requestJoinBySearch({
-    required int clubId,
-    required String name,
-  }) async {
-    if (!await requireSignIn(
-      context,
-      ref,
-      action: 'solicitar unirte a un grupo',
-    )) {
-      return;
-    }
-    try {
-      await ref.read(clubsRepositoryProvider).requestJoinBySearch(clubId);
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Solicitud enviada a $name.')));
-      ref.invalidate(discoverClubsProvider(_q));
-      ref.invalidate(mineClubsProvider(''));
-    } on ApiError catch (e) {
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
-    }
   }
 
   Future<void> _respondInvitation(int invitationId, String action) async {
@@ -402,8 +393,11 @@ class _ClubsScreenState extends ConsumerState<ClubsScreen>
   }
 }
 
-class _PendingJoinBadge extends StatelessWidget {
-  const _PendingJoinBadge();
+class _ClubActivityBadge extends StatelessWidget {
+  const _ClubActivityBadge({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
 
   @override
   Widget build(BuildContext context) {
@@ -411,16 +405,23 @@ class _PendingJoinBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
-        color: colors.secondaryContainer,
+        color: colors.primaryContainer,
         borderRadius: BorderRadius.circular(999),
       ),
-      child: Text(
-        'Solicitud enviada',
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: colors.onSecondaryContainer,
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: colors.onPrimaryContainer),
+          const SizedBox(width: 3),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: colors.onPrimaryContainer,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }

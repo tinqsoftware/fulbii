@@ -10,14 +10,16 @@ class WidgetConfirmedMapper {
   }) {
     final generatedAt = (now ?? DateTime.now()).toLocal().toIso8601String();
     final items = isLoggedIn
-        ? rawItems.take(maxItems).map(_mapItem).whereType<Map<String, dynamic>>().toList()
+        ? rawItems
+              .take(maxItems)
+              .map(_mapItem)
+              .whereType<Map<String, dynamic>>()
+              .toList()
         : <Map<String, dynamic>>[];
 
-    final validIds = items
-        .map((item) => item['id'])
-        .whereType<int>()
-        .toSet();
-    final resolvedSelectedId = selectedPichangaId != null && validIds.contains(selectedPichangaId)
+    final validIds = items.map((item) => item['id']).whereType<int>().toSet();
+    final resolvedSelectedId =
+        selectedPichangaId != null && validIds.contains(selectedPichangaId)
         ? selectedPichangaId
         : (items.isNotEmpty ? items.first['id'] as int : null);
 
@@ -31,16 +33,17 @@ class WidgetConfirmedMapper {
   }
 
   static Map<String, dynamic> buildLoggedOutPayload({DateTime? now}) {
-    return buildPayload(
-      const [],
-      isLoggedIn: false,
-      now: now,
-    );
+    return buildPayload(const [], isLoggedIn: false, now: now);
   }
 
-  static Map<String, dynamic>? selectedItemFromPayload(Map<String, dynamic> payload) {
+  static Map<String, dynamic>? selectedItemFromPayload(
+    Map<String, dynamic> payload,
+  ) {
     final items = payload['items'] is List
-        ? (payload['items'] as List).whereType<Map>().map((item) => item.cast<String, dynamic>()).toList()
+        ? (payload['items'] as List)
+              .whereType<Map>()
+              .map((item) => item.cast<String, dynamic>())
+              .toList()
         : <Map<String, dynamic>>[];
     if (items.isEmpty) {
       return null;
@@ -62,7 +65,10 @@ class WidgetConfirmedMapper {
 
   static bool applySelection(Map<String, dynamic> payload, int pichangaId) {
     final items = payload['items'] is List
-        ? (payload['items'] as List).whereType<Map>().map((item) => item.cast<String, dynamic>()).toList()
+        ? (payload['items'] as List)
+              .whereType<Map>()
+              .map((item) => item.cast<String, dynamic>())
+              .toList()
         : <Map<String, dynamic>>[];
     final exists = items.any((item) => _toInt(item['id']) == pichangaId);
     if (!exists) {
@@ -74,7 +80,9 @@ class WidgetConfirmedMapper {
 
   static String buildShareText(Map<String, dynamic> pichanga) {
     final title = (pichanga['title'] ?? 'Pichanga').toString();
-    final startsAt = DateTime.tryParse((pichanga['starts_at'] ?? '').toString())?.toLocal();
+    final startsAt = DateTime.tryParse(
+      (pichanga['starts_at'] ?? '').toString(),
+    )?.toLocal();
     final startsLabel = startsAt == null
         ? '-'
         : '${startsAt.day.toString().padLeft(2, '0')} ${_monthShortEs(startsAt.month)} ${startsAt.year} - ${startsAt.hour.toString().padLeft(2, '0')}:${startsAt.minute.toString().padLeft(2, '0')}';
@@ -85,7 +93,10 @@ class WidgetConfirmedMapper {
         : '${(pichanga['match_format'] ?? '-').toString()} - ${durationMinutes}min';
 
     final teams = pichanga['teams'] is List
-        ? (pichanga['teams'] as List).whereType<Map>().map((item) => item.cast<String, dynamic>()).toList()
+        ? (pichanga['teams'] as List)
+              .whereType<Map>()
+              .map((item) => item.cast<String, dynamic>())
+              .toList()
         : <Map<String, dynamic>>[];
 
     final buffer = StringBuffer()
@@ -105,7 +116,10 @@ class WidgetConfirmedMapper {
         buffer.writeln('Equipo $code (*$ratingLabel)');
 
         final slots = team['slots'] is List
-            ? (team['slots'] as List).whereType<Map>().map((item) => item.cast<String, dynamic>()).toList()
+            ? (team['slots'] as List)
+                  .whereType<Map>()
+                  .map((item) => item.cast<String, dynamic>())
+                  .toList()
             : <Map<String, dynamic>>[];
 
         var index = 1;
@@ -148,9 +162,10 @@ class WidgetConfirmedMapper {
 
     final startsAtRaw = (raw['starts_at'] ?? '').toString();
     final startsAt = DateTime.tryParse(startsAtRaw)?.toLocal();
-    final startsLabel = startsAt == null
+    final dateLabel = startsAt == null
         ? '-'
-        : '${startsAt.day} ${_monthShortEs(startsAt.month)} - ${startsAt.hour.toString().padLeft(2, '0')}:${startsAt.minute.toString().padLeft(2, '0')}';
+        : '${startsAt.day} ${_monthShortEs(startsAt.month)}';
+    final timeLabel = startsAt == null ? '--:--' : _widgetTime(startsAt);
 
     final playersPerTeam = _toInt(raw['players_per_team']) ?? 0;
     final durationMinutes = _toInt(raw['duration_minutes']) ?? 0;
@@ -160,46 +175,52 @@ class WidgetConfirmedMapper {
 
     final teams = raw['teams'] is List
         ? (raw['teams'] as List)
-            .whereType<Map>()
-            .map((item) => item.cast<String, dynamic>())
-            .map((team) {
-              final slots = team['slots'] is List
-                  ? (team['slots'] as List)
-                      .whereType<Map>()
-                      .map((slot) => slot.cast<String, dynamic>())
-                      .map((slot) {
-                        final user = slot['user'] is Map
-                            ? (slot['user'] as Map).cast<String, dynamic>()
-                            : null;
-                        return {
-                          'slot': _toInt(slot['slot']) ?? 0,
-                          'user': user == null
-                              ? null
-                              : {
-                                  'name': user['name']?.toString(),
-                                  'nick': user['nick']?.toString(),
-                                  'is_me': user['is_me'] == true,
-                                },
-                          'display_name': user == null ? '' : _displayName(user),
-                        };
-                      })
-                      .toList()
-                  : <Map<String, dynamic>>[];
+              .whereType<Map>()
+              .map((item) => item.cast<String, dynamic>())
+              .map((team) {
+                final slots = team['slots'] is List
+                    ? (team['slots'] as List)
+                          .whereType<Map>()
+                          .map((slot) => slot.cast<String, dynamic>())
+                          .map((slot) {
+                            final user = slot['user'] is Map
+                                ? (slot['user'] as Map).cast<String, dynamic>()
+                                : null;
+                            return {
+                              'slot': _toInt(slot['slot']) ?? 0,
+                              'user': user == null
+                                  ? null
+                                  : {
+                                      'name': user['name']?.toString(),
+                                      'nick': user['nick']?.toString(),
+                                      'is_me': user['is_me'] == true,
+                                    },
+                              'display_name': user == null
+                                  ? ''
+                                  : _displayName(user),
+                            };
+                          })
+                          .toList()
+                    : <Map<String, dynamic>>[];
 
-              return {
-                'code': (team['code'] ?? '').toString(),
-                'avg_rating': team['avg_rating'],
-                'slots': slots,
-              };
-            })
-            .toList()
+                return {
+                  'code': (team['code'] ?? '').toString(),
+                  'avg_rating': team['avg_rating'],
+                  'slots': slots,
+                };
+              })
+              .toList()
         : <Map<String, dynamic>>[];
 
     return {
       'id': id,
       'title': (raw['title'] ?? 'Pichanga #$id').toString(),
       'starts_at': startsAtRaw,
-      'starts_label': startsLabel,
+      // Native widgets render these separately so the time is never squeezed
+      // out by the date or match format in a narrow widget family.
+      'date_label': dateLabel,
+      'time_label': timeLabel,
+      'starts_label': '$dateLabel · $timeLabel',
       'format_label': formatLabel,
       'duration_minutes': durationMinutes,
       'match_format': raw['match_format']?.toString(),
@@ -227,6 +248,12 @@ class WidgetConfirmedMapper {
       return nick;
     }
     return (user['name'] ?? '').toString().trim();
+  }
+
+  static String _widgetTime(DateTime value) {
+    final hour = value.hour % 12 == 0 ? 12 : value.hour % 12;
+    final period = value.hour >= 12 ? 'pm' : 'am';
+    return '$hour:${value.minute.toString().padLeft(2, '0')}$period';
   }
 
   static String _monthShortEs(int month) {

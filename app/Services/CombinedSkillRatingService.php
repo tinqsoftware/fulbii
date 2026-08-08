@@ -4,6 +4,7 @@ namespace App\Services;
 
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class CombinedSkillRatingService
 {
@@ -18,9 +19,20 @@ class CombinedSkillRatingService
             return collect();
         }
 
-        $union = $this->freeRatingsQuery($ids, $clubId)->unionAll(
-            $this->pichangaRatingsQuery($ids, $clubId)
-        );
+        $queries = [];
+        if (Schema::hasTable('calificaciones')) {
+            $queries[] = $this->freeRatingsQuery($ids, $clubId);
+        }
+        if (Schema::hasTable('group_pichanga_ratings') && Schema::hasTable('group_pichangas')) {
+            $queries[] = $this->pichangaRatingsQuery($ids, $clubId);
+        }
+        if ($queries === []) {
+            return collect();
+        }
+        $union = array_shift($queries);
+        foreach ($queries as $query) {
+            $union->unionAll($query);
+        }
 
         return DB::query()
             ->fromSub($union, 'skill_votes')

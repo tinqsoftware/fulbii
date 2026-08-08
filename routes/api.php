@@ -98,6 +98,11 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
         Route::put('/me/profile-clips/reorder', [ProfileClipController::class, 'reorder']);
         Route::put('/fields/{field}/geometry', [FieldGeometryController::class, 'upsert']);
         Route::get('/users/search', [\App\Http\Controllers\UsuarioController::class, 'search']);
+        Route::get('/rankings', [PichangaSocialController::class, 'rankings']);
+        Route::get('/users/{user}/player-ranking', [PichangaSocialController::class, 'playerRanking']);
+        Route::get('/users/{user}/ratings/history', [PichangaSocialController::class, 'ratingHistory']);
+        Route::get('/users/{user}/ratings/eligibility', [PichangaSocialController::class, 'canRateProfile']);
+        Route::post('/users/{user}/ratings', [PichangaSocialController::class, 'rateProfile']);
 
         Route::post('/clubs', [ClubApiController::class, 'store']);
         Route::get('/clubs/join/{joinCode}', [ClubJoinRequestController::class, 'previewByCode']);

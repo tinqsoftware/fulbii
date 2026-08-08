@@ -66,6 +66,8 @@ void main() {
     expect(mappedItems.map((item) => item['id']), [11, 22, 33]);
     expect(payload['selected_pichanga_id'], 33);
     expect(payload['is_logged_in'], isTrue);
+    expect(mappedItems.first['date_label'], '30 Mar');
+    expect(mappedItems.first['time_label'], '8:00pm');
 
     final fallbackSelection = WidgetConfirmedMapper.buildPayload(
       items,
@@ -73,6 +75,19 @@ void main() {
       now: DateTime(2026, 3, 30, 10, 0),
     );
     expect(fallbackSelection['selected_pichanga_id'], 11);
+  });
+
+  test('buildPayload formats morning hours with a compact am suffix', () {
+    final payload = WidgetConfirmedMapper.buildPayload([
+      {
+        'id': 7,
+        'title': 'Mañanera',
+        'starts_at': DateTime(2026, 3, 30, 11, 30).toUtc().toIso8601String(),
+      },
+    ]);
+
+    final item = (payload['items'] as List).single as Map<String, dynamic>;
+    expect(item['time_label'], '11:30am');
   });
 
   test('logged out payload clears items and keeps login message', () {
@@ -86,13 +101,10 @@ void main() {
   });
 
   test('applySelection only applies when id exists', () {
-    final payload = WidgetConfirmedMapper.buildPayload(
-      const [
-        {'id': 7, 'title': 'A', 'starts_at': '2026-03-30T20:00:00Z'},
-        {'id': 8, 'title': 'B', 'starts_at': '2026-03-31T20:00:00Z'},
-      ],
-      now: DateTime(2026, 3, 30, 10, 0),
-    );
+    final payload = WidgetConfirmedMapper.buildPayload(const [
+      {'id': 7, 'title': 'A', 'starts_at': '2026-03-30T20:00:00Z'},
+      {'id': 8, 'title': 'B', 'starts_at': '2026-03-31T20:00:00Z'},
+    ], now: DateTime(2026, 3, 30, 10, 0));
 
     expect(WidgetConfirmedMapper.applySelection(payload, 8), isTrue);
     expect(payload['selected_pichanga_id'], 8);
