@@ -12,8 +12,10 @@
 		1C2B6A7C1480534023AC60D6 /* PreMatchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 337C1DCC08CDCF8894445C7C /* PreMatchView.swift */; };
 		1E24D9699BBA20F7AE3CA664 /* RouteMiniMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E75EB15F0DA9098512722BDC /* RouteMiniMapView.swift */; };
 		20290A87A289F9C08DB36B22 /* WatchModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF6630511458F51E74FA29EC /* WatchModels.swift */; };
+		324E4A367A27A0CDC357D1BE /* FulbiiNotificationService.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 1AC41A57B320B9A1A7F22118 /* FulbiiNotificationService.appex */; };
 		331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C807B294A618700263BE5 /* RunnerTests.swift */; };
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
+		4A392E39DD3DBCA7EB62649C /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 84E0F608099B9511BDF9FA06 /* Foundation.framework */; };
 		4D5E717CCB7405AE6A356162 /* FulbiiWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ADD2FD6B7255A21852A4229 /* FulbiiWatchApp.swift */; };
 		50DFA6DDE9C99AA9EC0E6C61 /* HeatmapProjector.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFDD8A1A961281338BADA40F /* HeatmapProjector.swift */; };
 		531C69623CBACC53743A1FF8 /* FulbiiWeeklyWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 72053130C73F6541344BDA04 /* FulbiiWeeklyWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -30,6 +32,7 @@
 		A1CFB0942C6330FF0A3B499E /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 24FE1756A12681BFB4556324 /* Pods_Runner.framework */; };
 		A35E496BBDFA939B3B319EA2 /* Runner Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 454ABA628316CD651BFC3DD8 /* Runner Watch App.app */; };
 		A83EA86998F7AB599EBA8828 /* MatchSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54D349B83D8F4DB8DFA4E410 /* MatchSessionManager.swift */; };
+		B12C451C7A2795604093481D /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B922BEF7AD9406DF9814FC83 /* NotificationService.swift */; };
 		BE38C683CA95B3D3A3688AE5 /* MatchSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 051A8D714EA55EFDD676F6B5 /* MatchSummaryView.swift */; };
 		BF5B0EA96943EA39080FB47D /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1DFB5B911DE114C8E4DC7F56 /* WidgetKit.framework */; };
 		C09BA364F8F38EFC5DFC1CFF /* SettingsDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1481959EA10E8D10E2F82F6 /* SettingsDebugView.swift */; };
@@ -44,6 +47,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		26BFD32B0FC7C06E4F231F97 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 97C146E61CF9000F007C117D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F4F8CB152FE746ED7A27E080;
+			remoteInfo = FulbiiNotificationService;
+		};
 		331C8085294A63A400263BE5 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 97C146E61CF9000F007C117D /* Project object */;
@@ -100,6 +110,17 @@
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C4ED6A9C3D998756C53011B4 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				324E4A367A27A0CDC357D1BE /* FulbiiNotificationService.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
@@ -109,6 +130,7 @@
 		129ED64016019FC21C6312A4 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/WatchOS.platform/Developer/SDKs/WatchOS11.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GeneratedPluginRegistrant.h; sourceTree = "<group>"; };
 		1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GeneratedPluginRegistrant.m; sourceTree = "<group>"; };
+		1AC41A57B320B9A1A7F22118 /* FulbiiNotificationService.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FulbiiNotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		1DFB5B911DE114C8E4DC7F56 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		24FE1756A12681BFB4556324 /* Pods_Runner.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Runner.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		2C9B9856AF79E4EFA2BA6705 /* Pods_RunnerTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_RunnerTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -131,6 +153,7 @@
 		74858FAE1ED2DC5600515810 /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Release.xcconfig; path = Flutter/Release.xcconfig; sourceTree = "<group>"; };
 		82306A89C882368E4996585F /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
+		84E0F608099B9511BDF9FA06 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		8F6D2F2A65EDBAFD1251C402 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		9740EEB21CF90195004384FC /* Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Debug.xcconfig; path = Flutter/Debug.xcconfig; sourceTree = "<group>"; };
 		9740EEB31CF90195004384FC /* Generated.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Generated.xcconfig; path = Flutter/Generated.xcconfig; sourceTree = "<group>"; };
@@ -140,11 +163,13 @@
 		97C147001CF9000F007C117D /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		97C147021CF9000F007C117D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		9829D36B8FAE9DBDD98BC856 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		9A230C0857BC4D683431EEBE /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = Info.plist; path = FulbiiNotificationService/Info.plist; sourceTree = "<group>"; };
 		A1481959EA10E8D10E2F82F6 /* SettingsDebugView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SettingsDebugView.swift; sourceTree = "<group>"; };
 		A6B8B3C2158B46A4CA2630EB /* FulbiiWeeklyWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FulbiiWeeklyWidget.swift; sourceTree = "<group>"; };
 		B2A92ED5C5B1D76EF8EA81B6 /* Pods-RunnerTests.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.profile.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.profile.xcconfig"; sourceTree = "<group>"; };
 		B37F812F84E3C8749FFB4D24 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
 		B594628AA5134589A6C2FF09 /* LocationCaptureManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LocationCaptureManager.swift; sourceTree = "<group>"; };
+		B922BEF7AD9406DF9814FC83 /* NotificationService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NotificationService.swift; path = FulbiiNotificationService/NotificationService.swift; sourceTree = "<group>"; };
 		C1F0F3A22D6A100100A1B2C3 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		CB7AE8FC6DD6361AA3FF7A6E /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		DFDD8A1A961281338BADA40F /* HeatmapProjector.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HeatmapProjector.swift; sourceTree = "<group>"; };
@@ -156,6 +181,14 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		200BF8FEE0AC91FDA4389C28 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4A392E39DD3DBCA7EB62649C /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		3B020FB1876F5A72C96478E3 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -241,8 +274,18 @@
 				B37F812F84E3C8749FFB4D24 /* Foundation.framework */,
 				1DFB5B911DE114C8E4DC7F56 /* WidgetKit.framework */,
 				9829D36B8FAE9DBDD98BC856 /* SwiftUI.framework */,
+				84E0F608099B9511BDF9FA06 /* Foundation.framework */,
 			);
 			name = iOS;
+			sourceTree = "<group>";
+		};
+		6FD99A7A087F94258B093D5F /* FulbiiNotificationService */ = {
+			isa = PBXGroup;
+			children = (
+				B922BEF7AD9406DF9814FC83 /* NotificationService.swift */,
+				9A230C0857BC4D683431EEBE /* Info.plist */,
+			);
+			name = FulbiiNotificationService;
 			sourceTree = "<group>";
 		};
 		8156082D280BDDD621DEA547 /* RunnerWatch */ = {
@@ -308,6 +351,7 @@
 				1EC09C49D202B4EEC999389E /* FulbiiWeeklyWidget */,
 				F6BACAF06705C818E0270BA0 /* FulbiiWeeklyWidgetExtension.entitlements */,
 				8156082D280BDDD621DEA547 /* RunnerWatch */,
+				6FD99A7A087F94258B093D5F /* FulbiiNotificationService */,
 			);
 			sourceTree = "<group>";
 		};
@@ -318,6 +362,7 @@
 				331C8081294A63A400263BE5 /* RunnerTests.xctest */,
 				72053130C73F6541344BDA04 /* FulbiiWeeklyWidgetExtension.appex */,
 				454ABA628316CD651BFC3DD8 /* Runner Watch App.app */,
+				1AC41A57B320B9A1A7F22118 /* FulbiiNotificationService.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -423,12 +468,14 @@
 				9740EEB61CF901F6004384FC /* Run Script */,
 				1C825C363C26A146D6626831 /* [CP] Embed Pods Frameworks */,
 				17F68057800E4D89DFF4F217 /* [CP] Copy Pods Resources */,
+				C4ED6A9C3D998756C53011B4 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				3E93D21DD5158C8605241B6D /* PBXTargetDependency */,
 				5B762097510AE60F66B5CBD3 /* PBXTargetDependency */,
+				FE0EE2CFD15252A4A301D986 /* PBXTargetDependency */,
 			);
 			name = Runner;
 			productName = Runner;
@@ -451,6 +498,23 @@
 			productName = "Runner Watch App";
 			productReference = 454ABA628316CD651BFC3DD8 /* Runner Watch App.app */;
 			productType = "com.apple.product-type.application";
+		};
+		F4F8CB152FE746ED7A27E080 /* FulbiiNotificationService */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 956B6EF09FBB6A6F36FCCBFD /* Build configuration list for PBXNativeTarget "FulbiiNotificationService" */;
+			buildPhases = (
+				30C890FC8758CD2DAF81381C /* Sources */,
+				200BF8FEE0AC91FDA4389C28 /* Frameworks */,
+				D80AF7DF781A412EE47EBE8C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = FulbiiNotificationService;
+			productName = FulbiiNotificationService;
+			productReference = 1AC41A57B320B9A1A7F22118 /* FulbiiNotificationService.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -489,6 +553,7 @@
 				331C8080294A63A400263BE5 /* RunnerTests */,
 				359AA7A3D26929679315ED34 /* FulbiiWeeklyWidgetExtension */,
 				D2E1074B93C6AAD6658F39FE /* Runner Watch App */,
+				F4F8CB152FE746ED7A27E080 /* FulbiiNotificationService */,
 			);
 		};
 /* End PBXProject section */
@@ -518,6 +583,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				07A0631BF6AECE0913685BB5 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D80AF7DF781A412EE47EBE8C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -642,6 +714,14 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		30C890FC8758CD2DAF81381C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B12C451C7A2795604093481D /* NotificationService.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		331C807D294A63A400263BE5 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -708,6 +788,12 @@
 			name = "Runner Watch App";
 			target = D2E1074B93C6AAD6658F39FE /* Runner Watch App */;
 			targetProxy = DE5E8A3DFE1778B63BC5DAD0 /* PBXContainerItemProxy */;
+		};
+		FE0EE2CFD15252A4A301D986 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = FulbiiNotificationService;
+			target = F4F8CB152FE746ED7A27E080 /* FulbiiNotificationService */;
+			targetProxy = 26BFD32B0FC7C06E4F231F97 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -945,6 +1031,38 @@
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Runner.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Runner";
 			};
 			name = Profile;
+		};
+		5CF064AAC7BD45F2F71832BD /* Profile */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				EXECUTABLE_NAME = FulbiiNotificationService;
+				INFOPLIST_FILE = FulbiiNotificationService/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.fulbii.app.notificationservice;
+				PRODUCT_NAME = FulbiiNotificationService;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Profile;
+		};
+		72EDE0A0481BA15844C3BE78 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				EXECUTABLE_NAME = FulbiiNotificationService;
+				INFOPLIST_FILE = FulbiiNotificationService/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.fulbii.app.notificationservice;
+				PRODUCT_NAME = FulbiiNotificationService;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
 		};
 		871ACCA4091DEE77A22B6751 /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -1193,6 +1311,21 @@
 			};
 			name = Debug;
 		};
+		C08131E3B943B2E00F2158F0 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				EXECUTABLE_NAME = FulbiiNotificationService;
+				INFOPLIST_FILE = FulbiiNotificationService/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.fulbii.app.notificationservice;
+				PRODUCT_NAME = FulbiiNotificationService;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 		EEB638718C075505B5FC7769 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1245,6 +1378,16 @@
 				EEB638718C075505B5FC7769 /* Release */,
 				28BBDA848457FD649AC02742 /* Debug */,
 				0024CF0AD073C4C069907066 /* Profile */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		956B6EF09FBB6A6F36FCCBFD /* Build configuration list for PBXNativeTarget "FulbiiNotificationService" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				72EDE0A0481BA15844C3BE78 /* Release */,
+				C08131E3B943B2E00F2158F0 /* Debug */,
+				5CF064AAC7BD45F2F71832BD /* Profile */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

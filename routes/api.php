@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\AdminModerationController;
 use App\Http\Controllers\Api\V1\ClubApiController;
 use App\Http\Controllers\Api\V1\ClubChallengeController;
 use App\Http\Controllers\Api\V1\ClubInvitationApiController;
+use App\Http\Controllers\Api\V1\ClubGroupChatController;
 use App\Http\Controllers\Api\V1\ClubJoinRequestController;
 use App\Http\Controllers\Api\V1\ClubNotificationPreferenceController;
 use App\Http\Controllers\Api\V1\FieldSubmissionController;
@@ -24,6 +25,7 @@ use App\Http\Controllers\Api\V1\PichangaSocialController;
 use App\Http\Controllers\Api\V1\ProfileClipController;
 use App\Http\Controllers\Api\V1\ReportController;
 use App\Http\Controllers\Api\V1\WatchMatchSessionController;
+use App\Http\Controllers\Api\V1\UserBlockController;
 
 /*
 |--------------------------------------------------------------------------
@@ -115,6 +117,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
         Route::post('/clubs/{club}/join-code/rotate', [ClubJoinRequestController::class, 'rotateJoinCode'])->middleware('club.active:club');
         Route::put('/clubs/{club}/members/{user}/role', [ClubApiController::class, 'setMemberRole'])->middleware('club.active:club');
         Route::delete('/clubs/{club}/members/{user}', [ClubApiController::class, 'removeMember'])->middleware('club.active:club');
+        Route::get('/clubs/{club}/admin-activity', [ClubApiController::class, 'adminActivity']);
 
         Route::get('/challenges', [ClubChallengeController::class, 'indexMine']);
         Route::get('/clubs/{club}/challenges', [ClubChallengeController::class, 'indexByClub']);
@@ -137,8 +140,18 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
         Route::post('/invitations/{invitation}/respond', [ClubInvitationApiController::class, 'respond'])->middleware('club.active:invitation');
         Route::post('/invitations/{invitation}/revoke', [ClubInvitationApiController::class, 'revoke'])->middleware('club.active:invitation');
 
+        Route::get('/clubs/{club}/chat/messages', [ClubGroupChatController::class, 'index']);
+        Route::post('/clubs/{club}/chat/messages', [ClubGroupChatController::class, 'send'])->middleware('club.active:club');
+        Route::post('/clubs/{club}/chat/read', [ClubGroupChatController::class, 'markRead'])->middleware('club.active:club');
+
+        Route::get('/me/blocks', [UserBlockController::class, 'index']);
+        Route::post('/users/{user}/block', [UserBlockController::class, 'store']);
+        Route::delete('/users/{user}/block', [UserBlockController::class, 'destroy']);
+
         Route::get('/clubs/{club}/notification-preference', [ClubNotificationPreferenceController::class, 'show']);
         Route::put('/clubs/{club}/notification-preference', [ClubNotificationPreferenceController::class, 'update'])->middleware('club.active:club');
+        Route::get('/clubs/{club}/notification-categories', [ClubNotificationPreferenceController::class, 'categories']);
+        Route::put('/clubs/{club}/notification-categories/{category}', [ClubNotificationPreferenceController::class, 'updateCategory'])->middleware('club.active:club');
 
         Route::post('/clubs/{club}/pichangas', [GroupPichangaController::class, 'store'])->middleware('club.active:club');
 
@@ -151,10 +164,16 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
             ->middleware('throttle:pichanga-sensitive');
         Route::post('/pichangas/{pichanga}/confirm', [GroupPichangaController::class, 'confirm'])->middleware('club.active:pichanga');
         Route::post('/pichangas/{pichanga}/withdraw', [GroupPichangaController::class, 'withdraw'])->middleware('club.active:pichanga');
+        Route::get('/pichangas/{pichanga}/waitlist', [GroupPichangaController::class, 'waitlist']);
+        Route::post('/pichangas/{pichanga}/waitlist', [GroupPichangaController::class, 'joinWaitlist'])->middleware('club.active:pichanga');
+        Route::delete('/pichangas/{pichanga}/waitlist', [GroupPichangaController::class, 'leaveWaitlist'])->middleware('club.active:pichanga');
         Route::get('/pichangas/{pichanga}/teams/{teamCode}/formation-suggestion', [GroupPichangaController::class, 'formationSuggestion']);
         Route::put('/pichangas/{pichanga}/teams/{teamCode}/formation', [GroupPichangaController::class, 'updateFormation'])->middleware('club.active:pichanga');
         Route::put('/pichangas/{pichanga}/participants/{user}/team', [GroupPichangaController::class, 'moveParticipantTeam'])->middleware('club.active:pichanga');
         Route::post('/pichangas/{pichanga}/status', [GroupPichangaController::class, 'setStatus'])
+            ->middleware('club.active:pichanga')
+            ->middleware('throttle:pichanga-sensitive');
+        Route::put('/pichangas/{pichanga}/schedule', [GroupPichangaController::class, 'updateSchedule'])
             ->middleware('club.active:pichanga')
             ->middleware('throttle:pichanga-sensitive');
 

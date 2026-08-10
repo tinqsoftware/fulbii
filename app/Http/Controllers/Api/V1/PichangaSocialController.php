@@ -4,18 +4,22 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\ClubUser;
+use App\Models\Club;
 use App\Models\GroupPichanga;
 use App\Models\GroupPichangaComment;
 use App\Models\GroupPichangaParticipant;
 use App\Models\GroupPichangaPost;
 use App\Models\GroupPichangaRating;
 use App\Models\User;
+use App\Models\UserBlock;
 use App\Services\CombinedSkillRatingService;
+use App\Services\ClubNotificationService;
 use App\Services\GroupPichangaAudienceService;
 use App\Services\PlayerRankingService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 
 class PichangaSocialController extends Controller
@@ -23,7 +27,8 @@ class PichangaSocialController extends Controller
     public function __construct(
         private readonly GroupPichangaAudienceService $audienceService,
         private readonly CombinedSkillRatingService $combinedSkillRatings,
-        private readonly PlayerRankingService $rankings
+        private readonly PlayerRankingService $rankings,
+        private readonly ClubNotificationService $notifications
     )
     {
     }
@@ -73,6 +78,7 @@ class PichangaSocialController extends Controller
             'photo_url' => $data['photo_url'] ?? null,
             'status' => 'active',
         ]);
+        $this->notifySocialMentions($pichanga, $auth, (string) ($data['content'] ?? ''), (int) $post->id);
 
         return response()->json(['message' => 'Post publicado.', 'post' => $post->load('user:id,name,nick,avatar_url')], 201);
     }
@@ -115,6 +121,21 @@ class PichangaSocialController extends Controller
             'content' => trim($data['content']),
             'status' => 'active',
         ]);
+        $club = $pichanga->club ?: Club::find($pichanga->club_id);
+        if ($club && (int) $post->user_id !== (int) $auth->id && !$this->usersHaveBlockedEachOther((int) $auth->id, (int) $post->user_id)) {
+            $this->notifications->notifyUsers($club, [(int) $post->user_id], [
+                'type' => 'pichanga_feed_reply',
+                'category' => 'social',
+                'title' => 'Respondieron tu publicación',
+                'body' => (string) ($auth->nick ?: $auth->name ?: 'Un compañero') . ' comentó en tu publicación.',
+                'target_type' => 'pichanga',
+                'target_id' => (int) $pichanga->id,
+                'group_pichanga_id' => (int) $pichanga->id,
+                'image_kind' => 'pichanga',
+                'data_json' => ['pichanga_id' => (int) $pichanga->id, 'post_id' => (int) $post->id],
+            ], (int) $auth->id);
+        }
+        $this->notifySocialMentions($pichanga, $auth, (string) $comment->content, (int) $post->id);
 
         return response()->json([
             'message' => 'Comentario agregado.',
@@ -181,6 +202,22 @@ class PichangaSocialController extends Controller
             'defensa' => $data['defensa'],
             'comentario' => $data['comentario'] ?? null,
         ]);
+
+        $club = $pichanga->club ?: Club::find($pichanga->club_id);
+        if ($club) {
+            $raterName = (string) ($auth->nick ?: $auth->name ?: 'Un compañero');
+            $this->notifications->notifyUsers($club, [$ratedUserId], [
+                'type' => 'pichanga_rating_received',
+                'category' => 'social',
+                'title' => 'Recibiste una calificación',
+                'body' => "{$raterName} te calificó en " . ($pichanga->title ?: 'una pichanga') . '.',
+                'target_type' => 'player_rating_history',
+                'target_id' => $ratedUserId,
+                'group_pichanga_id' => (int) $pichanga->id,
+                'image_kind' => 'player',
+                'data_json' => ['pichanga_id' => (int) $pichanga->id, 'user_id' => $ratedUserId],
+            ], (int) $auth->id);
+        }
 
         return response()->json([
             'message' => 'Calificación guardada.',
@@ -254,6 +291,21 @@ class PichangaSocialController extends Controller
             'club_id' => $eligibility['club_id'], 'user_calificador_id' => $auth->id, 'user_calificado_id' => $user->id,
             ...$data, 'created_at' => now(), 'updated_at' => now(),
         ]);
+        $club = Club::find((int) $eligibility['club_id']);
+        if ($club) {
+            $raterName = (string) ($auth->nick ?: $auth->name ?: 'Un compañero');
+            $this->notifications->notifyUsers($club, [(int) $user->id], [
+                'type' => 'profile_rating_received',
+                'category' => 'social',
+                'title' => 'Recibiste una calificación',
+                'body' => "{$raterName} dejó una calificación en tu perfil.",
+                'target_type' => 'player_rating_history',
+                'target_id' => (int) $user->id,
+                'image_kind' => 'player',
+                'image_url' => (string) ($user->avatar_url ?? ''),
+                'data_json' => ['user_id' => (int) $user->id],
+            ], (int) $auth->id);
+        }
         return response()->json(['message' => 'Calificación registrada.'], 201);
     }
 
@@ -384,5 +436,50 @@ class PichangaSocialController extends Controller
             ->active()
             ->where('rol', 'admin')
             ->exists();
+    }
+
+    private function notifySocialMentions(GroupPichanga $pichanga, User $actor, string $content, int $postId): void
+    {
+        preg_match_all('/@([A-Za-z0-9_]{3,20})/u', $content, $matches);
+        $nicks = array_values(array_unique($matches[1] ?? []));
+        if ($nicks === []) {
+            return;
+        }
+        $club = $pichanga->club ?: Club::find($pichanga->club_id);
+        if (!$club) {
+            return;
+        }
+        $eligibleIds = GroupPichangaParticipant::query()
+            ->where('pichanga_id', $pichanga->id)->where('status', 'confirmed')
+            ->whereIn('user_id', User::query()->whereIn('nick', $nicks)->select('id'))
+            ->pluck('user_id')->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id !== (int) $actor->id && !$this->usersHaveBlockedEachOther((int) $actor->id, $id))
+            ->all();
+        if ($eligibleIds === []) {
+            return;
+        }
+        $this->notifications->notifyUsers($club, $eligibleIds, [
+            'type' => 'pichanga_feed_mention',
+            'category' => 'social',
+            'title' => 'Te mencionaron en actividad',
+            'body' => (string) ($actor->nick ?: $actor->name ?: 'Un compañero') . ' te mencionó en una pichanga.',
+            'target_type' => 'pichanga',
+            'target_id' => (int) $pichanga->id,
+            'group_pichanga_id' => (int) $pichanga->id,
+            'image_kind' => 'pichanga',
+            'data_json' => ['pichanga_id' => (int) $pichanga->id, 'post_id' => $postId],
+        ], (int) $actor->id);
+    }
+
+    private function usersHaveBlockedEachOther(int $firstUserId, int $secondUserId): bool
+    {
+        if (!Schema::hasTable('user_blocks')) {
+            return false;
+        }
+        return UserBlock::query()->where(function ($query) use ($firstUserId, $secondUserId) {
+            $query->where('blocker_user_id', $firstUserId)->where('blocked_user_id', $secondUserId);
+        })->orWhere(function ($query) use ($firstUserId, $secondUserId) {
+            $query->where('blocker_user_id', $secondUserId)->where('blocked_user_id', $firstUserId);
+        })->exists();
     }
 }

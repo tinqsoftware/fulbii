@@ -9,12 +9,15 @@ import '../../services/push/push_service.dart';
 import '../../services/widget/widget_weekly_service.dart';
 import '../challenges/presentation/challenge_detail_screen.dart';
 import '../clubs/presentation/clubs_screen.dart';
+import '../clubs/presentation/club_detail_screen.dart';
+import '../clubs/presentation/club_group_chat_screen.dart';
 import '../notifications/presentation/inbox_screen.dart'
     show InboxScreen, inboxProvider, unreadNotificationsCountProvider;
 import '../pichangas/presentation/pichanga_detail_screen.dart';
 import '../pichangas/presentation/pichangas_screen.dart';
 import '../fields/presentation/map_screen.dart';
 import '../profile/presentation/profile_screen.dart';
+import '../profile/presentation/public_player_profile_screen.dart';
 
 final mainShellTabProvider = StateProvider<int>((ref) => 0);
 
@@ -51,6 +54,7 @@ class _MainShellState extends ConsumerState<MainShell>
         _pushService.initialize(
           onOpenPichanga: _openPichanga,
           onOpenChallenge: _openChallenge,
+          onOpenNotification: _openPushNotification,
           onForegroundNotification: _showForegroundNotification,
         );
       });
@@ -159,6 +163,54 @@ class _MainShellState extends ConsumerState<MainShell>
         });
   }
 
+  void _openPushNotification(Map<String, dynamic> data) {
+    final challengeId = int.tryParse((data['challenge_id'] ?? '').toString());
+    if (challengeId != null) {
+      _openChallenge(challengeId);
+      return;
+    }
+    final pichangaId = int.tryParse((data['pichanga_id'] ?? '').toString());
+    if (pichangaId != null) {
+      _openPichanga(pichangaId);
+      return;
+    }
+    if (!mounted) return;
+    final clubId = int.tryParse((data['club_id'] ?? '').toString()) ?? 0;
+    final targetId = int.tryParse((data['target_id'] ?? '').toString()) ?? 0;
+    final targetType = (data['target_type'] ?? '').toString();
+    if (targetType == 'club_chat' && clubId > 0) {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) =>
+              ClubGroupChatScreen(clubId: clubId, clubName: 'Grupo'),
+        ),
+      );
+    } else if (targetType == 'club_join_request' && clubId > 0) {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ClubAdministrationScreen(clubId: clubId),
+        ),
+      );
+    } else if (targetType == 'player_rating_history' &&
+        clubId > 0 &&
+        targetId > 0) {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) =>
+              PublicPlayerProfileScreen(clubId: clubId, userId: targetId),
+        ),
+      );
+    } else if (clubId > 0) {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ClubDetailScreen(clubId: clubId),
+        ),
+      );
+    } else {
+      _openInboxFromBell();
+    }
+  }
+
   void _showForegroundNotification(
     String title,
     String body,
@@ -212,6 +264,8 @@ class _MainShellState extends ConsumerState<MainShell>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _syncWidgets();
+      ref.invalidate(inboxProvider);
+      ref.invalidate(unreadNotificationsCountProvider);
     }
   }
 

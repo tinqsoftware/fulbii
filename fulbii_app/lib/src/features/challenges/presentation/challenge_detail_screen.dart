@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/formatters/spanish_date_formatter.dart';
 import '../../../core/network/api_error.dart';
+import '../../notifications/presentation/report_content_sheet.dart';
 import '../data/challenges_repository.dart';
 
 final challengeDetailProvider = FutureProvider.autoDispose
@@ -341,6 +342,13 @@ class _ChallengeDetailScreenState extends ConsumerState<ChallengeDetailScreen>
                                 final type = (item['message_type'] ?? 'text')
                                     .toString();
                                 final isMine = item['is_mine'] == true;
+                                final senderId =
+                                    int.tryParse(
+                                      item['sender_user_id'].toString(),
+                                    ) ??
+                                    0;
+                                final messageId =
+                                    int.tryParse(item['id'].toString()) ?? 0;
 
                                 if (type == 'system') {
                                   return Padding(
@@ -368,6 +376,8 @@ class _ChallengeDetailScreenState extends ConsumerState<ChallengeDetailScreen>
                                   content: content,
                                   createdAt: createdAt,
                                   isMine: isMine,
+                                  senderId: senderId,
+                                  messageId: messageId,
                                 );
                               },
                             );
@@ -1002,12 +1012,16 @@ class _ChallengeMessageBubble extends StatelessWidget {
     required this.content,
     required this.createdAt,
     required this.isMine,
+    required this.senderId,
+    required this.messageId,
   });
 
   final String senderName;
   final String content;
   final String createdAt;
   final bool isMine;
+  final int senderId;
+  final int messageId;
 
   @override
   Widget build(BuildContext context) {
@@ -1041,7 +1055,32 @@ class _ChallengeMessageBubble extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 2),
-            Text(content, style: TextStyle(color: foreground)),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: Text(content, style: TextStyle(color: foreground)),
+                ),
+                if (!isMine && senderId > 0 && messageId > 0)
+                  IconButton(
+                    tooltip: 'Reportar mensaje',
+                    icon: Icon(
+                      Icons.flag_outlined,
+                      size: 17,
+                      color: foreground,
+                    ),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => showReportContentSheet(
+                      context,
+                      targetType: 'user',
+                      targetId: senderId,
+                      contentType: 'challenge_message',
+                      contentId: messageId,
+                      title: 'Reportar mensaje',
+                    ),
+                  ),
+              ],
+            ),
             const SizedBox(height: 3),
             Text(
               createdAt,

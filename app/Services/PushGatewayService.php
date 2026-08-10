@@ -73,11 +73,24 @@ class PushGatewayService
                 'data' => $this->stringifyData($data),
             ];
 
+            $imageUrl = trim((string) ($data['image_url'] ?? ''));
+            if ($imageUrl !== '') {
+                // Android renders this directly. iOS consumes the matching
+                // fcm_options.image through NotificationServiceExtension.
+                $message['notification']['image'] = $imageUrl;
+            }
+
             if ($device->platform === 'android') {
                 $message['android'] = ['priority' => 'high'];
             }
             if ($device->platform === 'ios') {
-                $message['apns'] = ['headers' => ['apns-priority' => '10']];
+                $message['apns'] = [
+                    'headers' => ['apns-priority' => '10'],
+                    'payload' => ['aps' => ['mutable-content' => 1]],
+                ];
+                if ($imageUrl !== '') {
+                    $message['apns']['fcm_options'] = ['image' => $imageUrl];
+                }
             }
 
             $endpoint = sprintf(

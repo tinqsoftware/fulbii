@@ -5,6 +5,7 @@ import 'package:video_player/video_player.dart';
 
 import '../../../config/app_config.dart';
 import '../../clubs/data/clubs_repository.dart';
+import '../../notifications/presentation/report_content_sheet.dart';
 import '../data/profile_repository.dart';
 
 final publicPlayerProfileProvider = FutureProvider.autoDispose
@@ -60,7 +61,27 @@ class PublicPlayerProfileScreen extends ConsumerWidget {
     final appConfig = ref.watch(appConfigProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Perfil Deportivo'), elevation: 0),
+      appBar: AppBar(
+        title: const Text('Perfil Deportivo'),
+        elevation: 0,
+        actions: [
+          IconButton(
+            tooltip: 'Bloquear jugador',
+            icon: const Icon(Icons.block_outlined),
+            onPressed: () => _confirmBlock(context, ref, userId),
+          ),
+          IconButton(
+            tooltip: 'Reportar jugador',
+            icon: const Icon(Icons.flag_outlined),
+            onPressed: () => showReportContentSheet(
+              context,
+              targetType: 'user',
+              targetId: userId,
+              title: 'Reportar jugador',
+            ),
+          ),
+        ],
+      ),
       body: profile.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Center(
@@ -383,6 +404,47 @@ class PublicPlayerProfileScreen extends ConsumerWidget {
         },
       ),
     );
+  }
+}
+
+Future<void> _confirmBlock(
+  BuildContext context,
+  WidgetRef ref,
+  int userId,
+) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Bloquear jugador'),
+      content: const Text(
+        'No verás sus mensajes en chats compartidos ni recibirás sus avisos sociales.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Bloquear'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true || !context.mounted) return;
+  try {
+    await ref.read(profileRepositoryProvider).blockUser(userId);
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Jugador bloqueado.')));
+    }
+  } catch (_) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo bloquear al jugador.')),
+      );
+    }
   }
 }
 

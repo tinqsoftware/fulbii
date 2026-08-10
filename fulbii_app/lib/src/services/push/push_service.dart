@@ -5,6 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../features/notifications/data/notifications_repository.dart';
 
@@ -30,6 +31,7 @@ class PushService {
   Future<void> initialize({
     required void Function(int pichangaId) onOpenPichanga,
     required void Function(int challengeId) onOpenChallenge,
+    void Function(Map<String, dynamic> data)? onOpenNotification,
     void Function(String title, String body, Map<String, dynamic> data)?
     onForegroundNotification,
   }) async {
@@ -84,22 +86,22 @@ class PushService {
       await _registerToken(token);
     });
 
-    _openedSub = FirebaseMessaging.onMessageOpenedApp.listen((message) {
-      final challengeId = int.tryParse(
-        (message.data['challenge_id'] ?? '').toString(),
-      );
+    void open(RemoteMessage message) {
+      final data = Map<String, dynamic>.from(message.data);
+      if (onOpenNotification != null) {
+        onOpenNotification(data);
+        return;
+      }
+      final challengeId = int.tryParse((data['challenge_id'] ?? '').toString());
       if (challengeId != null) {
         onOpenChallenge(challengeId);
         return;
       }
+      final pichangaId = int.tryParse((data['pichanga_id'] ?? '').toString());
+      if (pichangaId != null) onOpenPichanga(pichangaId);
+    }
 
-      final pichangaId = int.tryParse(
-        (message.data['pichanga_id'] ?? '').toString(),
-      );
-      if (pichangaId != null) {
-        onOpenPichanga(pichangaId);
-      }
-    });
+    _openedSub = FirebaseMessaging.onMessageOpenedApp.listen(open);
 
     _messageSub = FirebaseMessaging.onMessage.listen((message) {
       if (onForegroundNotification == null) {
@@ -113,19 +115,7 @@ class PushService {
 
     final initial = await messaging.getInitialMessage();
     if (initial != null) {
-      final challengeId = int.tryParse(
-        (initial.data['challenge_id'] ?? '').toString(),
-      );
-      if (challengeId != null) {
-        onOpenChallenge(challengeId);
-      } else {
-        final pichangaId = int.tryParse(
-          (initial.data['pichanga_id'] ?? '').toString(),
-        );
-        if (pichangaId != null) {
-          onOpenPichanga(pichangaId);
-        }
-      }
+      open(initial);
     }
 
     _initialized = true;
@@ -144,10 +134,11 @@ class PushService {
   Future<void> _registerToken(String token) async {
     final platform = Platform.isIOS ? 'ios' : 'android';
     try {
+      final package = await PackageInfo.fromPlatform();
       await _repository.registerDevice(
         platform: platform,
         token: token,
-        appVersion: '1.0.0',
+        appVersion: '${package.version}+${package.buildNumber}',
         deviceName: '$platform-device',
       );
       debugPrint('Device token registered successfully => platform=$platform');

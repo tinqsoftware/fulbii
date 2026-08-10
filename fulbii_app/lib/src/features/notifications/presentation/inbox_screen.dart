@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_error.dart';
 import '../../challenges/presentation/challenge_detail_screen.dart';
+import '../../clubs/presentation/club_detail_screen.dart';
+import '../../clubs/presentation/club_group_chat_screen.dart';
 import '../../pichangas/presentation/pichanga_detail_screen.dart';
+import '../../profile/presentation/public_player_profile_screen.dart';
 import '../data/notifications_repository.dart';
 
 final inboxProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>(
@@ -140,20 +143,7 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(9),
-                  decoration: BoxDecoration(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.primary.withValues(alpha: .13),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    icon,
-                    size: 20,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
+                _NotificationVisual(item: item, icon: icon),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -213,10 +203,11 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
       ref.invalidate(inboxProvider);
       ref.invalidate(unreadNotificationsCountProvider);
     } on ApiError catch (error) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
     }
   }
 
@@ -245,7 +236,114 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
           builder: (_) => PichangaDetailScreen(pichangaId: pichanga),
         ),
       );
+    } else {
+      final targetType = (data['target_type'] ?? '').toString();
+      final targetId = int.tryParse((data['target_id'] ?? '').toString()) ?? 0;
+      final clubId =
+          int.tryParse((data['club_id'] ?? item['club_id'] ?? '').toString()) ??
+          0;
+      if (targetType == 'club_chat' && clubId > 0) {
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => ClubGroupChatScreen(
+              clubId: clubId,
+              clubName: (item['title'] ?? 'Grupo').toString(),
+            ),
+          ),
+        );
+      } else if (targetType == 'club_join_request' && clubId > 0) {
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => ClubAdministrationScreen(clubId: clubId),
+          ),
+        );
+      } else if (targetType == 'player_rating_history' &&
+          clubId > 0 &&
+          targetId > 0) {
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) =>
+                PublicPlayerProfileScreen(clubId: clubId, userId: targetId),
+          ),
+        );
+      } else if (clubId > 0) {
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => ClubDetailScreen(clubId: clubId),
+          ),
+        );
+      }
     }
+  }
+}
+
+class _NotificationVisual extends StatelessWidget {
+  const _NotificationVisual({required this.item, required this.icon});
+
+  final Map<String, dynamic> item;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final data = (item['data_json'] as Map?)?.cast<String, dynamic>() ?? {};
+    final imageUrl = (data['image_url'] ?? '').toString();
+    final secondaryImageUrl = (data['secondary_image_url'] ?? '').toString();
+    final color = Theme.of(context).colorScheme.primary;
+    Widget photo(String url, {double size = 44}) => ClipOval(
+      child: url.isEmpty
+          ? Container(
+              color: color.withValues(alpha: .13),
+              width: size,
+              height: size,
+            )
+          : Image.network(
+              url,
+              width: size,
+              height: size,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => Container(
+                color: color.withValues(alpha: .13),
+                width: size,
+                height: size,
+              ),
+            ),
+    );
+    return SizedBox(
+      width: 48,
+      height: 48,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          if (secondaryImageUrl.isNotEmpty)
+            Positioned(
+              right: 0,
+              bottom: 0,
+              child: photo(secondaryImageUrl, size: 31),
+            ),
+          Positioned(left: 0, top: 0, child: photo(imageUrl)),
+          Positioned(
+            right: -2,
+            top: -2,
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.surface,
+                  width: 2,
+                ),
+              ),
+              child: Icon(
+                icon,
+                size: 13,
+                color: Theme.of(context).colorScheme.onPrimary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

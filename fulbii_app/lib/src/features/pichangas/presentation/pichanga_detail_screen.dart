@@ -8,6 +8,7 @@ import '../../../core/network/api_error.dart';
 import '../../../services/widget/widget_weekly_service.dart';
 import '../../auth/session_controller.dart';
 import '../../fields/presentation/field_detail_screen.dart';
+import '../../notifications/presentation/report_content_sheet.dart';
 import '../../profile/presentation/public_player_profile_screen.dart';
 import '../data/pichangas_repository.dart';
 
@@ -243,6 +244,8 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
     final confirmed = pichanga['confirmed_count'] ?? 0;
     final capacity = pichanga['capacity'] ?? '-';
     final spots = pichanga['spots_left'] ?? 0;
+    final waitlistCount =
+        int.tryParse(pichanga['waitlist_count'].toString()) ?? 0;
     final startsAt = _formatTextDateTime(pichanga['starts_at']);
 
     return Padding(
@@ -297,6 +300,13 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
             capacity: '$capacity',
             spots: '$spots',
           ),
+          if (waitlistCount > 0) ...[
+            const SizedBox(height: 8),
+            Chip(
+              avatar: const Icon(Icons.format_list_numbered, size: 18),
+              label: Text('$waitlistCount en lista de espera'),
+            ),
+          ],
           const SizedBox(height: 24),
           _buildTeamBoardCard(
             context,
@@ -340,12 +350,23 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
     final canWithdraw = me['can_withdraw'] == true;
     final canRequest = me['can_request_external'] == true;
     final pending = me['external_request_status']?.toString() == 'pending';
+    final waitlistStatus = me['waitlist_status']?.toString();
+    final waitlistPosition =
+        int.tryParse(me['waitlist_position'].toString()) ?? 0;
+    final waiting = waitlistStatus == 'waiting';
+    final canJoinWaitlist =
+        me['is_member'] == true &&
+        !confirmed &&
+        !waiting &&
+        (int.tryParse(pichanga['spots_left'].toString()) ?? 0) <= 0;
 
     if (!canConfirm &&
         !canChange &&
         !canWithdraw &&
         !canRequest &&
         !pending &&
+        !waiting &&
+        !canJoinWaitlist &&
         !confirmed) {
       return null;
     }
@@ -395,8 +416,26 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
               )
             else if (pending)
               const _PendingRequestNotice()
+            else if (waiting)
+              _WaitlistNotice(position: waitlistPosition)
+            else if (canJoinWaitlist)
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () =>
+                      _joinWaitlist(context, ref, selectedTeamCode: selected),
+                  icon: const Icon(Icons.format_list_numbered),
+                  label: const Text('Unirme a lista de espera'),
+                ),
+              )
             else if (confirmed)
               _ConfirmedNotice(teamCode: mine),
+            if (waiting)
+              TextButton.icon(
+                onPressed: () => _leaveWaitlist(context, ref),
+                icon: const Icon(Icons.close, size: 18),
+                label: const Text('Salir de lista de espera'),
+              ),
             if (canWithdraw) ...[
               if (canChange) ...[
                 const SizedBox(height: 8),
@@ -849,9 +888,30 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
                         ListTile(
                           contentPadding: EdgeInsets.zero,
                           title: Text(author),
-                          trailing: Text(
-                            _formatLocalDateTime(post['created_at']),
-                            style: Theme.of(context).textTheme.labelSmall,
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                _formatLocalDateTime(post['created_at']),
+                                style: Theme.of(context).textTheme.labelSmall,
+                              ),
+                              if (postId > 0)
+                                IconButton(
+                                  tooltip: 'Reportar publicación',
+                                  icon: const Icon(
+                                    Icons.flag_outlined,
+                                    size: 18,
+                                  ),
+                                  onPressed: () => showReportContentSheet(
+                                    context,
+                                    targetType: 'group_pichanga',
+                                    targetId: widget.pichangaId,
+                                    contentType: 'pichanga_post',
+                                    contentId: postId,
+                                    title: 'Reportar publicación',
+                                  ),
+                                ),
+                            ],
                           ),
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -882,9 +942,35 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
                                             commentUser['name'] ??
                                             'usr')
                                         .toString();
-                                return Text(
-                                  '• $commentAuthor: ${(comment['content'] ?? '').toString()}',
-                                  style: const TextStyle(fontSize: 13),
+                                final commentId = int.tryParse(
+                                  comment['id'].toString(),
+                                );
+                                return Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        '• $commentAuthor: ${(comment['content'] ?? '').toString()}',
+                                        style: const TextStyle(fontSize: 13),
+                                      ),
+                                    ),
+                                    if (commentId != null)
+                                      IconButton(
+                                        tooltip: 'Reportar comentario',
+                                        icon: const Icon(
+                                          Icons.flag_outlined,
+                                          size: 16,
+                                        ),
+                                        visualDensity: VisualDensity.compact,
+                                        onPressed: () => showReportContentSheet(
+                                          context,
+                                          targetType: 'group_pichanga',
+                                          targetId: widget.pichangaId,
+                                          contentType: 'pichanga_comment',
+                                          contentId: commentId,
+                                          title: 'Reportar comentario',
+                                        ),
+                                      ),
+                                  ],
                                 );
                               }).toList(),
                             ),
@@ -1524,6 +1610,32 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
       action: () =>
           ref.read(pichangasRepositoryProvider).withdraw(widget.pichangaId),
       successMessage: 'Te diste de baja.',
+    );
+  }
+
+  Future<void> _joinWaitlist(
+    BuildContext context,
+    WidgetRef ref, {
+    required String? selectedTeamCode,
+  }) async {
+    await _runAction(
+      context,
+      ref,
+      action: () => ref
+          .read(pichangasRepositoryProvider)
+          .joinWaitlist(widget.pichangaId, teamCode: selectedTeamCode),
+      successMessage: 'Te uniste a la lista de espera.',
+    );
+  }
+
+  Future<void> _leaveWaitlist(BuildContext context, WidgetRef ref) async {
+    await _runAction(
+      context,
+      ref,
+      action: () => ref
+          .read(pichangasRepositoryProvider)
+          .leaveWaitlist(widget.pichangaId),
+      successMessage: 'Saliste de la lista de espera.',
     );
   }
 
@@ -2385,6 +2497,26 @@ class _ConfirmedNotice extends StatelessWidget {
       const SizedBox(width: 8),
       Text(
         'Estás en Equipo ${teamCode ?? ''}',
+        style: const TextStyle(fontWeight: FontWeight.w800),
+      ),
+    ],
+  );
+}
+
+class _WaitlistNotice extends StatelessWidget {
+  const _WaitlistNotice({required this.position});
+  final int position;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      const Icon(Icons.format_list_numbered, size: 19),
+      const SizedBox(width: 8),
+      Text(
+        position > 0
+            ? 'Lista de espera · puesto $position'
+            : 'Estás en lista de espera',
         style: const TextStyle(fontWeight: FontWeight.w800),
       ),
     ],

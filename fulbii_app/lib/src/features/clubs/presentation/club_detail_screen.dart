@@ -17,6 +17,7 @@ import '../../pichangas/presentation/pichanga_detail_screen.dart';
 import '../../profile/presentation/public_player_profile_screen.dart';
 import '../data/clubs_repository.dart';
 import 'club_invite_screen.dart';
+import 'club_group_chat_screen.dart';
 import 'challenge_club_screen.dart';
 
 final clubDetailProvider = FutureProvider.autoDispose
@@ -55,6 +56,11 @@ final clubPichangasCalendarProvider = FutureProvider.autoDispose
 final clubNotificationPrefProvider = FutureProvider.autoDispose
     .family<Map<String, dynamic>, int>((ref, clubId) {
       return ref.watch(clubsRepositoryProvider).notificationPreference(clubId);
+    });
+
+final clubNotificationCategoriesProvider = FutureProvider.autoDispose
+    .family<List<Map<String, dynamic>>, int>((ref, clubId) {
+      return ref.watch(clubsRepositoryProvider).notificationCategories(clubId);
     });
 
 final clubJoinRequestsProvider = FutureProvider.autoDispose
@@ -668,8 +674,26 @@ class ClubDetailScreen extends ConsumerWidget {
                               ?.cast<String, dynamic>() ??
                           {};
                       final isMember = membership['is_member'] == true;
+                      final isAdmin =
+                          membership['my_role']?.toString() == 'admin';
+                      final club =
+                          (data['club'] as Map?)?.cast<String, dynamic>() ?? {};
+                      final clubName = (club['nombre'] ?? 'Grupo').toString();
                       return Row(
                         children: [
+                          if (isMember)
+                            _TopAction(
+                              icon: Icons.forum_outlined,
+                              tooltip: 'Chat del grupo',
+                              onPressed: () => Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => ClubGroupChatScreen(
+                                    clubId: clubId,
+                                    clubName: clubName,
+                                  ),
+                                ),
+                              ),
+                            ),
                           _TopAction(
                             icon: Icons.groups_outlined,
                             tooltip: 'Integrantes',
@@ -680,7 +704,7 @@ class ClubDetailScreen extends ConsumerWidget {
                               ),
                             ),
                           ),
-                          if (isMember)
+                          if (isAdmin)
                             _TopAction(
                               icon: Icons.settings_outlined,
                               tooltip: 'Administración',
@@ -1100,6 +1124,10 @@ class ClubMembersScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final members = ref.watch(clubMembersProvider(clubId));
+    final detail = ref.watch(clubDetailProvider(clubId)).valueOrNull;
+    final membership =
+        (detail?['membership'] as Map?)?.cast<String, dynamic>() ?? {};
+    final isAdmin = membership['my_role']?.toString() == 'admin';
     return Scaffold(
       appBar: AppBar(title: const Text('Integrantes')),
       body: members.when(
@@ -1117,49 +1145,142 @@ class ClubMembersScreen extends ConsumerWidget {
             final name = (user['nick'] ?? user['name'] ?? 'Jugador').toString();
             final stars = member['stars'];
             final userId = int.tryParse(member['user_id'].toString()) ?? 0;
-            return ListTile(
-              contentPadding: const EdgeInsets.symmetric(vertical: 5),
-              leading: CircleAvatar(
-                child: Text(
-                  name.isEmpty ? '?' : name.substring(0, 1).toUpperCase(),
-                ),
-              ),
-              title: Text(name),
-              subtitle: Text(
-                (member['rol'] ?? 'miembro').toString() == 'admin'
-                    ? 'Administrador'
-                    : 'Miembro',
-              ),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    stars == null
-                        ? '—'
-                        : '★ ${(stars as num).toDouble().toStringAsFixed(1)}',
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  const Icon(Icons.chevron_right),
-                ],
-              ),
-              onTap: userId <= 0
-                  ? null
-                  : () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => PublicPlayerProfileScreen(
-                          clubId: clubId,
-                          userId: userId,
-                        ),
-                      ),
-                    ),
+            return _ClubMemberTile(
+              clubId: clubId,
+              member: member,
+              name: name,
+              stars: stars,
+              userId: userId,
+              canManage: isAdmin,
             );
           },
         ),
       ),
     );
+  }
+}
+
+class _ClubMemberTile extends ConsumerWidget {
+  const _ClubMemberTile({
+    required this.clubId,
+    required this.member,
+    required this.name,
+    required this.stars,
+    required this.userId,
+    required this.canManage,
+  });
+
+  final int clubId;
+  final Map<String, dynamic> member;
+  final String name;
+  final dynamic stars;
+  final int userId;
+  final bool canManage;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isAdmin = (member['rol'] ?? 'miembro').toString() == 'admin';
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(vertical: 5),
+      leading: CircleAvatar(
+        child: Text(name.isEmpty ? '?' : name.substring(0, 1).toUpperCase()),
+      ),
+      title: Text(name),
+      subtitle: Text(isAdmin ? 'Administrador' : 'Miembro'),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            stars == null
+                ? '—'
+                : '★ ${(stars as num).toDouble().toStringAsFixed(1)}',
+            style: Theme.of(
+              context,
+            ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          if (canManage && userId > 0)
+            PopupMenuButton<String>(
+              tooltip: 'Gestionar integrante',
+              onSelected: (action) => _manage(context, ref, action),
+              itemBuilder: (_) => [
+                PopupMenuItem(
+                  value: isAdmin ? 'member' : 'admin',
+                  child: Text(
+                    isAdmin ? 'Quitar administración' : 'Hacer administrador',
+                  ),
+                ),
+                const PopupMenuDivider(),
+                const PopupMenuItem(
+                  value: 'remove',
+                  child: Text('Remover del grupo'),
+                ),
+              ],
+            )
+          else
+            const Icon(Icons.chevron_right),
+        ],
+      ),
+      onTap: userId <= 0
+          ? null
+          : () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) =>
+                    PublicPlayerProfileScreen(clubId: clubId, userId: userId),
+              ),
+            ),
+    );
+  }
+
+  Future<void> _manage(
+    BuildContext context,
+    WidgetRef ref,
+    String action,
+  ) async {
+    final label = action == 'remove'
+        ? 'remover a $name del grupo'
+        : action == 'admin'
+        ? 'hacer administrador a $name'
+        : 'quitar la administración a $name';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirmar cambio'),
+        content: Text('¿Seguro que deseas $label?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Confirmar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    try {
+      if (action == 'remove') {
+        await ref.read(clubsRepositoryProvider).removeMember(clubId, userId);
+      } else {
+        await ref
+            .read(clubsRepositoryProvider)
+            .setMemberRole(clubId, userId, action);
+      }
+      ref.invalidate(clubMembersProvider(clubId));
+      ref.invalidate(clubDetailProvider(clubId));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Integrante actualizado.')),
+        );
+      }
+    } on ApiError catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    }
   }
 }
 
@@ -1198,6 +1319,7 @@ class _ClubAdministrationBody extends ConsumerWidget {
     final isActive = club['is_active'] != false;
     final canEdit = isAdmin && isActive;
     final pref = ref.watch(clubNotificationPrefProvider(clubId));
+    final categories = ref.watch(clubNotificationCategoriesProvider(clubId));
     final requests = isAdmin && isActive
         ? ref.watch(clubJoinRequestsProvider(clubId))
         : null;
@@ -1253,6 +1375,22 @@ class _ClubAdministrationBody extends ConsumerWidget {
           title: const Text('Permitir solicitudes de ingreso'),
           onChanged: canEdit && club['is_visible'] == true
               ? (value) => update({'link_join_enabled': value})
+              : null,
+        ),
+        SwitchListTile.adaptive(
+          key: const Key('allow_members_create_pichangas_switch'),
+          contentPadding: EdgeInsets.zero,
+          value: (club['pichanga_create_scope'] ?? 'admins') == 'members',
+          title: const Text('Permitir que los miembros creen pichangas'),
+          subtitle: Text(
+            (club['pichanga_create_scope'] ?? 'admins') == 'members'
+                ? 'Los administradores y miembros podrán crear pichangas.'
+                : 'Solo los administradores podrán crear pichangas.',
+          ),
+          onChanged: canEdit
+              ? (value) => update({
+                  'pichanga_create_scope': value ? 'members' : 'admins',
+                })
               : null,
         ),
         SwitchListTile.adaptive(
@@ -1316,6 +1454,39 @@ class _ClubAdministrationBody extends ConsumerWidget {
                     ref.invalidate(clubNotificationPrefProvider(clubId));
                   }
                 : null,
+          ),
+        ),
+        const SizedBox(height: 8),
+        categories.when(
+          loading: () => const SizedBox.shrink(),
+          error: (_, _) => const SizedBox.shrink(),
+          data: (items) => Column(
+            children: items.map((item) {
+              final category = (item['category'] ?? '').toString();
+              final label = switch (category) {
+                'pichangas' => 'Pichangas',
+                'challenges' => 'Retos',
+                'chat' => 'Chat del grupo',
+                'requests' => 'Solicitudes y cambios',
+                'invitations' => 'Invitaciones',
+                _ => 'Actividad social',
+              };
+              return SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                title: Text(label),
+                value: item['is_enabled'] != false,
+                onChanged: !isActive
+                    ? null
+                    : (enabled) async {
+                        await ref
+                            .read(clubsRepositoryProvider)
+                            .setNotificationCategory(clubId, category, enabled);
+                        ref.invalidate(
+                          clubNotificationCategoriesProvider(clubId),
+                        );
+                      },
+              );
+            }).toList(),
           ),
         ),
         if (requests != null) ...[
@@ -1605,12 +1776,13 @@ class _ClubPichangasAgendaState extends ConsumerState<_ClubPichangasAgenda> {
                     (data['meta'] as Map?)?.cast<String, dynamic>() ?? {};
                 final lastPage =
                     int.tryParse((meta['last_page'] ?? 1).toString()) ?? 1;
-                if (items.isEmpty)
+                if (items.isEmpty) {
                   return Text(
                     _tab == 'past'
                         ? 'Todavía no hay pichangas pasadas.'
                         : 'Todavía no hay pichangas pendientes.',
                   );
+                }
                 return Column(
                   children: [
                     ...items.map(
@@ -1656,12 +1828,13 @@ class _ClubPichangasAgendaState extends ConsumerState<_ClubPichangasAgenda> {
 
   void _openDetail(Map<String, dynamic> item) {
     final id = int.tryParse(item['id'].toString()) ?? 0;
-    if (id > 0)
+    if (id > 0) {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => PichangaDetailScreen(pichangaId: id),
         ),
       );
+    }
   }
 
   Future<void> _openCalendar() async {
@@ -1709,8 +1882,9 @@ class _ClubPichangasCalendarState
                 final date = DateTime.tryParse(
                   (item['starts_at'] ?? '').toString(),
                 )?.toLocal();
-                if (date != null)
+                if (date != null) {
                   byDay.putIfAbsent(date.day, () => []).add(item);
+                }
               }
               final days = DateUtils.getDaysInMonth(_month.year, _month.month);
               final firstWeekday =

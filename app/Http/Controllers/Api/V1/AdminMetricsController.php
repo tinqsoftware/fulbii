@@ -151,6 +151,70 @@ class AdminMetricsController extends Controller
             && $androidPackageName !== ''
             && !empty($androidFingerprints);
 
+        $push = [
+            'active_devices' => 0,
+            'inactive_devices' => 0,
+            'dispatches_last_24h' => ['sent' => 0, 'failed' => 0, 'queued' => 0],
+            'last_error' => null,
+        ];
+        if (Schema::hasTable('user_devices')) {
+            $push['active_devices'] = (int) DB::table('user_devices')->where('is_active', true)->count();
+            $push['inactive_devices'] = (int) DB::table('user_devices')->where('is_active', false)->count();
+        }
+        if (Schema::hasTable('push_dispatch_logs')) {
+            $rows = DB::table('push_dispatch_logs')->where('created_at', '>=', now()->subDay())
+                ->selectRaw('status, COUNT(*) as total')->groupBy('status')->get();
+            foreach ($rows as $row) {
+                $push['dispatches_last_24h'][(string) $row->status] = (int) $row->total;
+            }
+            $push['last_error'] = DB::table('push_dispatch_logs')->whereNotNull('error_message')
+                ->orderByDesc('id')->value('error_message');
+            $push['recent_deliveries'] = DB::table('push_dispatch_logs as logs')
+                ->join('push_notifications as notifications', 'notifications.id', '=', 'logs.push_notification_id')
+                ->select('notifications.user_id', 'logs.status', 'logs.provider', 'logs.created_at')
+                ->orderByDesc('logs.id')->limit(10)->get()->map(fn ($row) => (array) $row)->all();
+        }
+
+        $operations = [
+            'groups_without_admin' => 0,
+            'challenges_needing_coordinator' => 0,
+            'upcoming_pichangas_without_confirmations' => 0,
+            'waitlist_entries_waiting' => 0,
+            'pending_reports' => Schema::hasTable('reports') ? (int) DB::table('reports')->where('status', 'pending')->count() : 0,
+            'active_blocks' => Schema::hasTable('user_blocks') ? (int) DB::table('user_blocks')->count() : 0,
+        ];
+        if (Schema::hasTable('clubs') && Schema::hasTable('club_user')) {
+            $clubs = DB::table('clubs as clubs');
+            if (Schema::hasColumn('clubs', 'estado')) {
+                $clubs->where('clubs.estado', 1);
+            }
+            $operations['groups_without_admin'] = (int) $clubs->whereNotExists(function ($query) {
+                $query->selectRaw('1')->from('club_user as members')->whereColumn('members.club_id', 'clubs.id')
+                    ->where('members.rol', 'admin');
+                if (Schema::hasColumn('club_user', 'estado')) {
+                    $query->where('members.estado', 1);
+                }
+            })->count();
+        }
+        if (Schema::hasTable('club_challenges')) {
+            $operations['challenges_needing_coordinator'] = (int) DB::table('club_challenges')
+                ->whereIn('status', ['pending', 'negotiating', 'configuring'])
+                ->where(function ($query) {
+                    $query->whereNull('coordinator_challenger_user_id')->orWhereNull('coordinator_challenged_user_id');
+                })->count();
+        }
+        if (Schema::hasTable('group_pichangas') && Schema::hasTable('group_pichanga_participants')) {
+            $operations['upcoming_pichangas_without_confirmations'] = (int) DB::table('group_pichangas as pichangas')
+                ->whereIn('pichangas.status', ['published', 'confirmed'])->whereBetween('pichangas.starts_at', [now(), now()->addHours(48)])
+                ->whereNotExists(function ($query) {
+                    $query->selectRaw('1')->from('group_pichanga_participants as participants')
+                        ->whereColumn('participants.pichanga_id', 'pichangas.id')->where('participants.status', 'confirmed');
+                })->count();
+        }
+        if (Schema::hasTable('group_pichanga_waitlist')) {
+            $operations['waitlist_entries_waiting'] = (int) DB::table('group_pichanga_waitlist')->where('status', 'waiting')->count();
+        }
+
         return response()->json([
             'queue_connection' => $queueConnection,
             'jobs_pending' => $jobsPending,
@@ -162,6 +226,8 @@ class AdminMetricsController extends Controller
             'fcm_v1_ready' => $fcmV1Ready,
             'app_link_base_url' => $appLinkBaseUrl,
             'well_known_endpoints_ok' => $wellKnownEndpointsOk,
+            'push' => $push,
+            'operations' => $operations,
         ]);
     }
 

@@ -10,11 +10,13 @@ use App\Models\GroupPichanga;
 use App\Models\GroupPichangaExternalRequest;
 use App\Models\GroupPichangaNotificationBatch;
 use App\Models\GroupPichangaParticipant;
+use App\Models\GroupPichangaWaitlistEntry;
 use App\Models\Polideportivo;
 use App\Models\User;
 use App\Models\WatchMatchSession;
 use App\Models\WatchMatchEvent;
 use App\Services\ClubPushMuteService;
+use App\Services\ClubNotificationService;
 use App\Services\CombinedSkillRatingService;
 use App\Services\GroupPichangaAudienceService;
 use App\Services\PichangaTeamAssignmentService;
@@ -31,6 +33,7 @@ class GroupPichangaController extends Controller
         private readonly GroupPichangaAudienceService $audienceService,
         private readonly ClubPushMuteService $muteService,
         private readonly PushNotificationService $pushNotificationService,
+        private readonly ClubNotificationService $clubNotifications,
         private readonly ProductEventService $eventService,
         private readonly CombinedSkillRatingService $combinedSkillRatings,
         private readonly PichangaTeamAssignmentService $teamAssignments
@@ -795,14 +798,18 @@ class GroupPichangaController extends Controller
         $notMuted = $this->muteService->filterNotMutedUserIds($targetIds, (int) $club->id);
         $mutedSkipped = $targetIds->count() - $notMuted->count();
 
-        $sent = $this->pushNotificationService->createForUsers($notMuted->all(), [
-            'club_id' => $club->id,
+        $sent = $this->clubNotifications->notifyUsers($club, $targetIds->all(), [
             'group_pichanga_id' => $pichanga->id,
             'type' => 'pichanga_created',
+            'category' => 'pichangas',
             'title' => 'Nueva pichanga',
             'body' => (string) ($pichanga->title ?: 'Se creó una pichanga en tu grupo'),
-            'data_json' => ['pichanga_id' => $pichanga->id, 'club_id' => $club->id],
-        ]);
+            'target_type' => 'pichanga',
+            'target_id' => (int) $pichanga->id,
+            'image_kind' => 'pichanga',
+            'image_url' => $this->pichangaImageUrl($pichanga),
+            'data_json' => ['pichanga_id' => $pichanga->id],
+        ], (int) $auth->id);
 
         GroupPichangaNotificationBatch::create([
             'pichanga_id' => $pichanga->id,
@@ -882,6 +889,9 @@ class GroupPichangaController extends Controller
 
         $meParticipant = GroupPichangaParticipant::where('pichanga_id', $pichanga->id)->where('user_id', $auth->id)->first();
         $meRequest = GroupPichangaExternalRequest::where('pichanga_id', $pichanga->id)->where('user_id', $auth->id)->first();
+        $meWaitlist = Schema::hasTable('group_pichanga_waitlist')
+            ? GroupPichangaWaitlistEntry::query()->where('pichanga_id', $pichanga->id)->where('user_id', $auth->id)->first()
+            : null;
         $presentation = $this->detailPresentation(
             $pichanga,
             $meParticipant,
@@ -904,6 +914,10 @@ class GroupPichangaController extends Controller
                 'can_request_external' => $presentation['can_request_external'],
                 'can_change_team' => $presentation['can_change_team'],
                 'can_withdraw' => $presentation['can_withdraw'],
+                'waitlist_status' => $meWaitlist?->status,
+                'waitlist_position' => $meWaitlist?->status === 'waiting'
+                    ? $this->waitlistPosition($meWaitlist)
+                    : null,
             ],
         ]);
     }
@@ -1190,10 +1204,97 @@ class GroupPichangaController extends Controller
             'team_code' => null,
             'team_slot' => null,
         ]);
-        $participant->update($payload);
+        $promotion = DB::transaction(function () use ($pichanga, $participant, $payload) {
+            $lockedPichanga = GroupPichanga::query()->lockForUpdate()->findOrFail($pichanga->id);
+            $lockedParticipant = GroupPichangaParticipant::query()->whereKey($participant->id)->lockForUpdate()->firstOrFail();
+            $lockedParticipant->update($payload);
+
+            return $this->promoteNextWaitlistLocked($lockedPichanga);
+        });
+        $this->refreshAutoStatus($pichanga->fresh());
         $this->eventService->track('pichanga_withdrawn', (int) $auth->id, (int) $pichanga->club_id, (int) $pichanga->id);
 
+        $club = $pichanga->club ?: Club::find($pichanga->club_id);
+        if ($club && $promotion !== null) {
+            $this->clubNotifications->notifyUsers($club, [(int) $promotion['user_id']], [
+                'type' => 'pichanga_waitlist_promoted',
+                'category' => 'pichangas',
+                'title' => 'Se liberó un cupo',
+                'body' => 'Tu asistencia fue confirmada desde la lista de espera.',
+                'target_type' => 'pichanga',
+                'target_id' => (int) $pichanga->id,
+                'group_pichanga_id' => (int) $pichanga->id,
+                'image_kind' => 'pichanga',
+                'image_url' => $this->pichangaImageUrl($pichanga),
+                'data_json' => ['pichanga_id' => (int) $pichanga->id, 'waitlist_promoted' => true],
+            ]);
+        } elseif ($club) {
+            $this->clubNotifications->notifyAdmins($club, [
+                'type' => 'pichanga_spot_available',
+                'category' => 'pichangas',
+                'title' => 'Hay un cupo disponible',
+                'body' => 'Una persona se dio de baja de la pichanga.',
+                'target_type' => 'pichanga',
+                'target_id' => (int) $pichanga->id,
+                'group_pichanga_id' => (int) $pichanga->id,
+                'image_kind' => 'pichanga',
+                'image_url' => $this->pichangaImageUrl($pichanga),
+                'data_json' => ['pichanga_id' => (int) $pichanga->id],
+            ], (int) $auth->id);
+        }
+
         return response()->json(['message' => 'Te diste de baja de la pichanga.']);
+    }
+
+    public function joinWaitlist(Request $request, GroupPichanga $pichanga)
+    {
+        $auth = $request->user() ?? abort(401);
+        abort_unless(Schema::hasTable('group_pichanga_waitlist'), 422, 'Ejecuta la migración de lista de espera.');
+        $clubIds = ClubUser::query()->where('user_id', $auth->id)->active()->pluck('club_id')->map(fn ($id) => (int) $id)->all();
+        abort_unless($this->isMemberOfPichanga($pichanga, $clubIds), 403, 'Solo miembros de los grupos participantes pueden unirse a la lista de espera.');
+        abort_if(in_array((string) $pichanga->status, ['cancelled', 'completed'], true) || now()->greaterThanOrEqualTo($pichanga->starts_at), 422, 'La pichanga ya no acepta lista de espera.');
+        $data = $request->validate(['team_code' => ['nullable', Rule::in($this->allowedTeamCodes($this->resolveTeamCount($pichanga)))] ]);
+
+        $entry = DB::transaction(function () use ($pichanga, $auth, $data) {
+            $locked = GroupPichanga::query()->lockForUpdate()->findOrFail($pichanga->id);
+            $participant = GroupPichangaParticipant::query()->where('pichanga_id', $locked->id)->where('user_id', $auth->id)->lockForUpdate()->first();
+            abort_if($participant?->status === 'confirmed', 422, 'Ya tienes asistencia confirmada.');
+            abort_if($this->confirmedParticipantsCount((int) $locked->id) < (int) $locked->capacity, 422, 'Hay un cupo disponible; confirma tu asistencia directamente.');
+
+            $entry = GroupPichangaWaitlistEntry::query()->where('pichanga_id', $locked->id)->where('user_id', $auth->id)->lockForUpdate()->first();
+            if ($entry) {
+                $entry->update(['team_code' => isset($data['team_code']) ? strtoupper((string) $data['team_code']) : $entry->team_code, 'status' => 'waiting', 'withdrawn_at' => null]);
+            } else {
+                $entry = GroupPichangaWaitlistEntry::create([
+                    'pichanga_id' => $locked->id,
+                    'user_id' => $auth->id,
+                    'team_code' => isset($data['team_code']) ? strtoupper((string) $data['team_code']) : null,
+                    'status' => 'waiting',
+                ]);
+            }
+            return $entry->fresh();
+        });
+
+        return response()->json(['message' => 'Te uniste a la lista de espera.', 'position' => $this->waitlistPosition($entry), 'entry' => $entry]);
+    }
+
+    public function leaveWaitlist(Request $request, GroupPichanga $pichanga)
+    {
+        $auth = $request->user() ?? abort(401);
+        abort_unless(Schema::hasTable('group_pichanga_waitlist'), 422, 'Ejecuta la migración de lista de espera.');
+        $entry = GroupPichangaWaitlistEntry::query()->where('pichanga_id', $pichanga->id)->where('user_id', $auth->id)->where('status', 'waiting')->first();
+        abort_unless($entry, 422, 'No estás en la lista de espera.');
+        $entry->update(['status' => 'withdrawn', 'withdrawn_at' => now()]);
+        return response()->json(['message' => 'Saliste de la lista de espera.']);
+    }
+
+    public function waitlist(Request $request, GroupPichanga $pichanga)
+    {
+        $auth = $request->user() ?? abort(401);
+        abort_unless(Schema::hasTable('group_pichanga_waitlist'), 422, 'Ejecuta la migración de lista de espera.');
+        abort_unless($this->isClubAdminForPichanga($pichanga, (int) $auth->id) || $this->isMemberOfPichanga($pichanga, ClubUser::query()->where('user_id', $auth->id)->active()->pluck('club_id')->map(fn ($id) => (int) $id)->all()), 403);
+        $items = GroupPichangaWaitlistEntry::query()->where('pichanga_id', $pichanga->id)->where('status', 'waiting')->with('user:id,name,nick,avatar_url')->orderBy('created_at')->orderBy('id')->get();
+        return response()->json(['items' => $items->values()->map(fn ($entry, $index) => ['id' => $entry->id, 'position' => $index + 1, 'team_code' => $entry->team_code, 'user' => $entry->user, 'created_at' => optional($entry->created_at)->toISOString()])]);
     }
 
     public function setStatus(Request $request, GroupPichanga $pichanga)
@@ -1207,6 +1308,26 @@ class GroupPichangaController extends Controller
 
         $pichanga->update(['status' => $data['status']]);
 
+        $club = $pichanga->club ?: Club::find($pichanga->club_id);
+        if ($club && in_array($data['status'], ['cancelled', 'confirmed'], true)) {
+            $participantIds = GroupPichangaParticipant::query()
+                ->where('pichanga_id', $pichanga->id)
+                ->where('status', 'confirmed')
+                ->pluck('user_id')->map(fn ($id) => (int) $id)->all();
+            $this->clubNotifications->notifyUsers($club, $participantIds, [
+                'type' => $data['status'] === 'cancelled' ? 'pichanga_cancelled' : 'pichanga_confirmed',
+                'category' => 'pichangas',
+                'title' => $data['status'] === 'cancelled' ? 'Pichanga cancelada' : 'Pichanga confirmada',
+                'body' => (string) ($pichanga->title ?: 'La pichanga actualizó su estado.'),
+                'target_type' => 'pichanga',
+                'target_id' => (int) $pichanga->id,
+                'group_pichanga_id' => (int) $pichanga->id,
+                'image_kind' => 'pichanga',
+                'image_url' => $this->pichangaImageUrl($pichanga),
+                'data_json' => ['pichanga_id' => (int) $pichanga->id],
+            ], (int) $auth->id);
+        }
+
         $this->eventService->track(
             'pichanga_status_updated',
             (int) $auth->id,
@@ -1219,6 +1340,42 @@ class GroupPichangaController extends Controller
             'message' => 'Estado actualizado.',
             'status' => $pichanga->status,
         ]);
+    }
+
+    public function updateSchedule(Request $request, GroupPichanga $pichanga)
+    {
+        $auth = $request->user() ?? abort(401);
+        abort_unless($this->isClubAdminForPichanga($pichanga, (int) $auth->id) || (bool) $auth->is_superadmin, 403);
+        abort_if(in_array((string) $pichanga->status, ['cancelled', 'completed'], true), 422, 'No puedes reprogramar una pichanga cerrada.');
+        $data = $request->validate([
+            'starts_at' => ['required', 'date', 'after:now'],
+            'duration_minutes' => ['nullable', 'integer', 'min:30', 'max:360'],
+            'cancha_id' => ['nullable', 'integer', 'exists:cancha,id'],
+        ]);
+
+        $previousStart = optional($pichanga->starts_at)->toISOString();
+        $pichanga->update($this->filterPayloadByTableColumns('group_pichangas', $data));
+        $club = $pichanga->club ?: Club::find($pichanga->club_id);
+        if ($club) {
+            $participantIds = GroupPichangaParticipant::query()
+                ->where('pichanga_id', $pichanga->id)->where('status', 'confirmed')
+                ->pluck('user_id')->map(fn ($id) => (int) $id)->all();
+            $this->clubNotifications->notifyUsers($club, $participantIds, [
+                'type' => 'pichanga_rescheduled',
+                'category' => 'pichangas',
+                'title' => 'Pichanga reprogramada',
+                'body' => (string) ($pichanga->title ?: 'Revisa la nueva fecha, hora o cancha.'),
+                'target_type' => 'pichanga',
+                'target_id' => (int) $pichanga->id,
+                'group_pichanga_id' => (int) $pichanga->id,
+                'image_kind' => 'pichanga',
+                'image_url' => $this->pichangaImageUrl($pichanga),
+                'data_json' => ['pichanga_id' => (int) $pichanga->id, 'previous_starts_at' => $previousStart],
+            ], (int) $auth->id);
+        }
+        $this->eventService->track('pichanga_rescheduled', (int) $auth->id, (int) $pichanga->club_id, (int) $pichanga->id, ['previous_starts_at' => $previousStart]);
+
+        return response()->json(['message' => 'Pichanga reprogramada.', 'pichanga' => $this->serializePichanga($pichanga->fresh())]);
     }
 
     public function createExternalRequest(Request $request, GroupPichanga $pichanga)
@@ -1241,7 +1398,7 @@ class GroupPichangaController extends Controller
             return response()->json(['message' => 'Ya tienes una solicitud pendiente.']);
         }
 
-        GroupPichangaExternalRequest::updateOrCreate(
+        $externalRequest = GroupPichangaExternalRequest::updateOrCreate(
             ['pichanga_id' => $pichanga->id, 'user_id' => $auth->id],
             [
                 'status' => 'pending',
@@ -1259,6 +1416,23 @@ class GroupPichangaController extends Controller
             (int) $pichanga->id,
             ['degree' => $eligibility['degree']]
         );
+
+        $club = $pichanga->club ?: Club::find($pichanga->club_id);
+        if ($club) {
+            $requesterName = (string) ($auth->nick ?: $auth->name ?: 'Un jugador');
+            $this->clubNotifications->notifyAdmins($club, [
+                'type' => 'pichanga_external_request_created',
+                'category' => 'requests',
+                'title' => 'Nueva solicitud para pichanga',
+                'body' => "{$requesterName} quiere participar en " . ($pichanga->title ?: 'tu pichanga') . '.',
+                'target_type' => 'pichanga_external_request',
+                'target_id' => (int) $externalRequest->id,
+                'group_pichanga_id' => (int) $pichanga->id,
+                'image_kind' => 'pichanga',
+                'image_url' => $this->pichangaImageUrl($pichanga),
+                'data_json' => ['pichanga_id' => (int) $pichanga->id, 'external_request_id' => (int) $externalRequest->id],
+            ], (int) $auth->id);
+        }
 
         return response()->json(['message' => 'Solicitud enviada al administrador.'], 201);
     }
@@ -1320,6 +1494,21 @@ class GroupPichangaController extends Controller
                 (int) $pichanga->id,
                 ['external_request_id' => (int) $externalRequest->id, 'user_id' => (int) $externalRequest->user_id]
             );
+            $club = $pichanga->club ?: Club::find($pichanga->club_id);
+            if ($club) {
+                $this->clubNotifications->notifyUsers($club, [(int) $externalRequest->user_id], [
+                    'type' => 'pichanga_external_request_rejected',
+                    'category' => 'requests',
+                    'title' => 'Solicitud actualizada',
+                    'body' => 'Tu solicitud para participar no fue aceptada.',
+                    'target_type' => 'pichanga',
+                    'target_id' => (int) $pichanga->id,
+                    'group_pichanga_id' => (int) $pichanga->id,
+                    'image_kind' => 'pichanga',
+                    'image_url' => $this->pichangaImageUrl($pichanga),
+                    'data_json' => ['pichanga_id' => (int) $pichanga->id],
+                ], (int) $auth->id);
+            }
             return response()->json(['message' => 'Solicitud rechazada.']);
         }
 
@@ -1359,6 +1548,22 @@ class GroupPichangaController extends Controller
             (int) $pichanga->id,
             ['external_request_id' => (int) $externalRequest->id, 'user_id' => (int) $externalRequest->user_id]
         );
+
+        $club = $pichanga->club ?: Club::find($pichanga->club_id);
+        if ($club) {
+            $this->clubNotifications->notifyUsers($club, [(int) $externalRequest->user_id], [
+                'type' => 'pichanga_external_request_accepted',
+                'category' => 'requests',
+                'title' => 'Asistencia confirmada',
+                'body' => 'Tu solicitud fue aceptada. Ya tienes un cupo confirmado.',
+                'target_type' => 'pichanga',
+                'target_id' => (int) $pichanga->id,
+                'group_pichanga_id' => (int) $pichanga->id,
+                'image_kind' => 'pichanga',
+                'image_url' => $this->pichangaImageUrl($pichanga),
+                'data_json' => ['pichanga_id' => (int) $pichanga->id],
+            ], (int) $auth->id);
+        }
 
         return response()->json(['message' => 'Solicitud aceptada y asistencia confirmada.']);
     }
@@ -1457,7 +1662,6 @@ class GroupPichangaController extends Controller
             ]
         );
 
-        // TODO: enqueue real push notifications; this release stores auditable batches.
         return response()->json([
             'message' => 'Re-aviso registrado.',
             'target_count' => $targetIds->count(),
@@ -1488,13 +1692,11 @@ class GroupPichangaController extends Controller
             return;
         }
 
-        if ($pichanga->status !== 'published') {
-            return;
-        }
-
         $confirmed = $this->confirmedParticipantsCount($pichanga->id);
-        if ($confirmed >= (int) $pichanga->capacity) {
+        if ($pichanga->status === 'published' && $confirmed >= (int) $pichanga->capacity) {
             $pichanga->update(['status' => 'confirmed']);
+        } elseif ($pichanga->status === 'confirmed' && $confirmed < (int) $pichanga->capacity) {
+            $pichanga->update(['status' => 'published']);
         }
     }
 
@@ -1502,6 +1704,63 @@ class GroupPichangaController extends Controller
     {
         return GroupPichangaParticipant::where('pichanga_id', $pichangaId)
             ->where('status', 'confirmed')
+            ->count();
+    }
+
+    /** @return array{user_id:int,team_code:?string}|null */
+    private function promoteNextWaitlistLocked(GroupPichanga $pichanga): ?array
+    {
+        if (!Schema::hasTable('group_pichanga_waitlist') || $this->confirmedParticipantsCount((int) $pichanga->id) >= (int) $pichanga->capacity) {
+            return null;
+        }
+
+        $entry = GroupPichangaWaitlistEntry::query()
+            ->where('pichanga_id', $pichanga->id)
+            ->where('status', 'waiting')
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->first();
+        if (!$entry) {
+            return null;
+        }
+
+        $payload = $this->filterPayloadByTableColumns('group_pichanga_participants', [
+            'origin' => 'waitlist',
+            'status' => 'confirmed',
+            'confirmed_at' => now(),
+            'withdrawn_at' => null,
+        ]);
+        $participant = GroupPichangaParticipant::query()
+            ->where('pichanga_id', $pichanga->id)
+            ->where('user_id', $entry->user_id)
+            ->lockForUpdate()
+            ->first();
+        if ($participant) {
+            $participant->update($payload);
+        } else {
+            $participant = GroupPichangaParticipant::create(array_merge([
+                'pichanga_id' => $pichanga->id,
+                'user_id' => $entry->user_id,
+            ], $payload));
+        }
+        $this->teamAssignments->assign($pichanga, $participant, $entry->team_code ?: null);
+        $entry->update(['status' => 'promoted', 'promoted_at' => now()]);
+
+        return ['user_id' => (int) $entry->user_id, 'team_code' => $entry->team_code];
+    }
+
+    private function waitlistPosition(GroupPichangaWaitlistEntry $entry): int
+    {
+        return GroupPichangaWaitlistEntry::query()
+            ->where('pichanga_id', $entry->pichanga_id)
+            ->where('status', 'waiting')
+            ->where(function ($query) use ($entry) {
+                $query->where('created_at', '<', $entry->created_at)
+                    ->orWhere(function ($sameMoment) use ($entry) {
+                        $sameMoment->where('created_at', '=', $entry->created_at)->where('id', '<=', $entry->id);
+                    });
+            })
             ->count();
     }
 
@@ -1822,6 +2081,9 @@ class GroupPichangaController extends Controller
             'players_per_team' => $playersPerTeam,
             'confirmed_count' => $confirmed,
             'spots_left' => max(0, (int) $pichanga->capacity - $confirmed),
+            'waitlist_count' => Schema::hasTable('group_pichanga_waitlist')
+                ? GroupPichangaWaitlistEntry::query()->where('pichanga_id', $pichanga->id)->where('status', 'waiting')->count()
+                : 0,
             'status' => $pichanga->status,
             'confirmation_mode' => $pichanga->confirmation_mode,
             'is_open' => (bool) $pichanga->is_open,
@@ -2091,6 +2353,18 @@ class GroupPichangaController extends Controller
     {
         $base = rtrim((string) config('services.app_links.base_url', config('app.url')), '/');
         return $base . '/pichanga/' . $pichangaId;
+    }
+
+    private function pichangaImageUrl(GroupPichanga $pichanga): string
+    {
+        $canchaId = (int) ($pichanga->cancha_id ?? 0);
+        if ($canchaId <= 0 || !Schema::hasTable('cancha')) {
+            return '';
+        }
+        $cancha = Cancha::query()->with(['photos', 'polideportivo.photos'])->find($canchaId);
+        return (string) ($cancha?->photos->first()?->photo_url
+            ?? $cancha?->polideportivo?->photos->first()?->photo_url
+            ?? '');
     }
 
     /**

@@ -189,9 +189,9 @@ class ClubChallengeController extends Controller
             (int) $auth->id,
             [
                 'club_id' => $challengedClubId,
-                'type' => 'challenge_chat_message',
+                'type' => 'challenge_created',
                 'title' => 'Nuevo reto recibido',
-                'body' => (string) ($challenge->requested_note ?: 'Te retaron a una pichanga.'),
+                'body' => (string) (($club->nombre ?? 'Un grupo') . ' retó a ' . ($challengedClub->nombre ?? 'tu grupo') . '.'),
                 'data_json' => [
                     'challenge_id' => (int) $challenge->id,
                     'chat_message_id' => (int) $systemMessage->id,

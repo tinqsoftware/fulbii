@@ -18,6 +18,18 @@
     </div>
     <div class="col-md-3">
       <div class="card h-100"><div class="card-body">
+        <div class="text-muted">Grupos sin admin</div>
+        <div class="fs-3 fw-bold">{{ $stats['groups_without_admin'] }}</div>
+      </div></div>
+    </div>
+    <div class="col-md-3">
+      <div class="card h-100"><div class="card-body">
+        <div class="text-muted">Retos sin coordinador</div>
+        <div class="fs-3 fw-bold">{{ $stats['challenges_needing_coordinator'] }}</div>
+      </div></div>
+    </div>
+    <div class="col-md-3">
+      <div class="card h-100"><div class="card-body">
         <div class="text-muted">Canchas pendientes</div>
         <div class="fs-3 fw-bold">{{ $stats['pending_field_submissions'] }}</div>
       </div></div>

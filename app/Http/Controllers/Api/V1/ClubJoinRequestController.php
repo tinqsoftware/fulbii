@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Club;
 use App\Models\ClubJoinRequest;
 use App\Models\ClubUser;
+use App\Models\User;
+use App\Services\ClubNotificationService;
 use App\Services\ProductEventService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -14,7 +16,10 @@ use Illuminate\Validation\Rule;
 
 class ClubJoinRequestController extends Controller
 {
-    public function __construct(private readonly ProductEventService $eventService)
+    public function __construct(
+        private readonly ProductEventService $eventService,
+        private readonly ClubNotificationService $notifications
+    )
     {
     }
 
@@ -164,6 +169,16 @@ class ClubJoinRequestController extends Controller
                 ['request_id' => (int) $joinRequest->id, 'requester_user_id' => (int) $joinRequest->requester_user_id]
             );
 
+            $this->notifications->notifyUsers($club, [(int) $joinRequest->requester_user_id], [
+                'type' => 'club_join_request_rejected',
+                'category' => 'requests',
+                'title' => 'Solicitud actualizada',
+                'body' => "Tu solicitud para unirte a {$club->nombre} no fue aceptada.",
+                'target_type' => 'club',
+                'target_id' => (int) $club->id,
+            ], (int) $auth->id);
+            $this->notifications->audit($club, (int) $auth->id, 'club_join_request_rejected', (int) $joinRequest->requester_user_id, ['request_id' => (int) $joinRequest->id]);
+
             return response()->json(['message' => 'Solicitud rechazada.']);
         }
 
@@ -192,6 +207,16 @@ class ClubJoinRequestController extends Controller
             null,
             ['request_id' => (int) $joinRequest->id, 'requester_user_id' => (int) $joinRequest->requester_user_id]
         );
+
+        $this->notifications->notifyUsers($club, [(int) $joinRequest->requester_user_id], [
+            'type' => 'club_join_request_accepted',
+            'category' => 'requests',
+            'title' => 'Ya eres parte del grupo',
+            'body' => "Tu solicitud para {$club->nombre} fue aceptada.",
+            'target_type' => 'club',
+            'target_id' => (int) $club->id,
+        ], (int) $auth->id);
+        $this->notifications->audit($club, (int) $auth->id, 'club_join_request_accepted', (int) $joinRequest->requester_user_id, ['request_id' => (int) $joinRequest->id]);
 
         return response()->json(['message' => 'Solicitud aceptada.']);
     }
@@ -278,6 +303,19 @@ class ClubJoinRequestController extends Controller
             null,
             ['request_id' => (int) $request->id, 'requested_via' => $via]
         );
+
+        $requester = User::find($userId);
+        $requesterName = trim((string) ($requester?->nick ?: $requester?->name ?: 'Un jugador'));
+        $this->notifications->notifyAdmins($club, [
+            'type' => 'club_join_request_created',
+            'category' => 'requests',
+            'title' => 'Nueva solicitud para el grupo',
+            'body' => "{$requesterName} quiere unirse a {$club->nombre}.",
+            'target_type' => 'club_join_request',
+            'target_id' => (int) $request->id,
+            'data_json' => ['join_request_id' => (int) $request->id],
+        ], $userId);
+        $this->notifications->audit($club, $userId, 'club_join_request_created', $userId, ['request_id' => (int) $request->id, 'via' => $via]);
 
         return $request;
     }

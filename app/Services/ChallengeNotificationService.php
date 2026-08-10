@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\ClubChallenge;
 use App\Models\ClubUser;
+use App\Models\ClubNotificationCategory;
 use App\Models\UserChatPresence;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
@@ -62,13 +63,34 @@ class ChallengeNotificationService
                 continue;
             }
 
+            $category = (string) ($payload['category'] ?? ((string) ($payload['type'] ?? '') === 'challenge_chat_message' ? 'chat' : 'challenges'));
+            if (Schema::hasTable('club_notification_categories') && ClubNotificationCategory::query()
+                ->where('user_id', $userId)
+                ->where('club_id', $clubForNotification)
+                ->where('category', $category)
+                ->where('is_enabled', false)
+                ->exists()) {
+                $mutedSkipped++;
+                continue;
+            }
+
             if ($suppressIfActiveInChat && $this->isUserActiveInChat($userId, (int) $challenge->id)) {
                 $activeChatSkipped++;
                 continue;
             }
 
             $dataJson = (array) ($payload['data_json'] ?? []);
-            $dataJson['challenge_id'] = (int) $challenge->id;
+            $challenge->loadMissing(['challengerClub:id,nombre,logo_url', 'challengedClub:id,nombre,logo_url']);
+            $dataJson = array_merge($dataJson, [
+                'challenge_id' => (int) $challenge->id,
+                'target_type' => 'challenge',
+                'target_id' => (string) $challenge->id,
+                'image_kind' => 'challenge',
+                'image_url' => (string) ($challenge->challengerClub?->logo_url ?? ''),
+                'secondary_image_url' => (string) ($challenge->challengedClub?->logo_url ?? ''),
+                'challenger_club_id' => (string) $challenge->challenger_club_id,
+                'challenged_club_id' => (string) $challenge->challenged_club_id,
+            ]);
 
             $this->pushNotificationService->createForUser($userId, [
                 'club_id' => $clubForNotification,
@@ -117,4 +139,3 @@ class ChallengeNotificationService
             ->exists();
     }
 }
-

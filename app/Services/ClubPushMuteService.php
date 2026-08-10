@@ -4,11 +4,15 @@ namespace App\Services;
 
 use App\Models\UserGroupNotificationPref;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 
 class ClubPushMuteService
 {
     public function isMuted(int $userId, int $clubId): bool
     {
+        if (!Schema::hasTable('user_group_notification_prefs')) {
+            return false;
+        }
         $pref = UserGroupNotificationPref::query()
             ->where('user_id', $userId)
             ->where('club_id', $clubId)
@@ -25,6 +29,9 @@ class ClubPushMuteService
     {
         if ($userIds->isEmpty()) {
             return collect();
+        }
+        if (!Schema::hasTable('user_group_notification_prefs')) {
+            return $userIds->values();
         }
 
         $prefs = UserGroupNotificationPref::query()

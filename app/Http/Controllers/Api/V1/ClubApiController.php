@@ -5,11 +5,13 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\Club;
 use App\Models\ClubChallenge;
+use App\Models\ClubAdminActivity;
 use App\Models\ClubJoinRequest;
 use App\Models\ClubUser;
 use App\Models\GroupPichangaParticipant;
 use App\Models\User;
 use App\Services\CombinedSkillRatingService;
+use App\Services\ClubNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -19,6 +21,10 @@ use Illuminate\Validation\Rule;
 
 class ClubApiController extends Controller
 {
+    public function __construct(private readonly ClubNotificationService $notifications)
+    {
+    }
+
     public function index(Request $request)
     {
         $user = $request->user();
@@ -165,6 +171,10 @@ class ClubApiController extends Controller
                 'is_owner' => $isOwner,
                 'is_mine' => $isMember,
                 'my_role' => $roles[$clubId] ?? null,
+                // The create-pichanga picker needs this setting to explain why
+                // a member can or cannot select a group. The store endpoint
+                // remains the source of truth for the permission itself.
+                'pichanga_create_scope' => $club->pichanga_create_scope ?? 'admins',
                 'has_pending_join_request' => $pendingJoinClubIds->contains($clubId),
                 'pending_pichangas_count' => $hasGroupPichangas
                     ? (int) ($club->pending_pichangas_count ?? 0)
@@ -547,6 +557,19 @@ class ClubApiController extends Controller
         }
 
         $row->update(['rol' => $data['rol']]);
+        $this->notifications->audit($club, (int) $user->id, 'club_member_role_updated', (int) $member->id, [
+            'role' => $data['rol'],
+        ]);
+        $this->notifications->notifyUsers($club, [(int) $member->id], [
+            'type' => 'club_member_role_updated',
+            'category' => 'requests',
+            'title' => $data['rol'] === 'admin' ? 'Ahora eres administrador' : 'Tu rol se actualizó',
+            'body' => $data['rol'] === 'admin'
+                ? "Ahora puedes administrar {$club->nombre}."
+                : "Ahora eres miembro de {$club->nombre}.",
+            'target_type' => 'club',
+            'target_id' => (int) $club->id,
+        ], (int) $user->id);
 
         return response()->json([
             'message' => 'Rol actualizado.',
@@ -569,8 +592,30 @@ class ClubApiController extends Controller
         }
 
         $row->delete();
+        $this->notifications->audit($club, (int) $user->id, 'club_member_removed', (int) $member->id);
+        $this->notifications->notifyUsers($club, [(int) $member->id], [
+            'type' => 'club_member_removed',
+            'category' => 'requests',
+            'title' => 'Ya no perteneces al grupo',
+            'body' => "Tu membresía en {$club->nombre} fue removida.",
+            'target_type' => 'club',
+            'target_id' => (int) $club->id,
+        ], (int) $user->id);
 
         return response()->json(['message' => 'Miembro removido.']);
+    }
+
+    public function adminActivity(Request $request, Club $club)
+    {
+        $user = $request->user() ?? abort(401);
+        abort_unless($this->isClubAdminOrSuper($club->id, $user->id, (bool) $user->is_superadmin), 403);
+
+        $items = ClubAdminActivity::query()
+            ->where('club_id', $club->id)
+            ->with(['actor:id,name,nick,avatar_url', 'target:id,name,nick,avatar_url'])
+            ->latest('id')->limit(100)->get();
+
+        return response()->json(['items' => $items]);
     }
 
     /**

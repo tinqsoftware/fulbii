@@ -34,6 +34,14 @@ class ProfileRepository {
     await _api.postMap('/users/$userId/ratings', data: values);
   }
 
+  Future<void> blockUser(int userId) async {
+    await _api.postMap('/users/$userId/block');
+  }
+
+  Future<void> unblockUser(int userId) async {
+    await _api.deleteMap('/users/$userId/block');
+  }
+
   Future<Map<String, dynamic>> completeOnboarding({
     required String nick,
     required String sexo,

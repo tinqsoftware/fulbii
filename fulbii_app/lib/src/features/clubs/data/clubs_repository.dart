@@ -189,6 +189,57 @@ class ClubsRepository {
     );
   }
 
+  Future<List<Map<String, dynamic>>> notificationCategories(int clubId) async {
+    final response = await _api.getMap(
+      '/clubs/$clubId/notification-categories',
+    );
+    final items = response['items'] is List ? response['items'] as List : [];
+    return items
+        .whereType<Map>()
+        .map((item) => item.cast<String, dynamic>())
+        .toList();
+  }
+
+  Future<void> setNotificationCategory(
+    int clubId,
+    String category,
+    bool enabled,
+  ) async {
+    await _api.putMap(
+      '/clubs/$clubId/notification-categories/$category',
+      data: {'is_enabled': enabled},
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> adminActivity(int clubId) async {
+    final response = await _api.getMap('/clubs/$clubId/admin-activity');
+    final items = response['items'] is List ? response['items'] as List : [];
+    return items
+        .whereType<Map>()
+        .map((item) => item.cast<String, dynamic>())
+        .toList();
+  }
+
+  Future<List<Map<String, dynamic>>> groupChatMessages(int clubId) async {
+    final response = await _api.getMap('/clubs/$clubId/chat/messages');
+    final items = response['items'] is List ? response['items'] as List : [];
+    return items
+        .whereType<Map>()
+        .map((item) => item.cast<String, dynamic>())
+        .toList();
+  }
+
+  Future<Map<String, dynamic>> sendGroupChatMessage(int clubId, String body) {
+    return _api.postMap('/clubs/$clubId/chat/messages', data: {'body': body});
+  }
+
+  Future<void> markGroupChatRead(int clubId, int messageId) async {
+    await _api.postMap(
+      '/clubs/$clubId/chat/read',
+      data: {'last_read_message_id': messageId},
+    );
+  }
+
   Future<Map<String, dynamic>> joinPreviewByCode(String joinCode) {
     return _api.getMap('/clubs/join/$joinCode');
   }
@@ -242,10 +293,7 @@ class ClubsRepository {
   }) async {
     final response = await _api.getList(
       '/users/search',
-      queryParameters: {
-        'q': query,
-        if (clubId != null) 'club_id': clubId,
-      },
+      queryParameters: {'q': query, if (clubId != null) 'club_id': clubId},
     );
     return response
         .whereType<Map>()

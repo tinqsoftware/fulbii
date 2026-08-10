@@ -7,12 +7,17 @@ use App\Models\Club;
 use App\Models\ClubInvitation;
 use App\Models\ClubUser;
 use App\Models\User;
+use App\Services\ClubNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class ClubInvitationApiController extends Controller
 {
+    public function __construct(private readonly ClubNotificationService $notifications)
+    {
+    }
+
     public function indexMine(Request $request)
     {
         $user = $request->user() ?? abort(401);
@@ -98,6 +103,19 @@ class ClubInvitationApiController extends Controller
             'status' => 'pending',
         ]);
 
+        if ($invitedUserId) {
+            $this->notifications->notifyUsers($club, [$invitedUserId], [
+                'type' => 'club_invitation_created',
+                'category' => 'invitations',
+                'title' => 'Te invitaron a un grupo',
+                'body' => "Te invitaron a unirte a {$club->nombre}.",
+                'target_type' => 'club_invitation',
+                'target_id' => (int) $invitation->id,
+                'data_json' => ['invitation_id' => (int) $invitation->id],
+            ], (int) $auth->id);
+        }
+        $this->notifications->audit($club, (int) $auth->id, 'club_invitation_created', $invitedUserId, ['invitation_id' => (int) $invitation->id]);
+
         return response()->json([
             'message' => 'Invitación enviada.',
             'invitation' => $invitation,
@@ -116,6 +134,18 @@ class ClubInvitationApiController extends Controller
 
         if ($data['action'] === 'reject') {
             $invitation->update(['status' => 'revoked']);
+            $club = $invitation->club;
+            if ($club) {
+                $this->notifications->notifyUsers($club, [(int) $invitation->invited_by_user_id], [
+                    'type' => 'club_invitation_rejected',
+                    'category' => 'invitations',
+                    'title' => 'Invitación rechazada',
+                    'body' => "La invitación a {$club->nombre} fue rechazada.",
+                    'target_type' => 'club',
+                    'target_id' => (int) $club->id,
+                ], (int) $auth->id);
+                $this->notifications->audit($club, (int) $auth->id, 'club_invitation_rejected', (int) $invitation->invited_by_user_id, ['invitation_id' => (int) $invitation->id]);
+            }
             return response()->json(['message' => 'Invitación rechazada.']);
         }
 
@@ -130,6 +160,19 @@ class ClubInvitationApiController extends Controller
                 ['rol' => 'miembro', 'estado' => 1]
             );
         });
+
+        $club = $invitation->club;
+        if ($club) {
+            $this->notifications->notifyUsers($club, [(int) $invitation->invited_by_user_id], [
+                'type' => 'club_invitation_accepted',
+                'category' => 'invitations',
+                'title' => 'Invitación aceptada',
+                'body' => "Un jugador aceptó la invitación a {$club->nombre}.",
+                'target_type' => 'club',
+                'target_id' => (int) $club->id,
+            ], (int) $auth->id);
+            $this->notifications->audit($club, (int) $auth->id, 'club_invitation_accepted', (int) $invitation->invited_by_user_id, ['invitation_id' => (int) $invitation->id]);
+        }
 
         return response()->json(['message' => 'Invitación aceptada.']);
     }

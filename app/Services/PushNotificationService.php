@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Jobs\SendPushNotificationJob;
 use App\Models\PushNotification;
+use Illuminate\Support\Facades\Schema;
 
 class PushNotificationService
 {
@@ -12,16 +13,39 @@ class PushNotificationService
      */
     public function createForUser(int $userId, array $payload): PushNotification
     {
-        $notification = PushNotification::create([
+        $clubId = $payload['club_id'] ?? null;
+        $pichangaId = $payload['group_pichanga_id'] ?? null;
+        $data = (array) ($payload['data_json'] ?? []);
+        if (!isset($data['club_id']) && $clubId) {
+            $data['club_id'] = (string) $clubId;
+        }
+        if (!isset($data['pichanga_id']) && $pichangaId) {
+            $data['pichanga_id'] = (string) $pichangaId;
+        }
+        if (!isset($data['target_type'])) {
+            $data['target_type'] = $pichangaId ? 'pichanga' : 'club';
+        }
+        if (!isset($data['target_id'])) {
+            $data['target_id'] = (string) ($pichangaId ?: $clubId ?: '');
+        }
+
+        $attributes = [
             'user_id' => $userId,
-            'club_id' => $payload['club_id'] ?? null,
-            'group_pichanga_id' => $payload['group_pichanga_id'] ?? null,
+            'club_id' => $clubId,
+            'group_pichanga_id' => $pichangaId,
             'type' => (string) ($payload['type'] ?? 'generic'),
             'title' => (string) ($payload['title'] ?? 'Notificación'),
             'body' => (string) ($payload['body'] ?? ''),
-            'data_json' => $payload['data_json'] ?? null,
+            'data_json' => $data ?: null,
             'is_read' => false,
-        ]);
+        ];
+        // Legacy installations and focused SQLite tests can intentionally omit
+        // the optional push tables. Domain actions must still succeed there.
+        if (!Schema::hasTable('push_notifications')) {
+            return new PushNotification($attributes);
+        }
+
+        $notification = PushNotification::create($attributes);
 
         SendPushNotificationJob::dispatch((int) $notification->id)->onQueue('push');
         return $notification;

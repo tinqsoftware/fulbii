@@ -46,6 +46,8 @@ class BackofficeController extends Controller
                 : 0,
             'jobs_pending' => Schema::hasTable('jobs') ? (int) DB::table('jobs')->count() : 0,
             'failed_jobs_count' => Schema::hasTable('failed_jobs') ? (int) DB::table('failed_jobs')->count() : 0,
+            'groups_without_admin' => $this->operationsSnapshot()['groups_without_admin'],
+            'challenges_needing_coordinator' => $this->operationsSnapshot()['challenges_needing_coordinator'],
         ];
 
         $readiness = $this->buildReadiness();
@@ -86,6 +88,8 @@ class BackofficeController extends Controller
                 $sub->where('reason_code', 'like', "%{$q}%")
                     ->orWhere('description', 'like', "%{$q}%")
                     ->orWhere('target_id', 'like', "%{$q}%")
+                    ->orWhere('content_id', 'like', "%{$q}%")
+                    ->orWhere('content_type', 'like', "%{$q}%")
                     ->orWhereHas('reporter', function ($uq) use ($q) {
                         $uq->where('name', 'like', "%{$q}%")
                             ->orWhere('nick', 'like', "%{$q}%")
@@ -754,6 +758,12 @@ class BackofficeController extends Controller
             && $androidPackageName !== ''
             && !empty($androidFingerprints);
 
+        $push = [
+            'active_devices' => Schema::hasTable('user_devices') ? (int) DB::table('user_devices')->where('is_active', true)->count() : 0,
+            'inactive_devices' => Schema::hasTable('user_devices') ? (int) DB::table('user_devices')->where('is_active', false)->count() : 0,
+            'last_error' => Schema::hasTable('push_dispatch_logs') ? DB::table('push_dispatch_logs')->whereNotNull('error_message')->orderByDesc('id')->value('error_message') : null,
+        ];
+
         return [
             'queue_connection' => $queueConnection,
             'jobs_pending' => $jobsPending,
@@ -765,7 +775,50 @@ class BackofficeController extends Controller
             'fcm_v1_ready' => $fcmV1Ready,
             'app_link_base_url' => $appLinkBaseUrl,
             'well_known_endpoints_ok' => $wellKnownEndpointsOk,
+            'push' => $push,
+            'operations' => $this->operationsSnapshot(),
         ];
+    }
+
+    /** @return array<string,int> */
+    private function operationsSnapshot(): array
+    {
+        $snapshot = [
+            'groups_without_admin' => 0,
+            'challenges_needing_coordinator' => 0,
+            'upcoming_pichangas_without_confirmations' => 0,
+            'waitlist_entries_waiting' => 0,
+            'pending_reports' => $this->safeCount('reports', ['status' => 'pending']),
+            'active_blocks' => Schema::hasTable('user_blocks') ? (int) DB::table('user_blocks')->count() : 0,
+        ];
+        if (Schema::hasTable('clubs') && Schema::hasTable('club_user')) {
+            $clubs = DB::table('clubs as clubs');
+            if (Schema::hasColumn('clubs', 'estado')) {
+                $clubs->where('clubs.estado', 1);
+            }
+            $snapshot['groups_without_admin'] = (int) $clubs->whereNotExists(function ($query) {
+                $query->selectRaw('1')->from('club_user as members')->whereColumn('members.club_id', 'clubs.id')
+                    ->where('members.rol', 'admin');
+                if (Schema::hasColumn('club_user', 'estado')) {
+                    $query->where('members.estado', 1);
+                }
+            })->count();
+        }
+        if (Schema::hasTable('club_challenges')) {
+            $snapshot['challenges_needing_coordinator'] = (int) DB::table('club_challenges')->whereIn('status', ['pending', 'negotiating', 'configuring'])
+                ->where(function ($query) { $query->whereNull('coordinator_challenger_user_id')->orWhereNull('coordinator_challenged_user_id'); })->count();
+        }
+        if (Schema::hasTable('group_pichangas') && Schema::hasTable('group_pichanga_participants')) {
+            $snapshot['upcoming_pichangas_without_confirmations'] = (int) DB::table('group_pichangas as pichangas')
+                ->whereIn('pichangas.status', ['published', 'confirmed'])->whereBetween('pichangas.starts_at', [now(), now()->addHours(48)])
+                ->whereNotExists(function ($query) {
+                    $query->selectRaw('1')->from('group_pichanga_participants as participants')->whereColumn('participants.pichanga_id', 'pichangas.id')->where('participants.status', 'confirmed');
+                })->count();
+        }
+        if (Schema::hasTable('group_pichanga_waitlist')) {
+            $snapshot['waitlist_entries_waiting'] = (int) DB::table('group_pichanga_waitlist')->where('status', 'waiting')->count();
+        }
+        return $snapshot;
     }
 
     private function safeCount(string $table, array $where = []): int

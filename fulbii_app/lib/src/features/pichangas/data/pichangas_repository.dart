@@ -345,6 +345,26 @@ class PichangasRepository {
     await _api.postMap('/pichangas/$pichangaId/withdraw');
   }
 
+  Future<int> joinWaitlist(int pichangaId, {String? teamCode}) async {
+    final response = await _api.postMap(
+      '/pichangas/$pichangaId/waitlist',
+      data: {if (teamCode != null) 'team_code': teamCode},
+    );
+    return int.tryParse(response['position'].toString()) ?? 0;
+  }
+
+  Future<void> leaveWaitlist(int pichangaId) async {
+    await _api.deleteMap('/pichangas/$pichangaId/waitlist');
+  }
+
+  Future<List<Map<String, dynamic>>> waitlist(int pichangaId) async {
+    final response = await _api.getMap('/pichangas/$pichangaId/waitlist');
+    return (response['items'] as List? ?? const [])
+        .whereType<Map>()
+        .map((item) => item.cast<String, dynamic>())
+        .toList();
+  }
+
   Future<void> externalRequest(int pichangaId) async {
     await _api.postMap('/pichangas/$pichangaId/external-requests');
   }

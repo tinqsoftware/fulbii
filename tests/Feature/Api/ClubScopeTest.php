@@ -82,6 +82,41 @@ class ClubScopeTest extends TestCase
         $this->assertNull($discover[0]['my_role']);
     }
 
+    public function test_mine_scope_exposes_logo_role_and_pichanga_creation_scope(): void
+    {
+        $user = $this->createUser('scope-member@example.test');
+        $this->insertClub(1, 'Grupo abierto', $user->id, true, 1, 'members', 'clubs/open.png');
+        $this->insertMembership(1, $user->id, 1, 'miembro');
+        Sanctum::actingAs($user);
+
+        $club = $this->getJson('/api/v1/clubs?scope=mine')
+            ->assertOk()
+            ->json('items.0');
+
+        $this->assertSame('miembro', $club['my_role']);
+        $this->assertSame('members', $club['pichanga_create_scope']);
+        $this->assertArrayHasKey('logo_url', $club);
+    }
+
+    public function test_pichanga_creation_scope_is_enforced_for_members_admins_and_outsiders(): void
+    {
+        $user = $this->createUser('creation-permission@example.test');
+        $this->insertClub(10, 'Todos crean', $user->id, true, 1, 'members');
+        $this->insertClub(11, 'Solo admins', $user->id, true, 1, 'admins');
+        $this->insertClub(12, 'Soy admin', $user->id, true, 1, 'admins');
+        $this->insertClub(13, 'Ajeno', $user->id, true, 1, 'members');
+        $this->insertMembership(10, $user->id, 1, 'miembro');
+        $this->insertMembership(11, $user->id, 1, 'miembro');
+        $this->insertMembership(12, $user->id, 1, 'admin');
+        Sanctum::actingAs($user);
+
+        // Allowed callers reach validation; restricted callers are rejected first.
+        $this->postJson('/api/v1/clubs/10/pichangas', [])->assertStatus(422);
+        $this->postJson('/api/v1/clubs/11/pichangas', [])->assertForbidden();
+        $this->postJson('/api/v1/clubs/12/pichangas', [])->assertStatus(422);
+        $this->postJson('/api/v1/clubs/13/pichangas', [])->assertForbidden();
+    }
+
     public function test_club_lists_include_future_pichanga_activity_and_my_confirmation(): void
     {
         $user = $this->createUser('pichanga-member@example.test');
@@ -184,7 +219,15 @@ class ClubScopeTest extends TestCase
         ]);
     }
 
-    private function insertClub(int $id, string $name, int $createdBy, bool $visible, int $state = 1): void
+    private function insertClub(
+        int $id,
+        string $name,
+        int $createdBy,
+        bool $visible,
+        int $state = 1,
+        string $pichangaScope = 'admins',
+        ?string $logoUrl = null,
+    ): void
     {
         DB::table('clubs')->insert([
             'id' => $id,
@@ -193,6 +236,8 @@ class ClubScopeTest extends TestCase
             'created_by' => $createdBy,
             'estado' => $state,
             'is_visible' => $visible,
+            'pichanga_create_scope' => $pichangaScope,
+            'logo_url' => $logoUrl,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -245,6 +290,8 @@ class ClubScopeTest extends TestCase
             $table->unsignedBigInteger('created_by')->nullable();
             $table->tinyInteger('estado')->default(1);
             $table->boolean('is_visible')->default(true);
+            $table->string('logo_url')->nullable();
+            $table->enum('pichanga_create_scope', ['admins', 'members'])->default('admins');
             $table->timestamps();
         });
 

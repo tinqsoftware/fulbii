@@ -59,6 +59,11 @@ class GroupPichanga extends Model
         return $this->hasMany(GroupPichangaParticipant::class, 'pichanga_id');
     }
 
+    public function waitlist()
+    {
+        return $this->hasMany(GroupPichangaWaitlistEntry::class, 'pichanga_id');
+    }
+
     public function externalRequests()
     {
         return $this->hasMany(GroupPichangaExternalRequest::class, 'pichanga_id');

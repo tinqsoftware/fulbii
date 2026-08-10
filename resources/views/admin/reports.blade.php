@@ -81,7 +81,12 @@
               <td><input type="checkbox" class="report-check" name="ids[]" value="{{ $item->id }}"></td>
               <td>#{{ $item->id }}</td>
               <td><span class="badge text-bg-secondary">{{ $item->status }}</span></td>
-              <td>{{ $item->target_type }}:{{ $item->target_id }}</td>
+              <td>
+                {{ $item->target_type }}:{{ $item->target_id }}
+                @if($item->content_type)
+                  <div class="small text-muted">{{ $item->content_type }}:{{ $item->content_id }}</div>
+                @endif
+              </td>
               <td>{{ $item->reason_code }}</td>
               <td>{{ $item->reporter->nick ?? $item->reporter->email ?? 'N/A' }}</td>
               <td>{{ optional($item->created_at)->format('Y-m-d H:i') }}</td>
