@@ -1040,7 +1040,7 @@
 				EXECUTABLE_NAME = FulbiiNotificationService;
 				INFOPLIST_FILE = FulbiiNotificationService/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.fulbii.app.notificationservice;
+				PRODUCT_BUNDLE_IDENTIFIER = com.fulbii.FulbiiNotificationService;
 				PRODUCT_NAME = FulbiiNotificationService;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
@@ -1057,7 +1057,7 @@
 				EXECUTABLE_NAME = FulbiiNotificationService;
 				INFOPLIST_FILE = FulbiiNotificationService/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.fulbii.app.notificationservice;
+				PRODUCT_BUNDLE_IDENTIFIER = com.fulbii.FulbiiNotificationService;
 				PRODUCT_NAME = FulbiiNotificationService;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
@@ -1321,7 +1321,7 @@
 				EXECUTABLE_NAME = FulbiiNotificationService;
 				INFOPLIST_FILE = FulbiiNotificationService/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.fulbii.app.notificationservice;
+				PRODUCT_BUNDLE_IDENTIFIER = com.fulbii.FulbiiNotificationService;
 				PRODUCT_NAME = FulbiiNotificationService;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
