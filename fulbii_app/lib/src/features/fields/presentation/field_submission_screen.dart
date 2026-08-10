@@ -15,9 +15,12 @@ import '../../auth/session_controller.dart';
 import '../data/fields_repository.dart';
 import '../domain/field_cluster.dart';
 import '../domain/field_model.dart';
+import 'field_detail_screen.dart';
 
 class FieldSubmissionScreen extends ConsumerStatefulWidget {
-  const FieldSubmissionScreen({super.key});
+  const FieldSubmissionScreen({this.showMyContributions = false, super.key});
+
+  final bool showMyContributions;
   @override
   ConsumerState<FieldSubmissionScreen> createState() =>
       _FieldSubmissionScreenState();
@@ -62,6 +65,8 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
   bool _wsp = false;
   bool _loading = false;
   bool _pickingPhotos = false;
+  bool _submissionSummaryLoading = false;
+  Map<String, dynamic>? _submissionData;
 
   bool get _hasExistingPolideportivo => _confirmedPolideportivoId != null;
   bool get _isNewPolideportivo => !_hasExistingPolideportivo;
@@ -85,6 +90,7 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
     super.initState();
     _loadMapFields();
     _loadNearby();
+    _loadSubmissionSummary();
   }
 
   @override
@@ -107,68 +113,179 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final summary = (_submissionData?['summary'] as Map?)
+        ?.cast<String, dynamic>();
+    final pending = (summary?['pending_submission'] as Map?)
+        ?.cast<String, dynamic>();
+    final canSubmit = summary?['can_submit'] == true;
+    if (widget.showMyContributions) {
+      return _buildContributionsScreen(summary, canSubmit);
+    }
     return Scaffold(
       appBar: AppBar(title: const Text('Agregar cancha o polideportivo')),
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: List.generate(
-                  _totalSteps,
-                  (index) => Expanded(
-                    child: Container(
-                      height: 5,
-                      margin: const EdgeInsets.symmetric(horizontal: 3),
-                      color: index <= _step
-                          ? const Color(0xFF38D430)
-                          : const Color(0xFF344139),
+      body: _submissionSummaryLoading
+          ? const Center(child: CircularProgressIndicator())
+          : pending != null
+          ? _PendingSubmissionState(
+              pending: pending,
+              summary: summary ?? const {},
+            )
+          : summary != null && !canSubmit
+          ? _MonthlyLimitState(summary: summary)
+          : SafeArea(
+              bottom: false,
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: List.generate(
+                        _totalSteps,
+                        (index) => Expanded(
+                          child: Container(
+                            height: 5,
+                            margin: const EdgeInsets.symmetric(horizontal: 3),
+                            color: index <= _step
+                                ? const Color(0xFF38D430)
+                                : const Color(0xFF344139),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
-            ),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: _body(),
-              ),
-            ),
-            SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: [
-                    if (_step > 0)
-                      OutlinedButton(
-                        onPressed: () => setState(() => _step--),
-                        child: const Text('Anterior'),
-                      ),
-                    const Spacer(),
-                    FilledButton(
-                      onPressed:
-                          _loading || (_step == 0 && !_canContinueLocation)
-                          ? null
-                          : _next,
-                      child: Text(
-                        _isReviewStep
-                            ? 'Enviar solicitud'
-                            : _step == 0
-                            ? !_hasMapSelectedPolideportivo
-                                  ? 'Continuar creando polideportivo'
-                                  : 'Continuar con $_mapPolideportivoLabel'
-                            : 'Siguiente',
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(16),
+                      child: _body(),
+                    ),
+                  ),
+                  SafeArea(
+                    top: false,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        children: [
+                          if (_step > 0)
+                            OutlinedButton(
+                              onPressed: () => setState(() => _step--),
+                              child: const Text('Anterior'),
+                            ),
+                          const Spacer(),
+                          FilledButton(
+                            onPressed:
+                                _loading ||
+                                    (_step == 0 && !_canContinueLocation)
+                                ? null
+                                : _next,
+                            child: Text(
+                              _isReviewStep
+                                  ? 'Enviar solicitud'
+                                  : _step == 0
+                                  ? !_hasMapSelectedPolideportivo
+                                        ? 'Continuar creando polideportivo'
+                                        : 'Continuar con $_mapPolideportivoLabel'
+                                  : 'Siguiente',
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
-          ],
+    );
+  }
+
+  Future<void> _loadSubmissionSummary() async {
+    if (!ref.read(sessionControllerProvider).isAuthenticated) return;
+    setState(() => _submissionSummaryLoading = true);
+    try {
+      final data = await ref
+          .read(fieldsRepositoryProvider)
+          .myFieldSubmissions();
+      if (mounted) setState(() => _submissionData = data);
+    } catch (_) {
+      // Guests and temporary network failures retain the existing form flow;
+      // the server remains the authority when the user submits.
+    } finally {
+      if (mounted) setState(() => _submissionSummaryLoading = false);
+    }
+  }
+
+  Widget _buildContributionsScreen(
+    Map<String, dynamic>? summary,
+    bool canSubmit,
+  ) {
+    final items = (_submissionData?['items'] as List? ?? const [])
+        .whereType<Map>()
+        .map((item) => item.cast<String, dynamic>())
+        .toList();
+    return Scaffold(
+      appBar: AppBar(title: const Text('Mis aportes')),
+      body: _submissionSummaryLoading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                _SubmissionUsageCard(summary: summary ?? const {}),
+                const SizedBox(height: 16),
+                if (items.isEmpty)
+                  const _EmptyContributionsState()
+                else
+                  ...items.map(_buildContributionTile),
+              ],
+            ),
+      floatingActionButton: canSubmit
+          ? FloatingActionButton.extended(
+              onPressed: () => Navigator.of(context).pushReplacement(
+                MaterialPageRoute(
+                  builder: (_) => const FieldSubmissionScreen(),
+                ),
+              ),
+              icon: const Icon(Icons.add_location_alt_outlined),
+              label: const Text('Agregar aporte'),
+            )
+          : null,
+    );
+  }
+
+  Widget _buildContributionTile(Map<String, dynamic> item) {
+    final status = (item['status'] ?? 'pending').toString();
+    final approvedFieldId =
+        int.tryParse((item['approved_polideportivo_id'] ?? '').toString()) ?? 0;
+    final colors = Theme.of(context).colorScheme;
+    final color = switch (status) {
+      'approved' => colors.primary,
+      'rejected' => colors.error,
+      _ => colors.tertiary,
+    };
+    final statusLabel = switch (status) {
+      'approved' => 'Aprobada',
+      'rejected' => 'Rechazada',
+      _ => 'En revisión',
+    };
+    return Card(
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: color.withValues(alpha: .16),
+          child: Icon(
+            status == 'approved' ? Icons.check_rounded : Icons.pending_outlined,
+            color: color,
+          ),
         ),
+        title: Text((item['nombre'] ?? 'Cancha').toString()),
+        subtitle: Text(statusLabel),
+        trailing: approvedFieldId > 0
+            ? const Icon(Icons.chevron_right_rounded)
+            : null,
+        onTap: approvedFieldId > 0
+            ? () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => FieldDetailScreen(fieldId: approvedFieldId),
+                ),
+              )
+            : null,
       ),
     );
   }
@@ -1488,6 +1605,138 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
 
 class _ExistingPolideportivoSelectionException implements Exception {
   const _ExistingPolideportivoSelectionException();
+}
+
+class _SubmissionUsageCard extends StatelessWidget {
+  const _SubmissionUsageCard({required this.summary});
+
+  final Map<String, dynamic> summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final used = int.tryParse((summary['monthly_used'] ?? 0).toString()) ?? 0;
+    final limit = int.tryParse((summary['monthly_limit'] ?? 3).toString()) ?? 3;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.add_location_alt_outlined),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              '$used de $limit aportes enviados este mes',
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PendingSubmissionState extends StatelessWidget {
+  const _PendingSubmissionState({required this.pending, required this.summary});
+
+  final Map<String, dynamic> pending;
+  final Map<String, dynamic> summary;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.hourglass_top_rounded,
+                size: 56,
+                color: Theme.of(context).colorScheme.tertiary,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Ya tienes un aporte en revisión',
+                textAlign: TextAlign.center,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                (pending['nombre'] ?? 'Solicitud de cancha').toString(),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 18),
+              _SubmissionUsageCard(summary: summary),
+              const SizedBox(height: 12),
+              const Text(
+                'Podrás enviar otra solicitud cuando esta sea aprobada o rechazada.',
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MonthlyLimitState extends StatelessWidget {
+  const _MonthlyLimitState({required this.summary});
+
+  final Map<String, dynamic> summary;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.event_busy_outlined, size: 54),
+              const SizedBox(height: 16),
+              Text(
+                'Alcanzaste el límite mensual',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Puedes enviar hasta tres aportes de cancha por mes calendario.',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 18),
+              _SubmissionUsageCard(summary: summary),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyContributionsState extends StatelessWidget {
+  const _EmptyContributionsState();
+
+  @override
+  Widget build(BuildContext context) => const Padding(
+    padding: EdgeInsets.only(top: 72),
+    child: Column(
+      children: [
+        Icon(Icons.add_location_alt_outlined, size: 48),
+        SizedBox(height: 12),
+        Text('Aún no has enviado aportes de canchas.'),
+      ],
+    ),
+  );
 }
 
 // Retained for the native marker artwork fallback used by older cached builds.

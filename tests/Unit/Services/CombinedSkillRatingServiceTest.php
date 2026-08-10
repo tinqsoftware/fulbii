@@ -18,10 +18,11 @@ class CombinedSkillRatingServiceTest extends TestCase
             'defensa' => 3.0,
         ]);
 
-        $this->assertSame(3.0, $summary['player_average']);
-        $this->assertSame(3.2, $summary['goalkeeper_average']);
-        $this->assertSame(3.2, $summary['stars']);
+        $this->assertSame(3.04, $summary['player_average']);
+        $this->assertSame(3.15, $summary['goalkeeper_average']);
+        $this->assertSame(3.15, $summary['stars']);
         $this->assertSame('arquero', $summary['primary_role']);
+        $this->assertSame('arquero', $summary['primary_position']);
     }
 
     public function test_field_average_is_primary_when_it_is_higher(): void
@@ -35,10 +36,11 @@ class CombinedSkillRatingServiceTest extends TestCase
             'defensa' => 3.0,
         ]);
 
-        $this->assertSame(3.0, $summary['player_average']);
-        $this->assertSame(2.2, $summary['goalkeeper_average']);
-        $this->assertSame(3.0, $summary['stars']);
+        $this->assertSame(3.04, $summary['player_average']);
+        $this->assertSame(2.65, $summary['goalkeeper_average']);
+        $this->assertSame(3.04, $summary['stars']);
         $this->assertSame('jugador', $summary['primary_role']);
+        $this->assertSame('delantero', $summary['primary_position']);
     }
 
     public function test_field_average_wins_ties_with_goalkeeper_score(): void

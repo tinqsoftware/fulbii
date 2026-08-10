@@ -2003,7 +2003,7 @@ class GroupPichangaController extends Controller
                 : null;
             return ['participant' => $participant, 'summary' => $summary];
         })->values();
-        $goalkeeper = $players->sortByDesc(fn ($player) => $player['summary']['arquero'] ?? -1)->first();
+        $goalkeeper = $players->sortByDesc(fn ($player) => $player['summary']['goalkeeper_average'] ?? -1)->first();
         $outfield = $players->reject(fn ($player) => $goalkeeper && $player['participant']->id === $goalkeeper['participant']->id)
             ->sortByDesc(fn ($player) => $player['summary']['stars'] ?? -1)->values();
         $roles = [];
@@ -2014,9 +2014,9 @@ class GroupPichangaController extends Controller
         foreach ($outfield as $index => $player) {
             $summary = $player['summary'] ?? [];
             $candidates = [
-                'defender' => $summary['defensa'] ?? -1,
-                'midfielder' => $summary['mediocampo'] ?? -1,
                 'forward' => $summary['delantero'] ?? -1,
+                'midfielder' => $summary['mediocampo'] ?? -1,
+                'defender' => $summary['defensa'] ?? -1,
             ];
             arsort($candidates);
             $role = array_key_first($candidates);

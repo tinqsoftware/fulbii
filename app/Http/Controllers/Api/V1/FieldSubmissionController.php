@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\FieldSubmission;
 use App\Models\FieldSubmissionPhoto;
+use App\Models\User;
 use App\Services\ProductEventService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
@@ -29,7 +31,10 @@ class FieldSubmissionController extends Controller
             ->limit(100)
             ->get();
 
-        return response()->json(['items' => $items]);
+        return response()->json([
+            'items' => $items,
+            'summary' => $this->submissionSummary((int) $user->id),
+        ]);
     }
 
     public function store(Request $request)
@@ -86,6 +91,15 @@ class FieldSubmissionController extends Controller
         }
 
         $submission = DB::transaction(function () use ($data, $user, $request) {
+            // Locking the parent user row serializes submissions for that
+            // user, including the otherwise-racy "no pending rows" case.
+            if (Schema::hasTable('users')) {
+                User::query()->lockForUpdate()->findOrFail($user->id);
+            }
+            $summary = $this->submissionSummary((int) $user->id, true);
+            abort_if($summary['pending_submission'] !== null, 422, 'Ya tienes una solicitud pendiente. Espera su aprobación o rechazo antes de enviar otra.');
+            abort_if(!$summary['can_submit'], 422, 'Ya alcanzaste el máximo de 3 solicitudes de cancha este mes.');
+
             $submission = FieldSubmission::create([
                 'user_id' => $user->id,
                 'status' => 'pending',
@@ -151,7 +165,34 @@ class FieldSubmissionController extends Controller
         return response()->json([
             'message' => 'Solicitud de cancha enviada.',
             'submission' => $submission->load('photos'),
+            'summary' => $this->submissionSummary((int) $user->id),
         ], 201);
+    }
+
+    /** @return array{monthly_used:int,monthly_limit:int,pending_submission:?array<string,mixed>,can_submit:bool} */
+    private function submissionSummary(int $userId, bool $lock = false): array
+    {
+        $start = now()->startOfMonth();
+        $end = now()->endOfMonth();
+        $base = FieldSubmission::query()->where('user_id', $userId);
+        if ($lock) {
+            $base->lockForUpdate();
+        }
+        $monthlyUsed = (clone $base)->whereBetween('created_at', [$start, $end])->count();
+        $pending = (clone $base)->where('status', 'pending')->latest('id')->first();
+
+        return [
+            'monthly_used' => $monthlyUsed,
+            'monthly_limit' => 3,
+            'pending_submission' => $pending ? [
+                'id' => (int) $pending->id,
+                'nombre' => (string) $pending->nombre,
+                'submission_type' => (string) $pending->submission_type,
+                'created_at' => optional($pending->created_at)->toISOString(),
+                'status' => (string) $pending->status,
+            ] : null,
+            'can_submit' => $pending === null && $monthlyUsed < 3,
+        ];
     }
 
     /** @param array<int,\Illuminate\Http\UploadedFile> $photos */

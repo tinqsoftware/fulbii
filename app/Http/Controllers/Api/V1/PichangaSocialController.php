@@ -243,10 +243,17 @@ class PichangaSocialController extends Controller
         $myRatedIds = $items->where('rater_user_id', $auth->id)->pluck('rated_user_id')->map(fn ($id) => (int) $id)->all();
         $leaders = $items->groupBy('rated_user_id')->map(function ($ratings, $userId) {
             $first = $ratings->first();
-            $score = $ratings->map(fn ($rating) => collect([
-                $rating->fisico, $rating->arquero, $rating->delantero, $rating->mediocampo, $rating->defensa,
-            ])->avg())->avg();
-            return ['user_id' => (int) $userId, 'nick' => $first->rated?->nick ?: $first->rated?->name, 'score' => round((float) $score, 1), 'votes' => $ratings->count()];
+            $summary = $this->combinedSkillRatings->summaryForVotes($ratings);
+            return [
+                'user_id' => (int) $userId,
+                'nick' => $first->rated?->nick ?: $first->rated?->name,
+                'score' => $summary['stars'] === null ? null : round((float) $summary['stars'], 1),
+                'votes' => $ratings->count(),
+                'player_average' => $summary['player_average'],
+                'goalkeeper_average' => $summary['goalkeeper_average'],
+                'primary_role' => $summary['primary_role'],
+                'primary_position' => $summary['primary_position'],
+            ];
         })->sortByDesc('score')->values();
         return response()->json([
             'items' => $items,
@@ -389,6 +396,11 @@ class PichangaSocialController extends Controller
                     'delantero' => $summary['delantero'],
                     'mediocampo' => $summary['mediocampo'],
                     'defensa' => $summary['defensa'],
+                    'player_average' => $summary['player_average'],
+                    'goalkeeper_average' => $summary['goalkeeper_average'],
+                    'stars' => $summary['stars'],
+                    'primary_role' => $summary['primary_role'],
+                    'primary_position' => $summary['primary_position'],
                 ],
             ],
         ]);

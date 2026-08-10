@@ -19,6 +19,7 @@ import 'player_rankings_screen.dart';
 import '../../clubs/data/clubs_repository.dart';
 import '../../pichangas/presentation/pichanga_history_screen.dart';
 import '../../pichangas/presentation/pichanga_detail_screen.dart';
+import '../../fields/presentation/field_submission_screen.dart';
 
 final pichangaHistoryProvider = FutureProvider.autoDispose<List<dynamic>>(
   (ref) => ref.watch(profileRepositoryProvider).pichangaHistory(),
@@ -253,6 +254,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ),
             icon: const Icon(Icons.leaderboard_outlined),
             label: const Text('Ver ranking'),
+          ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) =>
+                    const FieldSubmissionScreen(showMyContributions: true),
+              ),
+            ),
+            icon: const Icon(Icons.add_location_alt_outlined),
+            label: const Text('Mis aportes de canchas'),
           ),
         ),
         const SizedBox(height: 24),

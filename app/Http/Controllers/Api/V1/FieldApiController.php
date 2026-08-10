@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\GroupPichanga;
+use App\Models\FieldSubmission;
 use App\Models\Polideportivo;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -39,6 +40,19 @@ class FieldApiController extends Controller
 
     public function index(Request $request)
     {
+        $viewport = $request->validate([
+            'south' => ['nullable', 'numeric', 'between:-90,90', 'required_with:west,north,east'],
+            'west' => ['nullable', 'numeric', 'between:-180,180', 'required_with:south,north,east'],
+            'north' => ['nullable', 'numeric', 'between:-90,90', 'required_with:south,west,east'],
+            'east' => ['nullable', 'numeric', 'between:-180,180', 'required_with:south,west,north'],
+        ]);
+        $hasViewport = collect(['south', 'west', 'north', 'east'])
+            ->every(fn (string $key) => array_key_exists($key, $viewport) && $viewport[$key] !== null);
+        abort_if(
+            $hasViewport && ($viewport['south'] > $viewport['north'] || $viewport['west'] > $viewport['east']),
+            422,
+            'Los límites del mapa no son válidos.'
+        );
         $q = trim((string) $request->query('q', ''));
         $rawLimit = $request->query('limit');
         $limit = null;
@@ -71,6 +85,21 @@ class FieldApiController extends Controller
                 'id_distrito',
             ])
             ->withCount('canchas');
+
+        if ($hasViewport) {
+            // x/y are legacy text columns. Cast only when the optional
+            // viewport contract is used, preserving current clients and data.
+            $query->whereNotNull('x')
+                ->whereNotNull('y')
+                ->whereRaw('CAST(x AS DECIMAL(10,6)) BETWEEN ? AND ?', [
+                    $viewport['south'],
+                    $viewport['north'],
+                ])
+                ->whereRaw('CAST(y AS DECIMAL(10,6)) BETWEEN ? AND ?', [
+                    $viewport['west'],
+                    $viewport['east'],
+                ]);
+        }
 
         if ($hasPrecioDesdeNum) {
             $query->addSelect('precio_desde_num');
@@ -269,8 +298,58 @@ class FieldApiController extends Controller
             includeCanchas: true,
         );
         $payload['open_pichangas'] = $this->openPichangasForField($field);
+        $payload = $this->withContributorAttribution($payload, $field);
 
         return response()->json(['field' => $payload]);
+    }
+
+    /** @param array<string,mixed> $payload @return array<string,mixed> */
+    private function withContributorAttribution(array $payload, Polideportivo $field): array
+    {
+        if (!Schema::hasTable('field_submissions')
+            || !Schema::hasTable('users')
+            || !Schema::hasColumn('field_submissions', 'approved_polideportivo_id')
+            || !Schema::hasColumn('field_submissions', 'approved_cancha_id')
+            || !Schema::hasColumn('field_submissions', 'submission_type')) {
+            return $payload;
+        }
+
+        $fieldContribution = FieldSubmission::query()
+            ->where('approved_polideportivo_id', $field->id)
+            ->where('status', 'approved')
+            ->where('submission_type', 'new_polideportivo')
+            ->with('user:id,nick,name,avatar_url')
+            ->latest('reviewed_at')
+            ->first();
+        if ($fieldContribution?->user) {
+            $payload['contributor'] = $this->serializeContributor($fieldContribution);
+        }
+
+        $courtContributions = FieldSubmission::query()
+            ->whereIn('approved_cancha_id', collect($payload['canchas'] ?? [])->pluck('id')->filter()->all())
+            ->where('status', 'approved')
+            ->with('user:id,nick,name,avatar_url')
+            ->get()
+            ->keyBy('approved_cancha_id');
+        $payload['canchas'] = collect($payload['canchas'] ?? [])->map(function (array $court) use ($courtContributions) {
+            $submission = $courtContributions->get((int) ($court['id'] ?? 0));
+            if ($submission?->user) {
+                $court['contributor'] = $this->serializeContributor($submission);
+            }
+            return $court;
+        })->values()->all();
+
+        return $payload;
+    }
+
+    /** @return array{id:int,nick:string,avatar_url:?string} */
+    private function serializeContributor(FieldSubmission $submission): array
+    {
+        return [
+            'id' => (int) $submission->user_id,
+            'nick' => (string) ($submission->user?->nick ?: $submission->user?->name ?: 'Jugador'),
+            'avatar_url' => $submission->user?->avatar_url,
+        ];
     }
 
     /**

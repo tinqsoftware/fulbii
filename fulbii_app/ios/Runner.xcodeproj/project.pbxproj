@@ -1036,6 +1036,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CLANG_ENABLE_OBJC_WEAK = NO;
+				DEVELOPMENT_TEAM = H22GQQX4KT;
 				EXECUTABLE_NAME = FulbiiNotificationService;
 				INFOPLIST_FILE = FulbiiNotificationService/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -1052,6 +1053,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CLANG_ENABLE_OBJC_WEAK = NO;
+				DEVELOPMENT_TEAM = H22GQQX4KT;
 				EXECUTABLE_NAME = FulbiiNotificationService;
 				INFOPLIST_FILE = FulbiiNotificationService/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -1315,6 +1317,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CLANG_ENABLE_OBJC_WEAK = NO;
+				DEVELOPMENT_TEAM = H22GQQX4KT;
 				EXECUTABLE_NAME = FulbiiNotificationService;
 				INFOPLIST_FILE = FulbiiNotificationService/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;

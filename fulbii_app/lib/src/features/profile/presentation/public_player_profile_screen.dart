@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'player_rating_dialog.dart';
 import '../../../core/formatters/spanish_date_formatter.dart';
 import 'package:video_player/video_player.dart';
 
@@ -453,13 +455,12 @@ Future<void> _showProfileRatingDialog(
   WidgetRef ref,
   int userId,
 ) async {
-  final saved = await showDialog<bool>(
-    context: context,
-    builder: (_) => _ProfileRatingDialog(
-      onSubmit: (values, comment) => ref
-          .read(profileRepositoryProvider)
-          .ratePlayer(userId, {...values, 'comentario': comment}),
-    ),
+  final saved = await showPlayerRatingDialog(
+    context,
+    candidates: [PlayerRatingCandidate(id: userId, name: 'Jugador')],
+    onSubmit: (ratedUserId, values, comment) => ref
+        .read(profileRepositoryProvider)
+        .ratePlayer(ratedUserId, {...values, 'comentario': comment}),
   );
   if (saved == true) {
     ref.invalidate(publicRatingHistoryProvider(userId));

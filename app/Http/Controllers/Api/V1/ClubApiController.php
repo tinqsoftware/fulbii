@@ -475,12 +475,14 @@ class ClubApiController extends Controller
             'delantero' => null,
             'mediocampo' => null,
             'defensa' => null,
+            'field_average' => null,
             'player_average' => null,
             'goalkeeper_average' => null,
             'stars' => null,
             'primary_role' => null,
+            'primary_position' => null,
         ];
-        if (Schema::hasTable('calificaciones') && Schema::hasTable('group_pichanga_ratings')) {
+        if (Schema::hasTable('calificaciones') || Schema::hasTable('group_pichanga_ratings')) {
             $summary = app(CombinedSkillRatingService::class)->summaryForUser((int) $member->id);
         }
         $pichangasPlayed = 0;
@@ -524,6 +526,7 @@ class ClubApiController extends Controller
                 'player_average' => $summary['player_average'],
                 'goalkeeper_average' => $summary['goalkeeper_average'],
                 'primary_role' => $summary['primary_role'],
+                'primary_position' => $summary['primary_position'],
                 'rating_count' => (int) $summary['votos'],
                 'pichangas_played' => $pichangasPlayed,
                 'skills' => [
@@ -623,7 +626,7 @@ class ClubApiController extends Controller
      */
     private function ratingStatsForClub(int $clubId): array
     {
-        if (!Schema::hasTable('calificaciones') || !Schema::hasTable('group_pichanga_ratings')) {
+        if (!Schema::hasTable('calificaciones') && !Schema::hasTable('group_pichanga_ratings')) {
             return ['average' => null, 'count' => 0, 'by_user' => []];
         }
 

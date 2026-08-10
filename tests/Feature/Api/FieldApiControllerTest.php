@@ -8,6 +8,7 @@ use App\Services\FieldSubmissionApprovalService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -184,6 +185,29 @@ class FieldApiControllerTest extends TestCase
             ->assertJsonPath('field.canchas.0.anchom2', 20)
             ->assertJsonPath('field.canchas.0.largom2', 40)
             ->assertJsonPath('field.canchas.1.vs_format', '5v5');
+    }
+
+    public function test_index_filters_polideportivos_by_optional_map_viewport(): void
+    {
+        DB::table('polideportivo')->insert([
+            ['id' => 201, 'nombre' => 'Dentro del mapa', 'x' => '-12.050000', 'y' => '-77.040000', 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 202, 'nombre' => 'Fuera del mapa', 'x' => '-12.300000', 'y' => '-77.040000', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        $this->getJson('/api/v1/fields?south=-12.10&west=-77.10&north=-12.00&east=-77.00')
+            ->assertOk()
+            ->assertJsonCount(1, 'items')
+            ->assertJsonPath('items.0.id', 201);
+    }
+
+    public function test_index_rejects_an_incomplete_or_invalid_map_viewport(): void
+    {
+        $this->getJson('/api/v1/fields?south=-12.10')
+            ->assertStatus(422);
+
+        $this->getJson('/api/v1/fields?south=-12.00&west=-77.00&north=-12.10&east=-77.10')
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Los límites del mapa no son válidos.');
     }
 
     public function test_approved_new_polideportivo_is_listed_with_its_court_capacity(): void
@@ -469,5 +493,99 @@ class FieldApiControllerTest extends TestCase
             ->assertJsonPath('field.open_pichangas.0.id', 1)
             ->assertJsonPath('field.open_pichangas.0.spots_left', 10)
             ->assertJsonPath('field.open_pichangas.0.court_name', 'Cancha principal');
+    }
+
+    public function test_pending_submission_blocks_a_second_submission_and_is_exposed_in_summary(): void
+    {
+        DB::table('field_submissions')->insert([
+            'user_id' => 1,
+            'status' => 'pending',
+            'submission_type' => 'new_polideportivo',
+            'nombre' => 'Aporte pendiente',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->getJson('/api/v1/field-submissions/mine')
+            ->assertOk()
+            ->assertJsonPath('summary.monthly_used', 1)
+            ->assertJsonPath('summary.monthly_limit', 3)
+            ->assertJsonPath('summary.can_submit', false)
+            ->assertJsonPath('summary.pending_submission.nombre', 'Aporte pendiente');
+
+        $this->postJson('/api/v1/field-submissions', ['nombre' => 'Segundo aporte'])
+            ->assertStatus(422)
+            ->assertSee('Ya tienes una solicitud pendiente');
+    }
+
+    public function test_monthly_limit_counts_resolved_submissions_but_resets_next_month(): void
+    {
+        foreach (range(1, 3) as $index) {
+            DB::table('field_submissions')->insert([
+                'user_id' => 1,
+                'status' => 'rejected',
+                'submission_type' => 'new_polideportivo',
+                'nombre' => "Aporte {$index}",
+                'created_at' => now()->startOfMonth()->addDays($index),
+                'updated_at' => now(),
+            ]);
+        }
+        DB::table('field_submissions')->insert([
+            'user_id' => 1,
+            'status' => 'approved',
+            'submission_type' => 'new_polideportivo',
+            'nombre' => 'Aporte antiguo',
+            'created_at' => now()->subMonth()->startOfMonth(),
+            'updated_at' => now(),
+        ]);
+
+        $this->getJson('/api/v1/field-submissions/mine')
+            ->assertOk()
+            ->assertJsonPath('summary.monthly_used', 3)
+            ->assertJsonPath('summary.can_submit', false);
+        $this->postJson('/api/v1/field-submissions', ['nombre' => 'Cuarto aporte'])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Ya alcanzaste el máximo de 3 solicitudes de cancha este mes.');
+    }
+
+    public function test_approval_and_rejection_create_a_navigable_notification_for_the_submitter(): void
+    {
+        Schema::create('push_notifications', function (Blueprint $table) {
+            $table->increments('id');
+            $table->unsignedInteger('user_id');
+            $table->unsignedInteger('club_id')->nullable();
+            $table->unsignedInteger('group_pichanga_id')->nullable();
+            $table->string('type');
+            $table->string('title');
+            $table->text('body')->nullable();
+            $table->json('data_json')->nullable();
+            $table->boolean('is_read')->default(false);
+            $table->dateTime('read_at')->nullable();
+            $table->timestamps();
+        });
+        Queue::fake();
+        DB::table('field_submissions')->insert([
+            'id' => 91,
+            'user_id' => 1,
+            'status' => 'pending',
+            'submission_type' => 'new_polideportivo',
+            'nombre' => 'Aporte por revisar',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $reviewer = new User(['id' => 99, 'name' => 'Moderador']);
+        $reviewer->exists = true;
+        app(FieldSubmissionApprovalService::class)->decide(
+            FieldSubmission::query()->findOrFail(91),
+            $reviewer,
+            'reject',
+            'Información incompleta',
+        );
+
+        $notification = DB::table('push_notifications')->first();
+        $this->assertSame('field_submission_rejected', $notification->type);
+        $this->assertSame('field_submission', json_decode($notification->data_json, true)['target_type']);
+        $this->assertSame('91', json_decode($notification->data_json, true)['target_id']);
     }
 }

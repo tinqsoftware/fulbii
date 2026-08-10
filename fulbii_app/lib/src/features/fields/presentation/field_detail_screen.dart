@@ -204,6 +204,10 @@ class _FieldDetailBody extends ConsumerWidget {
                       ),
                     ),
                   ],
+                  if (field.contributor != null) ...[
+                    const SizedBox(height: 10),
+                    _ContributionBadge(contributor: field.contributor!),
+                  ],
                   if (field.canchas.isNotEmpty) ...[
                     const SizedBox(height: 28),
                     const Text(
@@ -668,6 +672,48 @@ String _formatVsLabel(String value) => value.replaceAllMapped(
   (match) => '${match.group(1)}vs${match.group(2)}',
 );
 
+class _ContributionBadge extends StatelessWidget {
+  const _ContributionBadge({required this.contributor, this.compact = false});
+
+  final Map<String, dynamic> contributor;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = (contributor['nick'] ?? 'Jugador').toString();
+    final color = Theme.of(context).colorScheme.primary;
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 7 : 10,
+        vertical: compact ? 3 : 5,
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: .13),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.volunteer_activism_outlined,
+            size: compact ? 13 : 16,
+            color: color,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            'Aportado por @$name',
+            style: TextStyle(
+              fontSize: compact ? 11 : 12,
+              color: color,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _CourtDetailCard extends StatelessWidget {
   const _CourtDetailCard({required this.court});
 
@@ -738,6 +784,13 @@ class _CourtDetailCard extends StatelessWidget {
                       Text(
                         dimensions,
                         style: TextStyle(color: colorScheme.primary),
+                      ),
+                    ],
+                    if (court.contributor != null) ...[
+                      const SizedBox(height: 4),
+                      _ContributionBadge(
+                        contributor: court.contributor!,
+                        compact: true,
                       ),
                     ],
                   ],

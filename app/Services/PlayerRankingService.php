@@ -73,7 +73,10 @@ class PlayerRankingService
     private function ageBand(User $user): ?string
     {
         if (!$user->fec_nac) return null;
-        $age = min(100, max(0, Carbon::parse($user->fec_nac)->age));
+        $age = max(0, Carbon::parse($user->fec_nac)->age);
+        if ($age > 100) {
+            return '100+';
+        }
         $start = $age === 0 ? 0 : intdiv($age - 1, 5) * 5 + 1;
         $end = $start === 0 ? 5 : min(100, $start + 4);
         return "$start-$end";
@@ -81,6 +84,9 @@ class PlayerRankingService
 
     private function bandLabel(string $band): string
     {
+        if ($band === '100+') {
+            return '100+ años';
+        }
         [$start, $end] = explode('-', $band);
         // The en dash is valid in a PHP variable identifier, so without
         // delimiters PHP parses "$start–" as one (undefined) variable.

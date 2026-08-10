@@ -8,20 +8,27 @@ use App\Models\FieldSubmission;
 use App\Models\Polideportivo;
 use App\Models\PolideportivoPhoto;
 use App\Models\User;
+use App\Services\PushNotificationService;
 use Illuminate\Support\Facades\DB;
 
 class FieldSubmissionApprovalService
 {
+    public function __construct(private readonly PushNotificationService $pushNotifications)
+    {
+    }
+
     /** @return array{message:string,approved_polideportivo_id?:int,approved_cancha_id?:int} */
     public function decide(FieldSubmission $submission, User $auth, string $action, ?string $note): array
     {
         abort_if($submission->status !== 'pending', 422, 'La solicitud ya fue resuelta.');
         if ($action === 'reject') {
             $submission->update(['status' => 'rejected', 'reviewed_by_user_id' => $auth->id, 'reviewed_at' => now(), 'resolution_note' => $note]);
-            return ['message' => 'Solicitud rechazada.'];
+            $result = ['message' => 'Solicitud rechazada.'];
+            $this->notifyDecision($submission->fresh(), false);
+            return $result;
         }
 
-        return DB::transaction(function () use ($submission, $auth, $note) {
+        $result = DB::transaction(function () use ($submission, $auth, $note) {
             $venuePhotos = $submission->photos()
                 ->where('status', 'active')->where('asset_type', 'venue')
                 ->orderBy('sort_order')->pluck('photo_url')->all();
@@ -74,6 +81,29 @@ class FieldSubmissionApprovalService
             ]);
             return ['message' => 'Solicitud aprobada.', 'approved_polideportivo_id' => (int) $field->id, 'approved_cancha_id' => (int) $cancha->id];
         });
+        $this->notifyDecision($submission->fresh(), true);
+        return $result;
+    }
+
+    private function notifyDecision(FieldSubmission $submission, bool $approved): void
+    {
+        $fieldId = (int) ($submission->approved_polideportivo_id ?? 0);
+        $courtId = (int) ($submission->approved_cancha_id ?? 0);
+        $name = trim((string) $submission->nombre) ?: 'tu cancha';
+        $this->pushNotifications->createForUser((int) $submission->user_id, [
+            'type' => $approved ? 'field_submission_approved' : 'field_submission_rejected',
+            'title' => $approved ? 'Solicitud aprobada' : 'Solicitud rechazada',
+            'body' => $approved
+                ? "Tu aporte \"{$name}\" ya está disponible en Fulbii."
+                : "Tu solicitud \"{$name}\" fue rechazada.",
+            'data_json' => [
+                'target_type' => $approved && $fieldId > 0 ? 'field' : 'field_submission',
+                'target_id' => (string) ($approved && $fieldId > 0 ? $fieldId : $submission->id),
+                'field_submission_id' => (string) $submission->id,
+                'field_id' => (string) $fieldId,
+                'cancha_id' => (string) $courtId,
+            ],
+        ]);
     }
 
     /** @param array<int,string> $photos */

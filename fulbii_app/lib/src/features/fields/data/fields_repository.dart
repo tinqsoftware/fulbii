@@ -6,6 +6,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../domain/field_model.dart';
 
+class FieldViewportBounds {
+  const FieldViewportBounds({
+    required this.south,
+    required this.west,
+    required this.north,
+    required this.east,
+  });
+
+  final double south;
+  final double west;
+  final double north;
+  final double east;
+}
+
 class FieldsRepository {
   FieldsRepository(this._api);
 
@@ -18,6 +32,7 @@ class FieldsRepository {
     double? priceMax,
     List<String> surfaceTypes = const [],
     List<String> vsFormats = const [],
+    FieldViewportBounds? bounds,
   }) async {
     final queryParameters = <String, dynamic>{'q': q, 'limit': limit};
     if (priceMin != null) {
@@ -31,6 +46,14 @@ class FieldsRepository {
     }
     if (vsFormats.isNotEmpty) {
       queryParameters['vs_formats'] = vsFormats.join(',');
+    }
+    if (bounds != null) {
+      queryParameters.addAll({
+        'south': bounds.south,
+        'west': bounds.west,
+        'north': bounds.north,
+        'east': bounds.east,
+      });
     }
 
     final response = await _api.getMap(
@@ -96,7 +119,10 @@ class FieldsRepository {
         .toList();
   }
 
-  Future<void> submitField({
+  Future<Map<String, dynamic>> myFieldSubmissions() =>
+      _api.getMap('/field-submissions/mine');
+
+  Future<Map<String, dynamic>> submitField({
     required String nombre,
     required String submissionType,
     required String canchaNombre,
@@ -146,7 +172,7 @@ class FieldsRepository {
       );
     }
     final form = FormData.fromMap(data);
-    await _api.postMultipartMap('/field-submissions', data: form);
+    return _api.postMultipartMap('/field-submissions', data: form);
   }
 }
 

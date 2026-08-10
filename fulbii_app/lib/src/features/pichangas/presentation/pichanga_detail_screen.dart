@@ -10,6 +10,7 @@ import '../../auth/session_controller.dart';
 import '../../fields/presentation/field_detail_screen.dart';
 import '../../notifications/presentation/report_content_sheet.dart';
 import '../../profile/presentation/public_player_profile_screen.dart';
+import '../../profile/presentation/player_rating_dialog.dart';
 import '../data/pichangas_repository.dart';
 
 final pichangaDetailProvider = FutureProvider.autoDispose
@@ -1936,159 +1937,39 @@ class _PichangaDetailScreenState extends ConsumerState<PichangaDetailScreen> {
       return;
     }
     if (!context.mounted) return;
-    int? ratedUserId = int.tryParse(candidates.first['id'].toString());
-    double fisico = 2.5;
-    double arquero = 2.5;
-    double delantero = 2.5;
-    double mediocampo = 2.5;
-    double defensa = 2.5;
-    final comentarioController = TextEditingController();
-
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            Widget sliderRow(
-              String title,
-              double value,
-              ValueChanged<double> onChanged,
-            ) {
-              return Row(
-                children: [
-                  SizedBox(width: 96, child: Text(title)),
-                  Expanded(
-                    child: Slider(
-                      value: value,
-                      min: 0,
-                      max: 5,
-                      divisions: 50,
-                      label: value.toStringAsFixed(1),
-                      onChanged: onChanged,
-                    ),
-                  ),
-                ],
-              );
-            }
-
-            return AlertDialog(
-              title: const Text('Calificar jugador'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    DropdownButtonFormField<int>(
-                      initialValue: ratedUserId,
-                      decoration: const InputDecoration(
-                        labelText: 'Jugador confirmado',
-                      ),
-                      items: candidates
-                          .map(
-                            (player) => DropdownMenuItem(
-                              value: int.tryParse(player['id'].toString()),
-                              child: Text(
-                                (player['nick'] ?? player['name'] ?? 'Jugador')
-                                    .toString(),
-                              ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (value) => setState(() => ratedUserId = value),
-                    ),
-                    sliderRow(
-                      'Físico',
-                      fisico,
-                      (v) => setState(
-                        () => fisico = double.parse(v.toStringAsFixed(1)),
-                      ),
-                    ),
-                    sliderRow(
-                      'Arquero',
-                      arquero,
-                      (v) => setState(
-                        () => arquero = double.parse(v.toStringAsFixed(1)),
-                      ),
-                    ),
-                    sliderRow(
-                      'Delantero',
-                      delantero,
-                      (v) => setState(
-                        () => delantero = double.parse(v.toStringAsFixed(1)),
-                      ),
-                    ),
-                    sliderRow(
-                      'Mediocampo',
-                      mediocampo,
-                      (v) => setState(
-                        () => mediocampo = double.parse(v.toStringAsFixed(1)),
-                      ),
-                    ),
-                    sliderRow(
-                      'Defensa',
-                      defensa,
-                      (v) => setState(
-                        () => defensa = double.parse(v.toStringAsFixed(1)),
-                      ),
-                    ),
-                    TextField(
-                      controller: comentarioController,
-                      decoration: const InputDecoration(
-                        labelText: 'Comentario',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: const Text('Cancelar'),
-                ),
-                FilledButton(
-                  onPressed: () async {
-                    if (ratedUserId == null) {
-                      ScaffoldMessenger.of(dialogContext).showSnackBar(
-                        const SnackBar(
-                          content: Text('ID de jugador inválido.'),
-                        ),
-                      );
-                      return;
-                    }
-
-                    await _runAction(
-                      context,
-                      ref,
-                      action: () => ref
-                          .read(pichangasRepositoryProvider)
-                          .addOrUpdateRating(
-                            widget.pichangaId,
-                            ratedUserId: ratedUserId!,
-                            fisico: fisico,
-                            arquero: arquero,
-                            delantero: delantero,
-                            mediocampo: mediocampo,
-                            defensa: defensa,
-                            comentario: comentarioController.text.trim(),
-                          ),
-                      successMessage: 'Calificación guardada.',
-                    );
-
-                    ref.invalidate(pichangaRatingsProvider(widget.pichangaId));
-                    if (context.mounted) {
-                      Navigator.of(dialogContext).pop();
-                    }
-                  },
-                  child: const Text('Guardar'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+    final saved = await showPlayerRatingDialog(
+      context,
+      candidates: candidates
+          .map(
+            (player) => PlayerRatingCandidate(
+              id: int.tryParse(player['id'].toString()) ?? 0,
+              name: (player['nick'] ?? player['name'] ?? 'Jugador').toString(),
+            ),
+          )
+          .where((player) => player.id > 0)
+          .toList(),
+      onSubmit: (ratedUserId, values, comment) => ref
+          .read(pichangasRepositoryProvider)
+          .addOrUpdateRating(
+            widget.pichangaId,
+            ratedUserId: ratedUserId,
+            fisico: values['fisico']!,
+            arquero: values['arquero']!,
+            delantero: values['delantero']!,
+            mediocampo: values['mediocampo']!,
+            defensa: values['defensa']!,
+            comentario: comment,
+          ),
     );
-
-    if (context.mounted) {
-      comentarioController.dispose();
+    if (saved == true) {
+      ref.invalidate(pichangaRatingsProvider(widget.pichangaId));
+      ref.invalidate(pichangaDetailProvider(widget.pichangaId));
+      await ref.read(widgetWeeklyServiceProvider).syncAll(ignoreErrors: true);
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Calificación guardada.')));
+      }
     }
   }
 

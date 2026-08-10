@@ -16,6 +16,8 @@ import '../notifications/presentation/inbox_screen.dart'
 import '../pichangas/presentation/pichanga_detail_screen.dart';
 import '../pichangas/presentation/pichangas_screen.dart';
 import '../fields/presentation/map_screen.dart';
+import '../fields/presentation/field_detail_screen.dart';
+import '../fields/presentation/field_submission_screen.dart';
 import '../profile/presentation/profile_screen.dart';
 import '../profile/presentation/public_player_profile_screen.dart';
 
@@ -178,7 +180,22 @@ class _MainShellState extends ConsumerState<MainShell>
     final clubId = int.tryParse((data['club_id'] ?? '').toString()) ?? 0;
     final targetId = int.tryParse((data['target_id'] ?? '').toString()) ?? 0;
     final targetType = (data['target_type'] ?? '').toString();
-    if (targetType == 'club_chat' && clubId > 0) {
+    final fieldId = int.tryParse((data['field_id'] ?? '').toString()) ?? 0;
+    if (targetType == 'field' && (fieldId > 0 || targetId > 0)) {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) =>
+              FieldDetailScreen(fieldId: fieldId > 0 ? fieldId : targetId),
+        ),
+      );
+    } else if (targetType == 'field_submission') {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) =>
+              const FieldSubmissionScreen(showMyContributions: true),
+        ),
+      );
+    } else if (targetType == 'club_chat' && clubId > 0) {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) =>

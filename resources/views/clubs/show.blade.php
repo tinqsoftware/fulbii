@@ -7,6 +7,7 @@
   $promPorUser = collect($promedios ?? [])->keyBy('user_id');
   function promedio_total($p){
       if(!$p) return null;
+      if (isset($p->stars) && $p->stars !== null) return $p->stars;
       $vals = array_filter([
         $p->fisico_prom ?? null,
         $p->arquero_prom ?? null,

@@ -121,6 +121,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
   final Set<String> _selectedSurfaceTypes = <String>{};
   final Set<String> _selectedVsFormats = <String>{};
   final Map<String, BitmapDescriptor> _markerIconCache = {};
+  final ScrollController _pichangaCarouselController = ScrollController();
+  final Map<String, List<FieldModel>> _viewportFieldCache = {};
   final FieldClusterer _clusterer = const FieldClusterer();
   late AnimationController _pulseController;
   LatLng? _currentUserLocation;
@@ -145,7 +147,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
   double _cameraZoom = 11.5;
   int _cameraRevision = 0;
   int _filterRequestId = 0;
+  int _viewportRequestId = 0;
   List<FieldModel> _lastMapFields = const [];
+  List<FieldModel> _viewportFields = const [];
+  Timer? _viewportDebounce;
   bool _fitResultsAfterApplyingFilters = false;
 
   Future<Set<Marker>>? _markersFuture;
@@ -203,6 +208,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
   @override
   void dispose() {
     _pulseController.dispose();
+    _viewportDebounce?.cancel();
+    _pichangaCarouselController.dispose();
     _locationSubscription?.cancel();
     _priceMinController.dispose();
     _priceMaxController.dispose();
@@ -233,6 +240,20 @@ class _MapScreenState extends ConsumerState<MapScreen>
       }
     });
 
+    if (!_showList) {
+      return Column(
+        children: [
+          _buildHeader(),
+          Expanded(
+            child: _buildMapView(
+              _viewportFields,
+              _currentUserLocation ?? const LatLng(-12.0464, -77.0428),
+            ),
+          ),
+        ],
+      );
+    }
+
     final fieldsAsync = ref.watch(fieldsProvider);
 
     return fieldsAsync.when(
@@ -257,32 +278,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
         ),
       ),
       data: (fields) {
-        final validFields = fields
-            .where(
-              (f) =>
-                  f.x != 0 &&
-                  f.y != 0 &&
-                  f.x >= -90 &&
-                  f.x <= 90 &&
-                  f.y >= -180 &&
-                  f.y <= 180,
-            )
-            .toList();
-
-        final initial = validFields.isNotEmpty
-            ? LatLng(validFields.first.x, validFields.first.y)
-            : const LatLng(-12.0464, -77.0428);
-
-        _scheduleResultsFit(validFields);
-
         return Column(
           children: [
             _buildHeader(),
-            Expanded(
-              child: _showList
-                  ? _buildListView(fields)
-                  : _buildMapView(validFields, initial),
-            ),
+            Expanded(child: _buildListView(fields)),
           ],
         );
       },
@@ -335,8 +334,13 @@ class _MapScreenState extends ConsumerState<MapScreen>
                       ButtonSegment(value: true, label: Text('Lista')),
                     ],
                     selected: {_showList},
-                    onSelectionChanged: (value) =>
-                        setState(() => _showList = value.first),
+                    onSelectionChanged: (value) {
+                      final showList = value.first;
+                      setState(() => _showList = showList);
+                      if (!showList) {
+                        _scheduleViewportLoad();
+                      }
+                    },
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -640,128 +644,124 @@ class _MapScreenState extends ConsumerState<MapScreen>
       );
     }
 
-    return SizedBox(
-      height: 104,
-      child: ListView.separated(
-        key: const ValueKey('map-pichangas-carousel'),
-        scrollDirection: Axis.horizontal,
-        itemCount: pichangas.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final item = pichangas[index];
-          final id =
-              (item['id'] as num?)?.toInt() ??
-              int.tryParse(item['id']?.toString() ?? '');
-          final selected = id != null && id == _selectedPichangaId;
-          final date = SpanishDateFormatter.pichangaDate(
-            item['starts_at']?.toString(),
-          );
-          final court = (item['court_name'] ?? 'Cancha por confirmar')
-              .toString();
-          final field = (item['field_name'] ?? 'Polideportivo').toString();
-          return SizedBox(
-            width: 238,
-            child: Card(
-              margin: EdgeInsets.zero,
-              clipBehavior: Clip.antiAlias,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-                side: BorderSide(
-                  color: selected
-                      ? const Color(0xFFFF615B)
-                      : colorScheme.outlineVariant,
-                  width: selected ? 2 : 1,
-                ),
-              ),
-              child: InkWell(
-                onTap: () => _selectMapPichanga(item),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 8,
+    return LayoutBuilder(
+      builder: (context, constraints) => SizedBox(
+        height: 94,
+        child: ListView.separated(
+          key: const ValueKey('map-pichangas-carousel'),
+          controller: _pichangaCarouselController,
+          scrollDirection: Axis.horizontal,
+          itemCount: pichangas.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 8),
+          itemBuilder: (context, index) {
+            final item = pichangas[index];
+            final id =
+                (item['id'] as num?)?.toInt() ??
+                int.tryParse(item['id']?.toString() ?? '');
+            final selected = id != null && id == _selectedPichangaId;
+            final court = (item['court_name'] ?? 'Cancha por confirmar')
+                .toString();
+            final field = (item['field_name'] ?? 'Polideportivo').toString();
+            return SizedBox(
+              width: 238,
+              child: Card(
+                margin: EdgeInsets.zero,
+                clipBehavior: Clip.antiAlias,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  side: BorderSide(
+                    color: selected
+                        ? const Color(0xFFFF615B)
+                        : colorScheme.outlineVariant,
+                    width: selected ? 2 : 1,
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              date,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: selected
-                                    ? const Color(0xFFFF9E99)
-                                    : colorScheme.primary,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 11,
+                ),
+                child: InkWell(
+                  onTap: () => _selectMapPichanga(
+                    item,
+                    index: index,
+                    carouselWidth: constraints.maxWidth,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 9,
+                      vertical: 6,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _MapPichangaDateBadge(
+                                rawDate: item['starts_at']?.toString(),
+                                selected: selected,
                               ),
                             ),
-                          ),
-                          if (item['is_my_group'] == true)
-                            _mapPichangaTag('Mi grupo'),
-                          if (item['me_participant_status'] == 'confirmed')
-                            Padding(
-                              padding: const EdgeInsets.only(left: 4),
-                              child: _mapPichangaTag('Confirmado'),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        (item['title'] ?? 'Pichanga').toString(),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 13,
+                            if (item['is_my_group'] == true)
+                              _mapPichangaTag('Mi grupo'),
+                            if (item['me_participant_status'] == 'confirmed')
+                              Padding(
+                                padding: const EdgeInsets.only(left: 4),
+                                child: _mapPichangaTag('Confirmado'),
+                              ),
+                          ],
                         ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        '$court · $field',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: colorScheme.onSurfaceVariant,
+                        const SizedBox(height: 2),
+                        Text(
+                          (item['title'] ?? 'Pichanga').toString(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 13,
+                          ),
                         ),
-                      ),
-                      const Spacer(),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.groups_2_outlined,
-                            size: 14,
-                            color: colorScheme.primary,
+                        const SizedBox(height: 1),
+                        Text(
+                          '$court · $field',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: colorScheme.onSurfaceVariant,
                           ),
-                          const SizedBox(width: 3),
-                          Text(
-                            '${item['confirmed_count'] ?? 0}/${item['capacity'] ?? 0}',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Text(
-                            '${item['spots_left'] ?? 0} cupos',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.groups_2_outlined,
+                              size: 14,
                               color: colorScheme.primary,
                             ),
-                          ),
-                        ],
-                      ),
-                    ],
+                            const SizedBox(width: 3),
+                            Text(
+                              '${item['confirmed_count'] ?? 0}/${item['capacity'] ?? 0}',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              '${item['spots_left'] ?? 0} cupos',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: colorScheme.primary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
@@ -1009,25 +1009,15 @@ class _MapScreenState extends ConsumerState<MapScreen>
                   final courts =
                       snapshot.data?.canchas ?? const <FieldCourtModel>[];
                   if (courts.isEmpty) return const SizedBox.shrink();
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Canchas',
-                        style: TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                      const SizedBox(height: 4),
-                      SizedBox(
-                        height: 54,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: courts.length,
-                          separatorBuilder: (_, __) => const SizedBox(width: 8),
-                          itemBuilder: (_, index) =>
-                              _buildCourtPreview(courts[index]),
-                        ),
-                      ),
-                    ],
+                  return SizedBox(
+                    height: 52,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: courts.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 7),
+                      itemBuilder: (_, index) =>
+                          _buildCourtPreview(courts[index]),
+                    ),
                   );
                 },
               ),
@@ -1047,8 +1037,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
     final colorScheme = Theme.of(context).colorScheme;
     return Container(
-      width: 144,
-      padding: const EdgeInsets.all(5),
+      width: 164,
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(10),
@@ -1057,7 +1047,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
       child: Row(
         children: [
           SizedBox(
-            width: 34,
+            width: 46,
             height: double.infinity,
             child: image.isEmpty
                 ? const _FieldPlaceholder()
@@ -1067,29 +1057,32 @@ class _MapScreenState extends ConsumerState<MapScreen>
                     errorBuilder: (_, __, ___) => const _FieldPlaceholder(),
                   ),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 7),
           Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  court.nombre ?? 'Cancha',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                if (details.isNotEmpty)
+            child: Padding(
+              padding: const EdgeInsets.only(right: 7),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    details,
-                    maxLines: 2,
+                    court.nombre ?? 'Cancha',
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: colorScheme.onSurfaceVariant,
-                      fontSize: 10,
-                    ),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
-              ],
+                  if (details.isNotEmpty)
+                    Text(
+                      details,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: colorScheme.onSurfaceVariant,
+                        fontSize: 10,
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ],
@@ -1102,7 +1095,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
     if (format.isEmpty) return null;
     return format.replaceFirstMapped(
       RegExp(r'^(\d+)v(?:s)?(\d+)$', caseSensitive: false),
-      (match) => '${match.group(1)}vs${match.group(2)}',
+      (match) => (match.group(1) ?? '') + ' vs ' + (match.group(2) ?? ''),
     );
   }
 
@@ -1468,6 +1461,12 @@ class _MapScreenState extends ConsumerState<MapScreen>
       surfaceTypes: _selectedSurfaceTypes.toList(),
       vsFormats: _selectedVsFormats.toList(),
     );
+    _viewportFieldCache.clear();
+    if (!_showList) {
+      _fitResultsAfterApplyingFilters = false;
+      _scheduleViewportLoad(immediate: true);
+      return;
+    }
 
     // Esperamos la respuesta ya filtrada para encuadrar exactamente esos
     // polideportivos, sin depender de que ocurra otro renderizado del mapa.
@@ -1523,20 +1522,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
       _showSelectedFieldPreview = false;
     });
     ref.read(mapFilterStateProvider.notifier).state = const MapFilterState();
-  }
-
-  void _scheduleResultsFit(List<FieldModel> fields) {
-    if (!_fitResultsAfterApplyingFilters) return;
-    if (fields.isEmpty) {
-      _fitResultsAfterApplyingFilters = false;
-      return;
-    }
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        unawaited(_fitCameraToResults(fields));
-      }
-    });
+    _viewportFieldCache.clear();
+    _scheduleViewportLoad(immediate: true);
   }
 
   Future<void> _fitCameraToResults(List<FieldModel> fields) async {
@@ -1617,8 +1604,25 @@ class _MapScreenState extends ConsumerState<MapScreen>
     Set<int> pichangaFieldIds,
   ) async {
     final markers = <Marker>{};
+    final selectedId = _selectedField?.id;
+    FieldModel? selected;
+    if (selectedId != null) {
+      for (final field in fields) {
+        if (field.id == selectedId) {
+          selected = field;
+          break;
+        }
+      }
+    }
+    // Keep the selected venue out of a nearby cluster so the chosen pichanga
+    // remains visible with its red pulse at every zoom level.
+    final clusterable = selected == null
+        ? fields
+        : fields.where((field) => field.id != selected!.id).toList();
+    final clusters = _clusterer.cluster(clusterable, _cameraZoom);
+    await _warmMarkerIcons(clusters, pichangaFieldIds);
 
-    for (final cluster in _clusterer.cluster(fields, _cameraZoom)) {
+    for (final cluster in clusters) {
       if (cluster.isCluster) {
         markers.add(
           Marker(
@@ -1645,7 +1649,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
         label,
         selected: isSelected,
         hasPichangas: hasPichangas,
-        pulseRed: _selectedPichangaId != null || hasPichangas,
+        pulseRed: hasPichangas,
         pulseProgress: isSelected ? _pulseController.value : 0.0,
       );
 
@@ -1659,6 +1663,27 @@ class _MapScreenState extends ConsumerState<MapScreen>
             setState(() => _selectedPichangaId = null);
             _selectField(field);
           },
+        ),
+      );
+    }
+
+    final forcedSelected = selected;
+    if (forcedSelected != null) {
+      final hasPichangas = pichangaFieldIds.contains(forcedSelected.id);
+      final icon = await _iconForLabel(
+        _priceBadgeText(forcedSelected),
+        selected: true,
+        hasPichangas: hasPichangas,
+        pulseRed: true,
+        pulseProgress: _pulseController.value,
+      );
+      markers.add(
+        Marker(
+          markerId: MarkerId('field-' + forcedSelected.id.toString()),
+          position: LatLng(forcedSelected.x, forcedSelected.y),
+          icon: icon,
+          zIndexInt: 100,
+          onTap: () => _selectField(forcedSelected),
         ),
       );
     }
@@ -1678,6 +1703,40 @@ class _MapScreenState extends ConsumerState<MapScreen>
     }
 
     return markers;
+  }
+
+  Future<void> _warmMarkerIcons(
+    List<FieldCluster> clusters,
+    Set<int> pichangaFieldIds,
+  ) async {
+    // The map can reveal many venues at once. Generate up to 24 marker
+    // bitmaps concurrently before creating the Marker objects, instead of
+    // awaiting them one by one on every camera move.
+    const batchSize = 24;
+    for (var offset = 0; offset < clusters.length; offset += batchSize) {
+      final end = offset + batchSize < clusters.length
+          ? offset + batchSize
+          : clusters.length;
+      await Future.wait(
+        clusters.sublist(offset, end).map((cluster) {
+          if (cluster.isCluster) {
+            return _clusterIconForCount(
+              cluster.fields.length,
+              hasPichangas: cluster.fields.any(
+                (field) => pichangaFieldIds.contains(field.id),
+              ),
+            );
+          }
+          final field = cluster.fields.single;
+          return _iconForLabel(
+            _priceBadgeText(field),
+            selected: false,
+            hasPichangas: pichangaFieldIds.contains(field.id),
+            pulseRed: pichangaFieldIds.contains(field.id),
+          );
+        }),
+      );
+    }
   }
 
   Future<BitmapDescriptor> _getUserLocationIcon() async {
@@ -1989,6 +2048,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
     if (!mounted) return;
 
     final selectedIsGrouped =
+        _selectedPichangaId == null &&
         _selectedField != null &&
         _clusterer
             .cluster(_lastMapFields, _cameraZoom)
@@ -2006,9 +2066,14 @@ class _MapScreenState extends ConsumerState<MapScreen>
         _showSelectedFieldPreview = false;
       }
     });
+    _scheduleViewportLoad();
   }
 
-  Future<void> _selectMapPichanga(Map<String, dynamic> item) async {
+  Future<void> _selectMapPichanga(
+    Map<String, dynamic> item, {
+    required int index,
+    required double carouselWidth,
+  }) async {
     final fieldId =
         (item['field_id'] as num?)?.toInt() ??
         int.tryParse(item['field_id']?.toString() ?? '');
@@ -2017,17 +2082,47 @@ class _MapScreenState extends ConsumerState<MapScreen>
         int.tryParse(item['id']?.toString() ?? '');
     if (fieldId == null || pichangaId == null) return;
     final matches = _lastMapFields.where((field) => field.id == fieldId);
-    if (matches.isEmpty) return;
-    final field = matches.first;
+    FieldModel field;
+    if (matches.isEmpty) {
+      try {
+        field = await ref.read(fieldsRepositoryProvider).detail(fieldId);
+      } catch (_) {
+        return;
+      }
+    } else {
+      field = matches.first;
+    }
 
-    setState(() => _selectedPichangaId = pichangaId);
+    setState(() {
+      _selectedPichangaId = pichangaId;
+      if (!_viewportFields.any((candidate) => candidate.id == field.id)) {
+        _viewportFields = [..._viewportFields, field];
+      }
+    });
     _selectField(field, showPreview: false);
+    _centerPichangaCarousel(index, carouselWidth);
     final controller = _mapController;
     if (controller != null) {
       await controller.animateCamera(
         CameraUpdate.newLatLngZoom(LatLng(field.x, field.y), 15),
       );
     }
+  }
+
+  void _centerPichangaCarousel(int index, double viewportWidth) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_pichangaCarouselController.hasClients) return;
+      const cardWidth = 238.0;
+      const stride = cardWidth + 8;
+      final target = (index * stride - (viewportWidth - cardWidth) / 2)
+          .clamp(0.0, _pichangaCarouselController.position.maxScrollExtent)
+          .toDouble();
+      _pichangaCarouselController.animateTo(
+        target,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+      );
+    });
   }
 
   void _selectField(FieldModel field, {bool showPreview = true}) {
@@ -2088,6 +2183,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
   void _onMapCreated(GoogleMapController controller) {
     _mapController = controller;
+    _scheduleViewportLoad(immediate: true);
     if (_fitResultsAfterApplyingFilters && _lastMapFields.isNotEmpty) {
       unawaited(_fitCameraToResults(_lastMapFields));
     }
@@ -2100,6 +2196,105 @@ class _MapScreenState extends ConsumerState<MapScreen>
         unawaited(_moveCameraToUserLocation(pendingLocation));
       }
     });
+  }
+
+  void _scheduleViewportLoad({bool immediate = false}) {
+    if (_showList) return;
+    _viewportDebounce?.cancel();
+    _viewportDebounce = Timer(
+      immediate ? Duration.zero : const Duration(milliseconds: 180),
+      _loadViewportFields,
+    );
+  }
+
+  Future<void> _loadViewportFields() async {
+    final controller = _mapController;
+    if (controller == null || _showList) return;
+    final requestId = ++_viewportRequestId;
+    try {
+      final visible = await controller.getVisibleRegion();
+      final bounds = _expandedViewportBounds(visible);
+      final filter = ref.read(mapFilterStateProvider);
+      final cacheKey = _viewportCacheKey(bounds, filter);
+      final cached = _viewportFieldCache[cacheKey];
+      if (cached != null) {
+        if (mounted && requestId == _viewportRequestId) {
+          setState(() => _viewportFields = cached);
+        }
+        return;
+      }
+      final fields = await ref
+          .read(fieldsRepositoryProvider)
+          .list(
+            limit: 700,
+            priceMin: filter.priceMin,
+            priceMax: filter.priceMax,
+            surfaceTypes: filter.surfaceTypes,
+            vsFormats: filter.vsFormats,
+            bounds: bounds,
+          );
+      final valid = fields
+          .where(
+            (field) =>
+                field.x != 0 &&
+                field.y != 0 &&
+                field.x.abs() <= 90 &&
+                field.y.abs() <= 180,
+          )
+          .toList(growable: false);
+      _viewportFieldCache[cacheKey] = valid;
+      if (mounted && requestId == _viewportRequestId) {
+        final selected = _selectedField;
+        final keepSelectedPichanga =
+            _selectedPichangaId != null &&
+            selected != null &&
+            !valid.any((field) => field.id == selected.id);
+        setState(
+          () => _viewportFields = keepSelectedPichanga
+              ? [...valid, selected]
+              : valid,
+        );
+      }
+    } catch (_) {
+      // Keep the last visible markers while a transient map/API request fails.
+    }
+  }
+
+  FieldViewportBounds _expandedViewportBounds(LatLngBounds visible) {
+    final latPadding =
+        (visible.northeast.latitude - visible.southwest.latitude).abs() * .28;
+    final lngPadding =
+        (visible.northeast.longitude - visible.southwest.longitude).abs() * .28;
+    return FieldViewportBounds(
+      south: (visible.southwest.latitude - latPadding)
+          .clamp(-90, 90)
+          .toDouble(),
+      west: (visible.southwest.longitude - lngPadding)
+          .clamp(-180, 180)
+          .toDouble(),
+      north: (visible.northeast.latitude + latPadding)
+          .clamp(-90, 90)
+          .toDouble(),
+      east: (visible.northeast.longitude + lngPadding)
+          .clamp(-180, 180)
+          .toDouble(),
+    );
+  }
+
+  String _viewportCacheKey(FieldViewportBounds bounds, MapFilterState filter) {
+    String compact(double value) => value.toStringAsFixed(2);
+    final surfaces = [...filter.surfaceTypes]..sort();
+    final formats = [...filter.vsFormats]..sort();
+    return [
+      compact(bounds.south),
+      compact(bounds.west),
+      compact(bounds.north),
+      compact(bounds.east),
+      filter.priceMin?.toStringAsFixed(1) ?? '',
+      filter.priceMax?.toStringAsFixed(1) ?? '',
+      surfaces.join(','),
+      formats.join(','),
+    ].join('|');
   }
 
   Future<void> _moveCameraToUserLocation(LatLng location) async {
@@ -2344,6 +2539,107 @@ class _MapContentBadge extends StatelessWidget {
               Icon(icons[index], size: icons.length == 1 ? 21 : 17),
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MapPichangaDateBadge extends StatefulWidget {
+  const _MapPichangaDateBadge({required this.rawDate, required this.selected});
+
+  final String? rawDate;
+  final bool selected;
+
+  @override
+  State<_MapPichangaDateBadge> createState() => _MapPichangaDateBadgeState();
+}
+
+class _MapPichangaDateBadgeState extends State<_MapPichangaDateBadge>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    );
+    if (_isUrgent) {
+      _pulse.repeat(reverse: true);
+    }
+  }
+
+  bool get _isUrgent {
+    final date = SpanishDateFormatter.parse(widget.rawDate);
+    if (date == null) return false;
+    final today = DateUtils.dateOnly(DateTime.now());
+    final day = DateUtils.dateOnly(date);
+    return day == today || day == today.add(const Duration(days: 1));
+  }
+
+  @override
+  void didUpdateWidget(covariant _MapPichangaDateBadge oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_isUrgent && !_pulse.isAnimating) {
+      _pulse.repeat(reverse: true);
+    } else if (!_isUrgent && _pulse.isAnimating) {
+      _pulse.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final date = SpanishDateFormatter.parse(widget.rawDate);
+    final now = DateTime.now();
+    final today = DateUtils.dateOnly(now);
+    final day = date == null ? null : DateUtils.dateOnly(date);
+    final isToday = day == today;
+    final isTomorrow = day == today.add(const Duration(days: 1));
+    final pulse = isToday || isTomorrow;
+    final color = isToday
+        ? const Color(0xFFD94A43)
+        : isTomorrow
+        ? const Color(0xFFE58C2C)
+        : Theme.of(context).colorScheme.primary;
+    final label = SpanishDateFormatter.pichangaDate(widget.rawDate);
+
+    return Semantics(
+      label: widget.selected ? '$label, pichanga seleccionada' : label,
+      child: AnimatedBuilder(
+        animation: _pulse,
+        builder: (context, child) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+          decoration: BoxDecoration(
+            color: color.withValues(
+              alpha: pulse ? .16 + _pulse.value * .10 : .12,
+            ),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: color.withValues(
+                alpha: pulse ? .60 + _pulse.value * .35 : .42,
+              ),
+              width: pulse ? 1 + _pulse.value : 1,
+            ),
+          ),
+          child: child,
+        ),
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: color,
+            fontWeight: FontWeight.w900,
+            fontSize: 10,
+          ),
         ),
       ),
     );

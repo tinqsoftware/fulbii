@@ -7,6 +7,7 @@ class FieldCourtModel {
     this.vsFormat,
     this.widthM,
     this.lengthM,
+    this.contributor,
   });
 
   final int id;
@@ -16,6 +17,7 @@ class FieldCourtModel {
   final String? vsFormat;
   final double? widthM;
   final double? lengthM;
+  final Map<String, dynamic>? contributor;
 
   factory FieldCourtModel.fromJson(Map<String, dynamic> json) {
     int parseId(dynamic value) {
@@ -43,6 +45,7 @@ class FieldCourtModel {
       vsFormat: parseText(json['vs_format']),
       widthM: parseDouble(json['anchom2']),
       lengthM: parseDouble(json['largom2']),
+      contributor: (json['contributor'] as Map?)?.cast<String, dynamic>(),
     );
   }
 }
@@ -69,6 +72,7 @@ class FieldModel {
     this.canchas = const [],
     this.openPichangas = const [],
     this.distanceM,
+    this.contributor,
   });
 
   final int id;
@@ -91,6 +95,7 @@ class FieldModel {
   final List<FieldCourtModel> canchas;
   final List<Map<String, dynamic>> openPichangas;
   final int? distanceM;
+  final Map<String, dynamic>? contributor;
 
   factory FieldModel.fromJson(Map<String, dynamic> json) {
     int parseInt(dynamic value, {int fallback = 0}) {
@@ -159,6 +164,7 @@ class FieldModel {
       distanceM: json['distance_m'] == null
           ? null
           : parseInt(json['distance_m']),
+      contributor: (json['contributor'] as Map?)?.cast<String, dynamic>(),
     );
   }
 }

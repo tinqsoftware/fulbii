@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\{Calificacion, VwClubJugadorPromediosTodo,VwClubJugadorPromediosPublicos};
+use App\Services\CombinedSkillRatingService;
 
 class MiPerfilController extends Controller
 {
@@ -37,38 +38,10 @@ class MiPerfilController extends Controller
             ->latest()
             ->first();
 
-        // Promedio global ponderado por votos_total si está disponible
-        $sumVotes = 0;
-        $acc = ['fisico' => 0, 'arquero' => 0, 'delantero' => 0, 'mediocampo' => 0, 'defensa' => 0];
-
-        foreach ($promedios as $p) {
-            $v = (int)($p->votos_total ?? 0);
-            if ($v <= 0) { continue; }
-            $sumVotes += $v;
-
-            foreach ($acc as $k => $_) {
-                $field = $k . '_prom_todo';
-                if (isset($p->$field) && $p->$field !== null) {
-                    $acc[$k] += (float)$p->$field * $v;
-                }
-            }
-        }
-
-        $global = ['votos' => $sumVotes];
-        foreach ($acc as $k => $s) {
-            $global[$k] = $sumVotes > 0 ? $s / $sumVotes : null;
-        }
-
-        // Promedio total simple entre las métricas presentes
-        $vals = array_filter([
-            $global['fisico'] ?? null,
-            $global['arquero'] ?? null,
-            $global['delantero'] ?? null,
-            $global['mediocampo'] ?? null,
-            $global['defensa'] ?? null,
-        ], fn($vv) => $vv !== null);
-
-        $global['promedio'] = count($vals) ? array_sum($vals) / count($vals) : null;
+        // Fuente única para perfil, equipos y rankings: no se promedian los
+        // cinco campos directamente. Físico potencia los dos perfiles.
+        $global = app(CombinedSkillRatingService::class)->summaryForUser((int) $u->id);
+        $global['promedio'] = $global['stars'];
 
         return view('perfil.show', compact('u','promedios','promedios_p','recibidasPublicas','ocultas','clubs','global','miAuto'));
     }

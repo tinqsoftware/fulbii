@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\{Club, ClubUser, User, Calificacion, VwClubJugadorPromediosPublicos};
+use App\Services\CombinedSkillRatingService;
 use Illuminate\Support\Facades\Storage;
 
 class ClubController extends Controller
@@ -125,25 +126,34 @@ class ClubController extends Controller
         // Promedios del club (para la vista)
         $promedios = VwClubJugadorPromediosPublicos::where('club_id', $club->id)->get();
 
-        // Miembros ordenados por promedio total (desc), nulos al final
+        // Un grupo se ordena por el promedio principal global de cada miembro.
+        // La fórmula vive en CombinedSkillRatingService, igual que Flutter/API.
         $miembros = ClubUser::query()
             ->with('user')
             ->where('club_user.club_id', $club->id)
-            ->leftJoin('vw_club_jugador_promedios_publicos as v', function($j) use ($club) {
-                $j->on('v.user_id', '=', 'club_user.user_id')
-                ->where('v.club_id', '=', $club->id);
-            })
-            ->select('club_user.*')
-            ->selectRaw("
-            (
-                (COALESCE(v.fisico_prom,0)+COALESCE(v.arquero_prom,0)+COALESCE(v.delantero_prom,0)+COALESCE(v.mediocampo_prom,0)+COALESCE(v.defensa_prom,0))
-                / NULLIF(
-                    (v.fisico_prom IS NOT NULL)+(v.arquero_prom IS NOT NULL)+(v.delantero_prom IS NOT NULL)+(v.mediocampo_prom IS NOT NULL)+(v.defensa_prom IS NOT NULL)
-                ,0)
-            ) as promedio_total
-            ")
-            ->orderByRaw("promedio_total IS NULL, promedio_total DESC")
             ->get();
+        $ratingService = app(CombinedSkillRatingService::class);
+        $summaries = $ratingService
+            ->averagesByUserIds($miembros->pluck('user_id'))
+            ->map(fn ($summary) => $ratingService->deriveSummary($summary));
+        $promedios->each(function ($average) use ($summaries) {
+            $average->stars = $summaries->get($average->user_id)['stars'] ?? null;
+        });
+        $miembros->each(function (ClubUser $member) use ($summaries) {
+            $member->promedio_total = $summaries->get($member->user_id)['stars'] ?? null;
+        });
+        $miembros = $miembros->sort(function (ClubUser $left, ClubUser $right) {
+            if ($left->promedio_total === null && $right->promedio_total === null) {
+                return strcmp((string) ($left->user?->nick ?? $left->user?->name), (string) ($right->user?->nick ?? $right->user?->name));
+            }
+            if ($left->promedio_total === null) {
+                return 1;
+            }
+            if ($right->promedio_total === null) {
+                return -1;
+            }
+            return $right->promedio_total <=> $left->promedio_total;
+        })->values();
         return view('clubs.show', compact('club','promedios','miembros','isSuper','isAdmin','isMember','miRol'));
     }
 
