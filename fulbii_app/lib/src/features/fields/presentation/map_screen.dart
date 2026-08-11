@@ -70,6 +70,31 @@ class MapPichangaDefaults {
 
 enum MapPichangaUrgency { today, tomorrow, none }
 
+/// Insets reserved for controls that sit above Google Maps. Programmatic
+/// camera moves use the same geometry so venues land in the usable part of
+/// the map instead of behind the pichanga carousel or floating actions.
+@visibleForTesting
+EdgeInsets mapCameraSafeInsets({required bool hasSelectedPreview}) {
+  return EdgeInsets.fromLTRB(12, 58, 100, hasSelectedPreview ? 334 : 194);
+}
+
+@visibleForTesting
+String mapFilterResultsLabel(int resultCount) {
+  return 'Filtro - $resultCount ${resultCount == 1 ? 'cancha' : 'canchas'}';
+}
+
+@visibleForTesting
+List<FieldModel> mapFieldsMatchingContent(
+  Iterable<FieldModel> fields, {
+  required String content,
+  required Set<int> pichangaFieldIds,
+}) {
+  if (content != 'pichangas') return fields.toList(growable: false);
+  return fields
+      .where((field) => pichangaFieldIds.contains(field.id))
+      .toList(growable: false);
+}
+
 MapPichangaUrgency mapPichangaUrgencyFor(String? rawDate, {DateTime? now}) {
   final date = SpanishDateFormatter.parse(rawDate);
   if (date == null) return MapPichangaUrgency.none;
@@ -420,11 +445,11 @@ class _MapScreenState extends ConsumerState<MapScreen>
             final pichangas =
                 pichangasSnapshot.data ?? const <Map<String, dynamic>>[];
             final countByField = _pichangaCountsByField(pichangas);
-            final visibleFields = _mapContent == 'pichangas'
-                ? fields
-                      .where((field) => (countByField[field.id] ?? 0) > 0)
-                      .toList()
-                : fields;
+            final visibleFields = mapFieldsMatchingContent(
+              fields,
+              content: _mapContent,
+              pichangaFieldIds: countByField.keys.toSet(),
+            );
             _lastMapFields = visibleFields;
             _ensureMarkersFuture(visibleFields, countByField.keys.toSet());
             final cameraTarget = visibleFields.isNotEmpty
@@ -436,6 +461,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
                 initialCameraPosition: CameraPosition(
                   target: cameraTarget,
                   zoom: 11.5,
+                ),
+                padding: mapCameraSafeInsets(
+                  hasSelectedPreview:
+                      _selectedField != null && _showSelectedFieldPreview,
                 ),
                 markers: snapshot.data ?? const <Marker>{},
                 style: Theme.of(context).brightness == Brightness.dark
@@ -462,12 +491,19 @@ class _MapScreenState extends ConsumerState<MapScreen>
                 final countByField = _pichangaCountsByField(
                   snapshot.data ?? const <Map<String, dynamic>>[],
                 );
-                final resultCount = _mapContent == 'pichangas'
-                    ? fields
-                          .where((field) => (countByField[field.id] ?? 0) > 0)
-                          .length
-                    : fields.length;
-                return _buildResultsBadge(resultCount);
+                return ref
+                    .watch(fieldsProvider)
+                    .when(
+                      loading: () => _buildResultsBadge(0),
+                      error: (_, __) => _buildResultsBadge(0),
+                      data: (allFilteredFields) => _buildResultsBadge(
+                        mapFieldsMatchingContent(
+                          allFilteredFields,
+                          content: _mapContent,
+                          pichangaFieldIds: countByField.keys.toSet(),
+                        ).length,
+                      ),
+                    );
               },
             ),
           ),
@@ -535,10 +571,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
       color: colorScheme.surface,
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
-        onTap: _openFiltersSheet,
+        onTap: () => unawaited(_fitCameraToCurrentFilter()),
         borderRadius: BorderRadius.circular(20),
         child: Container(
-          padding: const EdgeInsets.only(left: 12, right: 3, top: 4, bottom: 4),
+          padding: const EdgeInsets.only(left: 9, right: 2, top: 2, bottom: 2),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: colorScheme.primary),
@@ -548,15 +584,15 @@ class _MapScreenState extends ConsumerState<MapScreen>
             children: [
               Icon(
                 Icons.sports_soccer_outlined,
-                size: 17,
+                size: 15,
                 color: colorScheme.primary,
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 5),
               Text(
-                'Filtro activo · $resultCount ${resultCount == 1 ? 'cancha' : 'canchas'}',
+                mapFilterResultsLabel(resultCount),
                 style: TextStyle(
                   fontWeight: FontWeight.w800,
-                  fontSize: 13,
+                  fontSize: 12,
                   color: colorScheme.onSurface,
                 ),
               ),
@@ -566,10 +602,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
                 visualDensity: VisualDensity.compact,
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints.tightFor(
-                  width: 30,
-                  height: 30,
+                  width: 26,
+                  height: 26,
                 ),
-                icon: const Icon(Icons.restart_alt, size: 17),
+                icon: const Icon(Icons.restart_alt, size: 16),
               ),
             ],
           ),
@@ -1521,12 +1557,6 @@ class _MapScreenState extends ConsumerState<MapScreen>
       vsFormats: _selectedVsFormats.toList(),
     );
     _viewportFieldCache.clear();
-    if (!_showList) {
-      _fitResultsAfterApplyingFilters = false;
-      _scheduleViewportLoad(immediate: true);
-      return;
-    }
-
     // Esperamos la respuesta ya filtrada para encuadrar exactamente esos
     // polideportivos, sin depender de que ocurra otro renderizado del mapa.
     try {
@@ -1542,13 +1572,19 @@ class _MapScreenState extends ConsumerState<MapScreen>
                 field.y.abs() <= 180,
           )
           .toList();
-      _lastMapFields = validFields;
-      if (validFields.isNotEmpty) {
+      final pichangas = await (_pichangasFuture ??= _loadMapPichangas());
+      final visibleFields = mapFieldsMatchingContent(
+        validFields,
+        content: _mapContent,
+        pichangaFieldIds: _pichangaCountsByField(pichangas).keys.toSet(),
+      );
+      _lastMapFields = visibleFields;
+      if (visibleFields.isNotEmpty) {
         // The provider can finish before Google Maps has laid out its new
         // viewport. Wait for that frame so bounds are calculated from the
         // actual map size, not the previous partial layout.
         await WidgetsBinding.instance.endOfFrame;
-        await _fitCameraToResults(validFields);
+        await _fitCameraToResults(visibleFields);
       } else {
         _fitResultsAfterApplyingFilters = false;
       }
@@ -1590,37 +1626,75 @@ class _MapScreenState extends ConsumerState<MapScreen>
     if (controller == null) return;
 
     try {
-      if (fields.length == 1) {
-        final field = fields.single;
-        await controller.animateCamera(
-          CameraUpdate.newLatLngZoom(LatLng(field.x, field.y), 15),
-        );
-      } else {
-        final latitudes = fields.map((field) => field.x).toList()..sort();
-        final longitudes = fields.map((field) => field.y).toList()..sort();
-        final southwest = LatLng(latitudes.first, longitudes.first);
-        final northeast = LatLng(latitudes.last, longitudes.last);
-
-        // Bounds rejects a zero-area rectangle. If all results share one
-        // coordinate, center that point instead of losing the fit request.
-        if (southwest == northeast) {
-          await controller.animateCamera(
-            CameraUpdate.newLatLngZoom(southwest, 15),
-          );
-        } else {
-          await controller.animateCamera(
-            CameraUpdate.newLatLngBounds(
-              LatLngBounds(southwest: southwest, northeast: northeast),
-              52,
-            ),
-          );
-        }
-      }
+      await _fitCameraToFields(fields);
       _fitResultsAfterApplyingFilters = false;
     } on PlatformException {
       // Keep the request pending so onMapCreated/onCameraIdle can retry once
       // Google Maps has completed its layout.
     }
+  }
+
+  Future<void> _fitCameraToCurrentFilter() async {
+    final controller = _mapController;
+    if (controller == null) return;
+    try {
+      final fields = await ref.read(fieldsProvider.future);
+      final pichangas = await (_pichangasFuture ??= _loadMapPichangas());
+      final results = mapFieldsMatchingContent(
+        fields.where(
+          (field) =>
+              field.x != 0 &&
+              field.y != 0 &&
+              field.x.abs() <= 90 &&
+              field.y.abs() <= 180,
+        ),
+        content: _mapContent,
+        pichangaFieldIds: _pichangaCountsByField(pichangas).keys.toSet(),
+      );
+      if (results.isEmpty || !mounted) return;
+      _lastMapFields = results;
+      await _fitCameraToFields(results);
+    } on PlatformException {
+      // The next badge tap can retry after Google Maps finishes its layout.
+    }
+  }
+
+  Future<void> _fitCameraToFields(List<FieldModel> fields) async {
+    final controller = _mapController;
+    if (controller == null || fields.isEmpty) return;
+
+    if (fields.length == 1) {
+      await _moveCameraToVisibleTarget(
+        LatLng(fields.single.x, fields.single.y),
+        zoom: 15,
+      );
+      return;
+    }
+
+    final latitudes = fields.map((field) => field.x).toList()..sort();
+    final longitudes = fields.map((field) => field.y).toList()..sort();
+    final southwest = LatLng(latitudes.first, longitudes.first);
+    final northeast = LatLng(latitudes.last, longitudes.last);
+    if (southwest == northeast) {
+      await _moveCameraToVisibleTarget(southwest, zoom: 15);
+      return;
+    }
+
+    await controller.animateCamera(
+      CameraUpdate.newLatLngBounds(
+        LatLngBounds(southwest: southwest, northeast: northeast),
+        16,
+      ),
+    );
+  }
+
+  Future<void> _moveCameraToVisibleTarget(
+    LatLng target, {
+    required double zoom,
+  }) async {
+    final controller = _mapController;
+    if (controller == null) return;
+    await controller.animateCamera(CameraUpdate.newLatLngZoom(target, zoom));
   }
 
   double? _parsePrice(String value) {
@@ -1905,36 +1979,14 @@ class _MapScreenState extends ConsumerState<MapScreen>
   Future<void> _zoomIntoCluster(FieldCluster cluster) async {
     final controller = _mapController;
     if (controller == null) return;
-
-    final latitudes = cluster.fields.map((field) => field.x).toList();
-    final longitudes = cluster.fields.map((field) => field.y).toList();
-    latitudes.sort();
-    longitudes.sort();
-    final south = latitudes.first;
-    final north = latitudes.last;
-    final west = longitudes.first;
-    final east = longitudes.last;
-
-    if ((north - south).abs() < 0.00001 && (east - west).abs() < 0.00001) {
-      final currentZoom = await controller.getZoomLevel();
-      await controller.animateCamera(
-        CameraUpdate.newLatLngZoom(
-          LatLng(cluster.latitude, cluster.longitude),
-          (currentZoom + 2).clamp(0, 20).toDouble(),
-        ),
+    if (cluster.fields.length == 1) {
+      await _moveCameraToVisibleTarget(
+        LatLng(cluster.latitude, cluster.longitude),
+        zoom: (await controller.getZoomLevel() + 2).clamp(0, 20).toDouble(),
       );
       return;
     }
-
-    await controller.animateCamera(
-      CameraUpdate.newLatLngBounds(
-        LatLngBounds(
-          southwest: LatLng(south, west),
-          northeast: LatLng(north, east),
-        ),
-        72,
-      ),
-    );
+    await _fitCameraToFields(cluster.fields);
   }
 
   Future<BitmapDescriptor> _iconForLabel(
@@ -2160,9 +2212,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
     _centerPichangaCarousel(index, carouselWidth);
     final controller = _mapController;
     if (controller != null) {
-      await controller.animateCamera(
-        CameraUpdate.newLatLngZoom(LatLng(field.x, field.y), 15),
-      );
+      await _moveCameraToVisibleTarget(LatLng(field.x, field.y), zoom: 15);
     }
   }
 
@@ -2362,7 +2412,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
       return;
     }
 
-    await controller.animateCamera(CameraUpdate.newLatLngZoom(location, 11.5));
+    await _moveCameraToVisibleTarget(location, zoom: 11.5);
   }
 
   Future<void> _centerOnMyLocation() async {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:fulbii_app/src/features/fields/domain/field_model.dart';
 import 'package:fulbii_app/src/features/fields/presentation/map_screen.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
@@ -23,6 +24,47 @@ void main() {
 
     expect(filter.surfaceTypes, MapPichangaDefaults.surfaceTypes);
     expect(filter.surfaceTypes, ['losa', 'sintetico', 'natural']);
+  });
+
+  test('filter result label uses a compact singular and plural form', () {
+    expect(mapFilterResultsLabel(1), 'Filtro - 1 cancha');
+    expect(mapFilterResultsLabel(3), 'Filtro - 3 canchas');
+  });
+
+  test(
+    'map safe area reserves extra space while the venue preview is open',
+    () {
+      final carouselInsets = mapCameraSafeInsets(hasSelectedPreview: false);
+      final previewInsets = mapCameraSafeInsets(hasSelectedPreview: true);
+
+      expect(carouselInsets.top, greaterThan(0));
+      expect(carouselInsets.right, greaterThan(0));
+      expect(previewInsets.bottom, greaterThan(carouselInsets.bottom));
+    },
+  );
+
+  test('pichanga content counts only fields that match the pichanga range', () {
+    const fields = [
+      FieldModel(id: 1, nombre: 'Uno', x: -12.0, y: -77.0),
+      FieldModel(id: 2, nombre: 'Dos', x: -12.1, y: -77.1),
+    ];
+
+    expect(
+      mapFieldsMatchingContent(
+        fields,
+        content: 'pichangas',
+        pichangaFieldIds: {2},
+      ).map((field) => field.id),
+      [2],
+    );
+    expect(
+      mapFieldsMatchingContent(
+        fields,
+        content: 'both',
+        pichangaFieldIds: {2},
+      ).length,
+      2,
+    );
   });
 
   test('only today and tomorrow receive an urgent map date badge', () {
