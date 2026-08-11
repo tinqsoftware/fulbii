@@ -8,7 +8,33 @@ class FieldSubmission extends Model
 {
     protected $table = 'field_submissions';
 
-    protected $guarded = ['id'];
+    protected $fillable = [
+        'user_id',
+        'status',
+        'submission_type',
+        'nombre',
+        'direccion',
+        'x',
+        'y',
+        'celular',
+        'wsp',
+        'id_distrito',
+        'descripcion',
+        'precio_desde',
+        'source_type',
+        'metadata_json',
+        'existing_polideportivo_id',
+        'cancha_nombre',
+        'cancha_equiposvs',
+        'cancha_tipo_superficie',
+        'cancha_anchom2',
+        'cancha_largom2',
+        'reviewed_by_user_id',
+        'reviewed_at',
+        'approved_polideportivo_id',
+        'approved_cancha_id',
+        'resolution_note',
+    ];
 
     protected $casts = [
         'wsp' => 'boolean',

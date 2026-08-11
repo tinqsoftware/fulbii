@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -179,7 +180,7 @@ class _FulbiiAppState extends ConsumerState<FulbiiApp>
         builder: (context) {
           if (!session.initialized ||
               session.loading && !session.isAuthenticated) {
-            return const _SplashScreen();
+            return const FulbiiLoadingScreen();
           }
 
           if (session.isAuthenticated && session.needsOnboarding) {
@@ -850,20 +851,164 @@ class _DevelopmentEnvironmentBadge extends StatelessWidget {
   }
 }
 
-class _SplashScreen extends StatelessWidget {
-  const _SplashScreen();
+class FulbiiLoadingScreen extends StatefulWidget {
+  const FulbiiLoadingScreen({super.key});
+
+  @override
+  State<FulbiiLoadingScreen> createState() => _FulbiiLoadingScreenState();
+}
+
+class _FulbiiLoadingScreenState extends State<FulbiiLoadingScreen>
+    with SingleTickerProviderStateMixin {
+  static const _background = Color(0xFF071A10);
+  late final AnimationController _motion;
+  bool _reducedMotion = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _motion = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _reducedMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (_reducedMotion) {
+      _motion.stop();
+    } else if (!_motion.isAnimating) {
+      _motion.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _motion.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 12),
-            Text('Cargando Fulbii...'),
-          ],
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light.copyWith(
+        statusBarColor: Colors.transparent,
+        systemNavigationBarColor: _background,
+        statusBarIconBrightness: Brightness.light,
+        systemNavigationBarIconBrightness: Brightness.light,
+      ),
+      child: Scaffold(
+        backgroundColor: _background,
+        body: SafeArea(
+          child: Center(
+            child: Semantics(
+              key: const ValueKey('fulbii-loading-semantic'),
+              label: 'Cargando Fulbii',
+              liveRegion: true,
+              child: AnimatedBuilder(
+                animation: _motion,
+                builder: (context, _) {
+                  final phase = _reducedMotion ? .5 : _motion.value;
+                  final floatOffset = (phase - .5) * -14;
+                  final ringScale = 1 + phase * .11;
+                  final ringOpacity = .22 + phase * .18;
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 176,
+                        height: 176,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Transform.scale(
+                              scale: ringScale,
+                              child: Container(
+                                width: 154,
+                                height: 154,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: const Color(
+                                      0xFF9DE5A0,
+                                    ).withValues(alpha: ringOpacity),
+                                    width: 2,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Transform.translate(
+                              offset: Offset(0, floatOffset),
+                              child: Container(
+                                width: 112,
+                                height: 112,
+                                padding: const EdgeInsets.all(18),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF133D26),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: const Color(0xFF9DE5A0),
+                                    width: 1.5,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(
+                                        0xFF6EDB83,
+                                      ).withValues(alpha: .18 + phase * .12),
+                                      blurRadius: 28,
+                                      spreadRadius: 2,
+                                    ),
+                                  ],
+                                ),
+                                child: Image.asset(
+                                  'assets/widget/logo_widget_transparente.png',
+                                  semanticLabel: 'Fulbii',
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      const Text(
+                        'Preparando tu próxima pichanga',
+                        style: TextStyle(
+                          color: Color(0xFFF0FFF1),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 17,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: List<Widget>.generate(3, (index) {
+                          final active = _reducedMotion
+                              ? index == 1
+                              : (phase * 3).floor().clamp(0, 2) == index;
+                          return AnimatedContainer(
+                            duration: _reducedMotion
+                                ? Duration.zero
+                                : const Duration(milliseconds: 180),
+                            width: active ? 18 : 7,
+                            height: 7,
+                            margin: const EdgeInsets.symmetric(horizontal: 3),
+                            decoration: BoxDecoration(
+                              color: active
+                                  ? const Color(0xFFA9E7A0)
+                                  : const Color(0xFF6A9D73),
+                              borderRadius: BorderRadius.circular(99),
+                            ),
+                          );
+                        }),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
         ),
       ),
     );

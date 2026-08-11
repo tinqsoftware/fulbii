@@ -46,6 +46,10 @@ class PushGatewayServiceTest extends TestCase
         config()->set('push.fcm_scope', 'https://www.googleapis.com/auth/firebase.messaging');
         config()->set('push.fcm_token_uri', 'https://oauth2.googleapis.com/token');
 
+        // Some local OpenSSL builds try to persist random state in an
+        // unwritable home directory. A writable test-only location keeps this
+        // cryptographic fixture deterministic across CI and developer Macs.
+        putenv('RANDFILE=' . sys_get_temp_dir() . '/fulbii-openssl-rand');
         $privateKey = '';
         $keyResource = openssl_pkey_new([
             'private_key_bits' => 2048,

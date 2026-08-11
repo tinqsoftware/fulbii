@@ -1,29 +1,35 @@
-# Backoffice Admin Panel (Web)
+# Backoffice administrativo
 
-> Referencia de operación administrativa. Estado transversal y brechas:
-> [AI_HANDOFF_CURRENT_STATE](AI_HANDOFF_CURRENT_STATE.md).
-
-Ruta base: `/admin` (requiere sesión Laravel + perfil `superadmin` o `staff_admin`).
+Ruta web: `/admin`. Requiere sesión Laravel y perfil `superadmin` o
+`staff_admin`; no forma parte de la experiencia de jugador.
 
 ## Módulos
-- `/admin` dashboard operativo.
-- `/admin/reports` moderación de reportes + resolución masiva.
-- `/admin/field-submissions` aprobación/rechazo de canchas + acción masiva.
-- `/admin/strikes` gestión de strikes + revocación masiva.
-- `/admin/metrics/growth` reporte growth por rango.
-- `/admin/ops/readiness` estado operativo (colas, olas, links, push).
+
+| Ruta | Uso |
+| --- | --- |
+| `/admin` | Dashboard y señales operativas. |
+| `/admin/reports` | Revisar/resolver reportes individuales o masivos. |
+| `/admin/field-submissions` | Aprobar/rechazar aportes, fotos y lotes. |
+| `/admin/strikes` | Emitir/revocar strikes y revisar suspensión. |
+| `/admin/metrics/growth` | Métricas por rango. |
+| `/admin/ops/readiness` | Colas, push, links y estado de release. |
+
+## Operación
+
+- Al resolver aportes, verificar que la notificación aprobada/rechazada se
+  genera para el autor y que el enlace apunta a aporte/cancha/polideportivo.
+- Priorizar reportes con contexto de mensaje, post o comentario: el panel no
+  debe perder el `content_type`/`content_id` de la evidencia.
+- Revisar grupos activos sin admin, retos sin coordinador, pichangas próximas,
+  tokens activos/inactivos, jobs pendientes, `failed_jobs` y fallos FCM.
+- Acciones masivas deben mostrar `processed`, `skipped` y `errors`; no asumir
+  que todos los ítems cambiaron de estado.
 
 ## Permisos
-- `superadmin`: acceso total.
-- `staff_admin`: moderación + métricas + ops.
-- Solo `superadmin` puede usar suspensión manual de usuarios.
 
-## Acciones masivas (API)
-- `POST /api/v1/admin/reports/bulk-resolve`
-- `POST /api/v1/admin/field-submissions/bulk-decision`
-- `POST /api/v1/admin/strikes/bulk-revoke`
+- `superadmin`: acceso total, incluyendo suspensión manual.
+- `staff_admin`: moderación, aportes, métricas y operación; sin permisos de
+  suspensión ni revocación de restricciones críticas globales.
 
-Respuesta estándar bulk:
-- `processed`: total procesado.
-- `skipped`: items omitidos por estado/regla.
-- `errors`: items con error o no encontrados.
+La API espejo usa `/api/v1/admin/*`. Ver
+[moderación](api/v1_moderation.md) y [runbook](08_ops_runbook.md).

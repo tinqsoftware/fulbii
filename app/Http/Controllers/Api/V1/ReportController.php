@@ -58,12 +58,10 @@ class ReportController extends Controller
             ->where('target_id', (int) $data['target_id'])
             ->where('status', 'pending')
             ->where('created_at', '>=', now()->subDay());
-        if (Schema::hasColumn('reports', 'content_type')) {
-            if (!empty($data['content_type'])) {
-                $recent->where('content_type', $data['content_type'])->where('content_id', (int) $data['content_id']);
-            } else {
-                $recent->whereNull('content_type');
-            }
+        if (!empty($data['content_type'])) {
+            $recent->where('content_type', $data['content_type'])->where('content_id', (int) $data['content_id']);
+        } else {
+            $recent->whereNull('content_type');
         }
         abort_if($recent->exists(), 422, 'Ya enviaste un reporte pendiente para este contenido.');
 
@@ -75,10 +73,8 @@ class ReportController extends Controller
             'description' => $data['description'] ?? null,
             'status' => 'pending',
         ];
-        if (Schema::hasColumn('reports', 'content_type')) {
-            $payload['content_type'] = $data['content_type'] ?? null;
-            $payload['content_id'] = $data['content_id'] ?? null;
-        }
+        $payload['content_type'] = $data['content_type'] ?? null;
+        $payload['content_id'] = $data['content_id'] ?? null;
         $report = Report::create($payload);
 
         $this->eventService->track(

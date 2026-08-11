@@ -47,6 +47,34 @@ class MapFilterState {
   }
 }
 
+/// Default map discovery state. Keeping it in one place makes the first map
+/// visit and the "Limpiar filtros" action behave exactly the same way.
+class MapPichangaDefaults {
+  const MapPichangaDefaults._();
+
+  static const String content = 'pichangas';
+  static const String range = 'custom';
+
+  static DateTimeRange weeklyRange(DateTime now) {
+    final today = DateUtils.dateOnly(now);
+    return DateTimeRange(start: today, end: today.add(const Duration(days: 6)));
+  }
+}
+
+enum MapPichangaUrgency { today, tomorrow, none }
+
+MapPichangaUrgency mapPichangaUrgencyFor(String? rawDate, {DateTime? now}) {
+  final date = SpanishDateFormatter.parse(rawDate);
+  if (date == null) return MapPichangaUrgency.none;
+  final current = DateUtils.dateOnly((now ?? DateTime.now()).toLocal());
+  final day = DateUtils.dateOnly(date);
+  if (day == current) return MapPichangaUrgency.today;
+  if (day == current.add(const Duration(days: 1))) {
+    return MapPichangaUrgency.tomorrow;
+  }
+  return MapPichangaUrgency.none;
+}
+
 class _FieldPlaceholder extends StatelessWidget {
   const _FieldPlaceholder();
 
@@ -131,8 +159,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
   bool _showList = false;
   // `both` means all fields, while `pichangas` restricts the fields to venues
   // that have an event in the selected period.
-  String _mapContent = 'both';
-  String _pichangaRange = 'custom';
+  String _mapContent = MapPichangaDefaults.content;
+  String _pichangaRange = MapPichangaDefaults.range;
   DateTimeRange? _customPichangaRange;
   Future<List<Map<String, dynamic>>>? _pichangasFuture;
   FieldModel? _selectedField;
@@ -186,11 +214,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
   @override
   void initState() {
     super.initState();
-    final today = DateUtils.dateOnly(DateTime.now());
-    _customPichangaRange = DateTimeRange(
-      start: today,
-      end: today.add(const Duration(days: 6)),
-    );
+    _customPichangaRange = MapPichangaDefaults.weeklyRange(DateTime.now());
     _pulseController =
         AnimationController(
           vsync: this,
@@ -690,24 +714,30 @@ class _MapScreenState extends ConsumerState<MapScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _MapPichangaDateBadge(
-                                rawDate: item['starts_at']?.toString(),
-                                selected: selected,
-                              ),
-                            ),
-                            if (item['is_my_group'] == true)
-                              _mapPichangaTag('Mi grupo'),
-                            if (item['me_participant_status'] == 'confirmed')
-                              Padding(
-                                padding: const EdgeInsets.only(left: 4),
-                                child: _mapPichangaTag('Confirmado'),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 2),
+                        if (mapPichangaUrgencyFor(
+                                  item['starts_at']?.toString(),
+                                ) !=
+                                MapPichangaUrgency.none ||
+                            item['is_my_group'] == true) ...[
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (mapPichangaUrgencyFor(
+                                    item['starts_at']?.toString(),
+                                  ) !=
+                                  MapPichangaUrgency.none)
+                                MapPichangaDateBadge(
+                                  rawDate: item['starts_at']?.toString(),
+                                  selected: selected,
+                                ),
+                              if (item['is_my_group'] == true) ...[
+                                const SizedBox(width: 4),
+                                const MapPichangaStatusTag(label: 'Mi grupo'),
+                              ],
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                        ],
                         Text(
                           (item['title'] ?? 'Pichanga').toString(),
                           maxLines: 1,
@@ -743,7 +773,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
-                            const SizedBox(width: 10),
+                            const SizedBox(width: 8),
                             Text(
                               '${item['spots_left'] ?? 0} cupos',
                               style: TextStyle(
@@ -752,6 +782,12 @@ class _MapScreenState extends ConsumerState<MapScreen>
                                 color: colorScheme.primary,
                               ),
                             ),
+                            const Spacer(),
+                            if (item['me_participant_status'] == 'confirmed')
+                              const MapPichangaStatusTag(
+                                label: 'Confirmado',
+                                controlKey: Key('map-pichanga-confirmed'),
+                              ),
                           ],
                         ),
                       ],
@@ -761,22 +797,6 @@ class _MapScreenState extends ConsumerState<MapScreen>
               ),
             );
           },
-        ),
-      ),
-    );
-  }
-
-  Widget _mapPichangaTag(String label) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: const Color(0xFF27452D),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-        child: Text(
-          label,
-          style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w800),
         ),
       ),
     );
@@ -1508,13 +1528,9 @@ class _MapScreenState extends ConsumerState<MapScreen>
     setState(() {
       _selectedSurfaceTypes.clear();
       _selectedVsFormats.clear();
-      _mapContent = 'both';
-      _pichangaRange = 'custom';
-      final today = DateUtils.dateOnly(DateTime.now());
-      _customPichangaRange = DateTimeRange(
-        start: today,
-        end: today.add(const Duration(days: 6)),
-      );
+      _mapContent = MapPichangaDefaults.content;
+      _pichangaRange = MapPichangaDefaults.range;
+      _customPichangaRange = MapPichangaDefaults.weeklyRange(DateTime.now());
       _pichangasFuture = _loadMapPichangas();
       _selectedField = null;
       _selectedFieldDetail = null;
@@ -2545,17 +2561,53 @@ class _MapContentBadge extends StatelessWidget {
   }
 }
 
-class _MapPichangaDateBadge extends StatefulWidget {
-  const _MapPichangaDateBadge({required this.rawDate, required this.selected});
+class MapPichangaStatusTag extends StatelessWidget {
+  const MapPichangaStatusTag({required this.label, this.controlKey, super.key});
+
+  final String label;
+  final Key? controlKey;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: label,
+      child: DecoratedBox(
+        key: controlKey,
+        decoration: BoxDecoration(
+          color: const Color(0xFF27452D),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 9,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class MapPichangaDateBadge extends StatefulWidget {
+  const MapPichangaDateBadge({
+    required this.rawDate,
+    required this.selected,
+    super.key,
+  });
 
   final String? rawDate;
   final bool selected;
 
   @override
-  State<_MapPichangaDateBadge> createState() => _MapPichangaDateBadgeState();
+  State<MapPichangaDateBadge> createState() => _MapPichangaDateBadgeState();
 }
 
-class _MapPichangaDateBadgeState extends State<_MapPichangaDateBadge>
+class _MapPichangaDateBadgeState extends State<MapPichangaDateBadge>
     with SingleTickerProviderStateMixin {
   late final AnimationController _pulse;
 
@@ -2572,15 +2624,11 @@ class _MapPichangaDateBadgeState extends State<_MapPichangaDateBadge>
   }
 
   bool get _isUrgent {
-    final date = SpanishDateFormatter.parse(widget.rawDate);
-    if (date == null) return false;
-    final today = DateUtils.dateOnly(DateTime.now());
-    final day = DateUtils.dateOnly(date);
-    return day == today || day == today.add(const Duration(days: 1));
+    return mapPichangaUrgencyFor(widget.rawDate) != MapPichangaUrgency.none;
   }
 
   @override
-  void didUpdateWidget(covariant _MapPichangaDateBadge oldWidget) {
+  void didUpdateWidget(covariant MapPichangaDateBadge oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (_isUrgent && !_pulse.isAnimating) {
       _pulse.repeat(reverse: true);
@@ -2597,18 +2645,11 @@ class _MapPichangaDateBadgeState extends State<_MapPichangaDateBadge>
 
   @override
   Widget build(BuildContext context) {
-    final date = SpanishDateFormatter.parse(widget.rawDate);
-    final now = DateTime.now();
-    final today = DateUtils.dateOnly(now);
-    final day = date == null ? null : DateUtils.dateOnly(date);
-    final isToday = day == today;
-    final isTomorrow = day == today.add(const Duration(days: 1));
-    final pulse = isToday || isTomorrow;
-    final color = isToday
+    final urgency = mapPichangaUrgencyFor(widget.rawDate);
+    if (urgency == MapPichangaUrgency.none) return const SizedBox.shrink();
+    final color = urgency == MapPichangaUrgency.today
         ? const Color(0xFFD94A43)
-        : isTomorrow
-        ? const Color(0xFFE58C2C)
-        : Theme.of(context).colorScheme.primary;
+        : const Color(0xFFE58C2C);
     final label = SpanishDateFormatter.pichangaDate(widget.rawDate);
 
     return Semantics(
@@ -2618,15 +2659,11 @@ class _MapPichangaDateBadgeState extends State<_MapPichangaDateBadge>
         builder: (context, child) => Container(
           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
           decoration: BoxDecoration(
-            color: color.withValues(
-              alpha: pulse ? .16 + _pulse.value * .10 : .12,
-            ),
+            color: color.withValues(alpha: .16 + _pulse.value * .10),
             borderRadius: BorderRadius.circular(999),
             border: Border.all(
-              color: color.withValues(
-                alpha: pulse ? .60 + _pulse.value * .35 : .42,
-              ),
-              width: pulse ? 1 + _pulse.value : 1,
+              color: color.withValues(alpha: .60 + _pulse.value * .35),
+              width: 1 + _pulse.value,
             ),
           ),
           child: child,

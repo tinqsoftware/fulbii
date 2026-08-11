@@ -83,18 +83,22 @@
       </a>
       <nav class="top-links">
         <a href="{{ route('home') }}" class="{{ request()->routeIs('home') ? 'text-green-700' : '' }}">Inicio</a>
-        <a href="{{ route('clubs.index') }}" class="{{ request()->routeIs('clubs.*') ? 'text-green-700' : '' }}">Clubs</a>
-        <a href="{{ route('home') }}" class="{{ request()->routeIs('canchas.*') ? 'text-green-700' : '' }}">Canchas</a>
-        <a href="{{ route('home') }}" class="{{ request()->routeIs('pichangas.*') ? 'text-green-700' : '' }}">Pichangas</a>
+        <a href="fulbii://pichangas">Abrir app</a>
         @auth
-          <a href="{{ route('mi-perfil.show') }}" class="{{ request()->routeIs('mi-perfil.*') ? 'text-green-700' : '' }}">Mi perfil</a>
+          @if(Auth::user()->canAccessBackoffice())
+            <a href="{{ route('admin.dashboard') }}">Backoffice</a>
+          @endif
           <form action="{{ route('logout') }}" method="POST" style="display:inline">@csrf
             <button type="submit" class="avatar-pill">Salir</button>
           </form>
         @endauth
         @guest
           <a href="{{ route('login') }}">Ingresar</a>
-          <a href="{{ route('register') }}" class="avatar-pill">Crear cuenta</a>
+          @if (Route::has('register'))
+            <a href="{{ route('register') }}" class="avatar-pill">Crear cuenta</a>
+          @else
+            <a href="fulbii://pichangas" class="avatar-pill">Abrir app</a>
+          @endif
         @endguest
       </nav>
     </div>
@@ -113,19 +117,15 @@
     <a href="{{ route('home') }}" class="item {{ request()->routeIs('home') ? 'active' : '' }}">
       <i class="ti-home ico"></i><span>Inicio</span>
     </a>
-    <a href="{{ route('clubs.index') }}" class="item {{ request()->routeIs('clubs.*') ? 'active' : '' }}">
-      <i class="ti-crown ico"></i><span>Clubs</span>
-    </a>
-    <a href="{{ route('home') }}" class="item {{ request()->routeIs('canchas.*') ? 'active' : '' }}">
-      <i class="ti-map-alt ico"></i><span>Canchas</span>
-    </a>
-    <a href="{{ route('home') }}" class="item {{ request()->routeIs('pichangas.*') ? 'active' : '' }}">
-      <i class="ti-bolt ico"></i><span>Pichangas</span>
+    <a href="fulbii://pichangas" class="item">
+      <i class="ti-mobile ico"></i><span>Abrir app</span>
     </a>
     @auth
-      <a href="{{ route('mi-perfil.show') }}" class="item {{ request()->routeIs('mi-perfil.*') ? 'active' : '' }}">
-        <i class="ti-user ico"></i><span>Perfil</span>
-      </a>
+      @if(Auth::user()->canAccessBackoffice())
+        <a href="{{ route('admin.dashboard') }}" class="item {{ request()->routeIs('admin.*') ? 'active' : '' }}">
+          <i class="ti-panel ico"></i><span>Backoffice</span>
+        </a>
+      @endif
     @else
       <a href="{{ route('login') }}" class="item {{ request()->routeIs('login') ? 'active' : '' }}">
         <i class="ti-user ico"></i><span>Entrar</span>

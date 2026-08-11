@@ -1,91 +1,42 @@
-# API v1 - Moderation and Safety
+# API v1 — Moderación, reportes y bloqueos
 
-> Contrato operativo verificado contra rutas API v1. Contexto de producto y
-> estado de módulos: [AI_HANDOFF_CURRENT_STATE](../AI_HANDOFF_CURRENT_STATE.md).
+## Usuario autenticado
 
-## User-side
 - `GET /api/v1/reports/mine`
 - `POST /api/v1/reports`
-- `GET /api/v1/field-submissions/mine`
-- `POST /api/v1/field-submissions`
+- `GET /api/v1/me/blocks`
+- `POST /api/v1/users/{user}/block`
+- `DELETE /api/v1/users/{user}/block`
+- `GET|POST /api/v1/field-submissions...`
 
-### Create report body
+Un reporte acepta objetivo y contexto de contenido para que staff pueda revisar
+sin adivinar qué se reportó:
+
 ```json
 {
   "target_type": "user",
   "target_id": 12,
+  "content_type": "group_chat_message",
+  "content_id": 78,
   "reason_code": "toxic_behavior",
   "description": "Insultos reiterados"
 }
 ```
 
-`target_type`: `user|field|field_photo|group_pichanga`
+Los tipos admitidos dependen del objetivo y pueden incluir jugador, recinto,
+foto, pichanga, publicación, comentario y mensajes de chat de grupo o reto.
+El backend previene duplicados recientes equivalentes.
 
-### Create field submission body
-```json
-{
-  "nombre": "Cancha Sur 1",
-  "direccion": "Av. X 123",
-  "x": "-12.10",
-  "y": "-77.01",
-  "celular": "999123123",
-  "wsp": true,
-  "id_distrito": 5,
-  "descripcion": "Grass sintético",
-  "precio_desde": "80",
-  "source_type": "gps",
-  "photos": [
-    "https://.../foto1.jpg",
-    "https://.../foto2.jpg"
-  ]
-}
-```
+## Backoffice/API staff
 
-## Superadmin-side
-All under `/api/v1/admin/*`
+Todo bajo `/api/v1/admin/*` y `/admin` web, con rol correspondiente:
 
-- `GET /admin/reports`
-- `POST /admin/reports/{report}/resolve`
-- `POST /admin/reports/bulk-resolve`
-- `GET /admin/strikes`
-- `POST /admin/strikes`
-- `POST /admin/strikes/{strike}/revoke`
-- `POST /admin/strikes/bulk-revoke`
-- `POST /admin/users/{user}/suspension`
-- `GET /admin/field-submissions`
-- `POST /admin/field-submissions/{submission}/decision`
-- `POST /admin/field-submissions/{submission}/photos/{photo}/remove`
-- `POST /admin/field-submissions/bulk-decision`
-- `GET /admin/metrics/growth?from=YYYY-MM-DD&to=YYYY-MM-DD`
-- `GET /admin/ops/release-readiness`
+- reportes: listar, resolver y resolver masivamente;
+- strikes: crear, revocar y aplicar suspensión;
+- aportes: listar, decidir, retirar foto y decisión masiva;
+- métricas de crecimiento y readiness operativo.
 
-### release-readiness response (campos clave)
-- `queue_connection`
-- `jobs_pending`
-- `failed_jobs_count`
-- `auto_reminder_command_available`
-- `last_auto_wave_at`
-- `product_events_enabled`
-- `push_driver`
-- `app_link_base_url`
-- `well_known_endpoints_ok`
-
-### Issue strike body
-```json
-{
-  "user_id": 12,
-  "report_id": 55,
-  "reason_code": "harassment",
-  "description": "Comportamiento agresivo",
-  "expires_days": 90
-}
-```
-
-### Auto policy
-- 3 strikes activos => suspensión automática (`users.suspended_until`) por `MODERATION_AUTO_SUSPEND_DAYS`.
-- Se aplica middleware `user.not_suspended` en rutas autenticadas (excepto logout).
-
-### Staff policy
-- `staff_admin` puede operar moderación y leer métricas/ops.
-- `staff_admin` no puede suspender usuarios.
-- `staff_admin` no puede revocar strikes críticos globales (sin `report_id` y `reason_code` bloqueado por config).
+El panel muestra también señales operativas: reportes pendientes, bloqueos,
+push/colas, grupos sin admin, retos pendientes y pichangas que requieren
+atención. `staff_admin` opera moderación; restricciones críticas siguen siendo
+propiedad de superadmin.

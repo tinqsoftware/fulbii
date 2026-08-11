@@ -100,10 +100,16 @@
               </button>
             </div>
 
-            <div class="text-center mt-3 small text-muted">
-              ¿No tienes cuenta?
-              <a href="{{ route('register') }}" class="fw-600">Crear cuenta</a>
-            </div>
+            @if(Route::has('register'))
+              <div class="text-center mt-3 small text-muted">
+                ¿No tienes cuenta?
+                <a href="{{ route('register') }}" class="fw-600">Crear cuenta</a>
+              </div>
+            @else
+              <p class="text-center mt-3 mb-0 small text-muted">
+                El acceso al backoffice es solo para cuentas autorizadas.
+              </p>
+            @endif
 
             {{-- Social (opcional, solo si existen las rutas) --}}
             @if(Route::has('auth.google.redirect') || Route::has('auth.apple.redirect'))

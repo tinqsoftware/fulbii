@@ -1,80 +1,73 @@
-# 08. Ops Runbook
+# Operación Fulbii en VPS
 
-> Complementar esta guía con [AI_HANDOFF_CURRENT_STATE](AI_HANDOFF_CURRENT_STATE.md).
+## Worker de cola
 
-## Estado
-- ✅ Readiness endpoint disponible.
-- ✅ Runbook para cola/scheduler/push/links.
-- ⏳ Falta completar monitoreo externo (opcional).
+El servicio requerido es `fulbii-queue.service`; debe escuchar ambas colas.
 
-## 1) Cola acumulada
-Verificación:
-```sql
-SELECT queue, COUNT(*) total FROM jobs GROUP BY queue;
-```
-Acción:
-```bash
-php artisan queue:restart
-php artisan queue:work --queue=default,push --tries=3 --backoff=30,120,300
+```ini
+[Service]
+User=www-data
+Group=www-data
+Restart=always
+ExecStart=/usr/bin/php /var/www/fulbii/artisan queue:work database --queue=push,default --sleep=3 --tries=3 --backoff=30 --timeout=120
 ```
 
-## 2) Fallos push
-Verificación:
-```sql
-SELECT provider, status, COUNT(*) total
-FROM push_dispatch_logs
-GROUP BY provider, status;
-```
-Acción:
-```bash
-php artisan queue:retry all
-```
-Reporte rapido:
-```bash
-php artisan push:verification-report --minutes=240
-```
-Checklist de configuración:
-- `PUSH_DRIVER=fcm`
-- `FCM_PROJECT_ID` cargado
-- `FCM_SERVICE_ACCOUNT_PATH` apunta a JSON legible por `www-data`
-- Archivo service-account fuera del repo (ej: `/etc/fulbii/firebase-service-account.json`)
-- `GET /api/v1/admin/ops/release-readiness` debe reportar `fcm_v1_ready=true`
-- Script de verificación rápida: `scripts/staging/check_vps_env_for_push.sh`
-
-## 3) Olas auto no disparan
-Verificación:
-```bash
-php artisan pichangas:auto-reminders --dry-run
-```
-
-### Reparación de equipos históricos
-
-Solo después de un respaldo verificable de la base destino:
+Después de modificarlo:
 
 ```bash
-php artisan pichangas:repair-team-assignments --force
+sudo systemctl daemon-reload
+sudo systemctl restart fulbii-queue
+systemctl status fulbii-queue
+journalctl -u fulbii-queue -n 100 --no-pager
 ```
 
-Es idempotente y asigna equipo/slot únicamente a participaciones confirmadas
-que no los tengan. Validar después que cada pichanga cumpla: confirmados = suma
-de jugadores en sus equipos.
-Acción:
-- Confirmar cron de scheduler cada minuto.
-- Confirmar `auto_reminder_*` en club/pichanga.
+No detener el worker manual con `Ctrl+C` como solución permanente: al hacerlo,
+la bandeja seguirá creándose, pero el push no se enviará.
 
-## 4) Links join no abren
-Verificación:
-- `GET /.well-known/apple-app-site-association`
-- `GET /.well-known/assetlinks.json`
+## Diagnóstico push
 
-Acción:
-- Revisar `APP_LINK_BASE_URL`
-- Revisar `APP_LINK_IOS_APP_IDS`
-- Revisar `APP_LINK_ANDROID_SHA256_CERT_FINGERPRINTS`
+```bash
+cd /var/www/fulbii
+php artisan push:verification-report --minutes=30
+php artisan queue:monitor push default
+```
 
-## 5) Orden de recuperación
-1. Levantar worker.
-2. Confirmar scheduler.
-3. Validar readiness.
-4. Hacer smoke de join/push/pichanga.
-5. Ejecutar `scripts/staging/verify_push_pipeline.sh`.
+Esperado: `push_driver=fcm`, `fcm_v1_ready=true`, tokens activos y dispatches
+`sent`. Si hay notificaciones en la bandeja pero no alertas nativas, revisar
+primero que `fulbii-queue` está activo y luego los últimos errores de
+`push_dispatch_logs`.
+
+La cuenta de servicio debe estar fuera de Git, legible por el proceso PHP:
+
+```bash
+sudo chown www-data:www-data <ruta-configurada-en-FCM_SERVICE_ACCOUNT_PATH>
+sudo chmod 640 <ruta-configurada-en-FCM_SERVICE_ACCOUNT_PATH>
+```
+
+Después de reemplazar el JSON, ejecutar `php artisan optimize:clear` y
+reiniciar `fulbii-queue`. Nunca pegar `private_key` o `private_key_id` en el
+chat, repo o `.env`; el JSON completo es el secreto.
+
+## Incidentes comunes
+
+| Síntoma | Causa probable | Acción |
+| --- | --- | --- |
+| Bandeja sí, push no | Worker detenido | Reiniciar `fulbii-queue`. |
+| `No se pudo obtener access token de FCM v1` | JSON ilegible/incorrecto | Revisar path, dueño, permisos y JSON. |
+| iOS TestFlight no recibe | APNs producción/Firebase | Revisar key APNs, bundle, capability Push y build físico. |
+| Android no abre link | Asset Links o firma | Revisar package y SHA-256 release. |
+| Jobs acumulados | Worker/DB | Revisar `jobs`, logs y reiniciar worker. |
+
+## Migraciones heredadas
+
+No usar `php artisan migrate --force` global mientras `migrate:status` muestre
+las migraciones antiguas Pending pero sus tablas ya existan. Respaldar y correr
+la migración nueva por `--path`; la normalización del historial es una tarea
+separada y debe ensayarse antes en una copia de producción.
+
+## Comprobaciones periódicas
+
+- `GET /api/v1/admin/ops/release-readiness` con cuenta staff autorizada.
+- Backoffice: reportes pendientes, aportes, grupos sin admin, retos y push.
+- `failed_jobs`, `jobs`, `push_dispatch_logs` y tokens inactivos.
+- QA físico de una alerta por release.

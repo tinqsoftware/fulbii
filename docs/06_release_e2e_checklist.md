@@ -1,91 +1,78 @@
-# 06. Release E2E Checklist
+# Release E2E checklist
 
-> Checklist vigente complementario al relevo:
-> [AI_HANDOFF_CURRENT_STATE](AI_HANDOFF_CURRENT_STATE.md).
+> Usar junto a [QA móvil](QA_MOBILE_RECENT_CHANGES.md) y
+> [operación](08_ops_runbook.md). No declarar release listo sin push físico.
 
-## Pichangas y grupos (añadir al smoke)
+## 1. Antes de crear builds
 
-- [ ] Mis grupos y Descubrir grupos no tienen clubes superpuestos.
-- [ ] La pichanga muestra cancha/polideportivo correctos y abre su detalle.
-- [ ] Confirmados globales coinciden con la suma de equipos.
-- [ ] En iPhone: hero colapsa, tabs quedan visibles bajo el notch y volver
-  retorna a la pantalla previa.
+- [ ] `git status` limpio salvo archivos locales excluidos.
+- [ ] `php artisan test` relevante y `flutter analyze`/`flutter test` verdes.
+- [ ] `git diff --check` sin salida.
+- [ ] Version/build aumentados en `fulbii_app/pubspec.yaml`.
+- [ ] URLs productivas configuradas: `API_BASE_URL`, `APP_LINK_BASE_URL`,
+  `IOS_STORE_URL` y `ANDROID_STORE_URL` cuando estén disponibles.
+- [ ] iOS: `FulbiiNotificationService` con bundle id
+  `com.fulbii.FulbiiNotificationService`, firma válida y pods instalados.
 
-## Estado
-- ✅ Feature/Unit tests backend en verde (18 tests, 133 asserts).
-- ✅ Flujo de join/pichanga/olas implementado.
-- ✅ Apple login cloud OK (iOS simulator).
-- ✅ Setup Google OAuth + Info.plist completado.
-- ✅ Google login cloud OK (iOS/Android).
-- ✅ Backend push migrado a FCM HTTP v1.
-- ✅ `flutter analyze` sin issues.
-- ✅ `flutter test` en verde.
-- ⏳ Falta QA físico final (Android + iPhone).
+## 2. Backend/VPS
 
-## Referencias
-- `docs/02_local_valet_ios16_simulator_guide.md`
-- `docs/05_vps_native_staging_deploy.md`
-- `docs/07_internal_release_handoff.md`
-- `docs/09_firebase_push_verification_step_by_step.md`
+- [ ] `php artisan optimize:clear` tras desplegar código.
+- [ ] `sudo systemctl restart fulbii-queue` y `systemctl status fulbii-queue`.
+- [ ] `php artisan push:verification-report --minutes=30` muestra FCM listo,
+  tokens activos y sin fallo nuevo.
+- [ ] `.env`: `QUEUE_CONNECTION=database`, `PUSH_DRIVER=fcm`,
+  `FCM_PROJECT_ID` y `FCM_SERVICE_ACCOUNT_PATH` absoluto y válido.
+- [ ] No se subió ninguna cuenta de servicio, `.env`, token o log al repo.
 
-## 1) Precondiciones
-- `QUEUE_CONNECTION=database`
-- `PUSH_DRIVER=fcm`
-- `FCM_PROJECT_ID=<FIREBASE_PROJECT_ID>`
-- `FCM_SERVICE_ACCOUNT_PATH=/etc/fulbii/firebase-service-account.json`
-- `SOCIAL_AUTH_TRUSTED_MODE=false` (staging)
-- `APP_LINK_BASE_URL=https://fulbii.com`
-- `APP_LINK_IOS_APP_IDS=<TEAM_ID>.com.fulbii`
-- `APP_LINK_ANDROID_PACKAGE_NAME=com.fulbii.fulbii_app`
-- `APP_LINK_ANDROID_SHA256_CERT_FINGERPRINTS=<SHA256_RELEASE>`
+### Migraciones
 
-Chequeo local recomendado antes de subir builds:
+El VPS actual contiene tablas heredadas no registradas en `migrations`. Por
+eso no ejecutar `php artisan migrate --force` global. Para cada archivo nuevo:
+
 ```bash
-cd "/Users/alfredoricciale/Sites/MisLaravel/fulbii 2"
-scripts/local/check_internal_release_readiness.sh
-scripts/staging/check_vps_env_for_push.sh
+php artisan migrate:status
+php artisan migrate --force --path=database/migrations/AAAA_MM_DD_NNNNNN_nombre.php
+php artisan migrate:status
 ```
 
-## 2) Smoke backend
-```bash
-php artisan pichangas:auto-reminders --dry-run
-php artisan route:list --path=api/v1/admin/ops/release-readiness
-```
+Respaldar la base antes. Solo adoptar migración global después de normalizar el
+baseline en staging y producción.
 
-Validar:
-- `GET /api/v1/admin/ops/release-readiness`
-- `GET /.well-known/apple-app-site-association`
-- `GET /.well-known/assetlinks.json`
+## 3. Smoke por plataforma
 
-Si el mapa movil muestra `0/0 con coordenadas validas`, ejecutar seed de QA:
-```bash
-mysql -u <USER> -p <DB_NAME> < database/sql/fulbii_seed_demo_fields.sql
-```
+- [ ] Inicio de sesión y registro de token en iOS/Android.
+- [ ] Deep links `/join`, `/club`, `/pichanga` desde navegador y notificación.
+- [ ] Crear pichanga, confirmar y lista de espera con dos cuentas.
+- [ ] Crear reto y enviar chat.
+- [ ] Aprobar/rechazar aporte y ver notificación.
+- [ ] Crear solicitud/invitación de grupo y resolverla como admin.
+- [ ] Publicar y calificar con permisos válidos.
+- [ ] iOS: app foreground, background y terminada; validar imagen rica si la
+  notificación tiene URL de imagen.
+- [ ] Android: mismo flujo de push y navegación, con fallback estándar.
 
-## 3) QA móvil E2E
-1. Deep link join abre app.
-2. Login social completo.
-3. Join request + aprobación admin.
-4. Push foreground/background/terminated.
-5. Olas auto 48h/24h visibles y auditadas.
-6. Push verificado con evidencia DB (`push_notifications` + `push_dispatch_logs`).
+## 4. Distribución
 
-## 4) Build interno
-### Android
+### iOS/TestFlight
+
+1. Desde `fulbii_app/ios`, ejecutar `pod install` si cambió `Podfile.lock`.
+2. Abrir `Runner.xcworkspace`, Archive y validar la app.
+3. Subir con un build nuevo, esperar procesamiento y asignar testers.
+4. Probar un push productivo desde TestFlight antes de ampliar audiencia.
+
+### Android/Google Play
+
 ```bash
 cd fulbii_app
 flutter build appbundle --release \
-  --dart-define=APP_ENV=stg \
+  --dart-define=APP_ENV=prod \
   --dart-define=API_BASE_URL=https://fulbii.com/api/v1 \
   --dart-define=APP_LINK_BASE_URL=https://fulbii.com
 ```
 
-### iOS
-- Xcode -> Archive -> Distribute App -> TestFlight Internal Testing.
+Subir primero a Internal Testing y probar deep links/push en un dispositivo.
 
-## 5) Go/No-Go
-Go solo si:
-- login social cloud OK,
-- readiness OK,
-- push OK en 2 físicos,
-- sin errores críticos en flujo de negocio principal.
+## 5. Go / No-Go
+
+Solo publicar si no hay bloqueadores en flujos de negocio, worker/push están
+activos y la evidencia de ambos dispositivos queda registrada.

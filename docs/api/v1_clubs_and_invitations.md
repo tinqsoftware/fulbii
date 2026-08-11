@@ -1,120 +1,67 @@
-# API v1 - Clubs and Invitations
+# API v1 — Grupos, miembros e invitaciones
 
-> Contrato vigente al 5 de agosto de 2026. Fuente de continuidad:
-> [AI_HANDOFF_CURRENT_STATE](../AI_HANDOFF_CURRENT_STATE.md).
+> Vigente al 10 de agosto de 2026. Ver [estado actual](../AI_HANDOFF_CURRENT_STATE.md).
 
-## Authentication
-`GET /api/v1/clubs` permite descubrimiento sin sesión. Cuando recibe un token
-Sanctum válido, usa esa identidad para separar las listas personales. Los demás
-endpoints que leen datos privados o realizan mutaciones requieren `auth:sanctum`.
+## Lectura pública y autenticada
 
-## Clubs
-### GET `/api/v1/clubs?scope=mine|discover&q=...`
-- Con sesión, `scope=mine` devuelve exclusivamente grupos con membresía activa (`club_user.estado = 1`), incluso si son privados o están desactivados.
-- Con sesión, `scope=discover` devuelve grupos activos (`clubs.estado = 1`), visibles y sin membresía activa del usuario.
-- Sin sesión, `scope=discover` devuelve el mismo conjunto activo y visible; `scope=mine` devuelve `items: []`.
-- Cada item incluye `is_member`, `is_owner`, `is_mine`, `my_role` e `is_active`. `is_owner` es solo informativo; `is_mine` equivale a una membresía activa. Las dos listas son excluyentes para un usuario autenticado.
+`GET /api/v1/clubs` y los detalles visibles aceptan invitado. Cuando hay token
+Sanctum, el backend agrega contexto de membresía y permisos.
 
-### POST `/api/v1/clubs`
-Creates group and auto-adds creator as `admin`.
+### `GET /api/v1/clubs?scope=mine|discover&q=...`
 
-Accepts JSON when no image is selected, or `multipart/form-data` with an
-optional `logo` image (maximum 2 MB).
+- `mine`: membresías activas, incluso si son privadas o inactivas.
+- `discover`: grupos activos/visibles sin membresía activa del usuario.
+- El item incluye rol, `logo_url`, `pichanga_create_scope`, conteos futuros de
+  pichangas, abiertas y `my_confirmed_pichangas_count`.
+- `is_owner` es informativo; los permisos dependen de rol activo y estado del
+  grupo.
 
-Body:
-```json
-{
-  "nombre": "Fulbii Sur",
-  "descripcion": "Grupo de pichangas",
-  "is_visible": true,
-  "pichanga_create_scope": "admins",
-  "renotify_scope": "members",
-  "renotify_cooldown_minutes": 30,
-  "renotify_max_per_pichanga": 5,
-  "audience_max_degree": 3
-}
-```
+### Crear/editar
 
-### GET `/api/v1/clubs/{club}`
-Returns group details and caller membership role.
+- `POST /api/v1/clubs`: crea grupo y agrega al creador como admin.
+- `GET /api/v1/clubs/{club}`: detalle, membresía, ajustes y permisos actuales.
+- `PUT /api/v1/clubs/{club}`: solo admin/superadmin; permite, entre otros,
+  actualizar `pichanga_create_scope` (`members|admins`) y logo multipart.
 
-### PUT `/api/v1/clubs/{club}`
-Admin or superadmin only.
+Un admin no puede dejar al grupo sin administradores activos. Los grupos
+inactivos responden `409 club_inactive` en mutaciones operativas.
 
-Las mutaciones sobre un grupo desactivado responden `409` con
-`code: "club_inactive"`. Los miembros activos aún pueden consultar el detalle,
-pero no crear pichangas, enviar invitaciones, gestionar solicitudes o retos.
+## Miembros y auditoría
 
-### Join links and requests
-### GET `/api/v1/clubs/join/{joinCode}`
-Preview de grupo por link (incluye estado del usuario).
+- `GET /api/v1/clubs/{club}/members`
+- `GET /api/v1/clubs/{club}/members/{user}/public-profile`
+- `PUT /api/v1/clubs/{club}/members/{user}/role` body `{ "rol": "admin" }`
+- `DELETE /api/v1/clubs/{club}/members/{user}`
+- `GET /api/v1/clubs/{club}/admin-activity`
 
-### POST `/api/v1/clubs/join/{joinCode}/request`
-Solicitar ingreso usando link para un grupo activo, visible y con solicitudes habilitadas.
+El perfil público no expone correo, fecha de nacimiento ni otros datos privados.
+Los puntajes provienen de `CombinedSkillRatingService`.
 
-### POST `/api/v1/clubs/{club}/join-requests`
-Solicitar ingreso por búsqueda visible.
+## Solicitudes e invitaciones
 
-### GET `/api/v1/clubs/{club}/join-requests`
-Cola de solicitudes para admin/superadmin.
+- `GET /api/v1/clubs/join/{joinCode}`
+- `POST /api/v1/clubs/join/{joinCode}/request`
+- `POST /api/v1/clubs/{club}/join-requests`
+- `GET /api/v1/clubs/{club}/join-requests`
+- `POST /api/v1/clubs/{club}/join-requests/{joinRequest}/decision`
+- `POST /api/v1/clubs/{club}/join-requests/{joinRequest}/cancel`
+- `POST /api/v1/clubs/{club}/join-code/rotate`
+- `GET /api/v1/invitations`
+- `POST /api/v1/clubs/{club}/invitations`
+- `POST /api/v1/invitations/{invitation}/respond`
+- `POST /api/v1/invitations/{invitation}/revoke`
 
-### POST `/api/v1/clubs/{club}/join-requests/{joinRequest}/decision`
-Decisión admin: `accept|reject`.
+Las decisiones generan bandeja/push para los destinatarios aplicables. Las
+solicitudes llegan a todos los admins activos; las invitaciones email sin cuenta
+no pueden recibir push hasta identificarse.
 
-### POST `/api/v1/clubs/{club}/join-requests/{joinRequest}/cancel`
-Cancelar solicitud pendiente (solo solicitante).
+## Chat y preferencias
 
-### POST `/api/v1/clubs/{club}/join-code/rotate`
-Rota el `join_code` y retorna `join_url` nuevo.
+- `GET|POST /api/v1/clubs/{club}/chat/messages`
+- `POST /api/v1/clubs/{club}/chat/read`
+- `GET|PUT /api/v1/clubs/{club}/notification-preference`
+- `GET /api/v1/clubs/{club}/notification-categories`
+- `PUT /api/v1/clubs/{club}/notification-categories/{category}`
 
-### GET `/api/v1/clubs/{club}/members`
-Visible to group members and superadmin.
-
-Cada integrante activo incluye rol y estrellas globales 0.0–5.0. Al tocarlo,
-la app usa el perfil público contextual:
-
-### GET `/api/v1/clubs/{club}/members/{user}/public-profile`
-Autenticación opcional. Permite acceso si el grupo está activo y visible, o si
-el solicitante es miembro activo/superadmin. El usuario consultado debe ser
-miembro activo. No incluye datos privados.
-
-### PUT `/api/v1/clubs/{club}/members/{user}/role`
-Admin or superadmin only.
-Body:
-```json
-{
-  "rol": "admin"
-}
-```
-
-### DELETE `/api/v1/clubs/{club}/members/{user}`
-Admin or superadmin only.
-Cannot remove the last admin.
-
-## Invitations
-### GET `/api/v1/invitations`
-Current user pending invitations.
-
-### POST `/api/v1/clubs/{club}/invitations`
-Admin or superadmin only. Invite by `nick` or `email`.
-
-Body examples:
-```json
-{ "nick": "pichanguero21" }
-```
-```json
-{ "email": "jugador@example.com" }
-```
-
-### POST `/api/v1/invitations/{invitation}/respond`
-Invited user accepts/rejects.
-
-Body:
-```json
-{
-  "action": "accept"
-}
-```
-
-### POST `/api/v1/invitations/{invitation}/revoke`
-Admin or superadmin only, pending invitations only.
+El chat de grupo es distinto al chat de retos. Los silencios y la presencia
+activa excluyen push cuando la política del evento lo permite.

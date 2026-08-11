@@ -1,51 +1,29 @@
-# API v1 - Group Notification Preferences
+# API v1 — Preferencias de notificaciones
 
-> Contrato vigente. La preferencia es personal por miembro activo; no concede
-> permisos de administración. Ver [AI_HANDOFF_CURRENT_STATE](../AI_HANDOFF_CURRENT_STATE.md).
+Las preferencias son personales por miembro activo; nunca conceden permisos de
+administración.
 
-## Authentication
-All endpoints require `auth:sanctum`.
+## Preferencia general del grupo
 
-## Endpoints
-### GET `/api/v1/clubs/{club}/notification-preference`
-Returns the current user's preference for the given club.
+- `GET /api/v1/clubs/{club}/notification-preference`
+- `PUT /api/v1/clubs/{club}/notification-preference`
 
-Response example:
-```json
-{
-  "club_id": 2,
-  "mode": "mute_24h",
-  "muted_until": "2026-03-20T15:42:11.000000Z",
-  "is_muted_now": true,
-  "updated_at": "2026-03-19T15:42:11.000000Z"
-}
-```
-
-If no preference exists yet:
-```json
-{
-  "club_id": 2,
-  "mode": "always_on",
-  "muted_until": null,
-  "is_muted_now": false
-}
-```
-
-### PUT `/api/v1/clubs/{club}/notification-preference`
 Body:
+
 ```json
-{
-  "mode": "mute_1w"
-}
+{ "mode": "mute_1w" }
 ```
 
-Allowed values:
-- `always_on`
-- `mute_24h`
-- `mute_1w`
-- `mute_forever`
+Valores: `always_on`, `mute_24h`, `mute_1w`, `mute_forever`.
 
-Rules:
-- Only members of the club (or superadmin) can read/update preference.
-- Mute applies only to push notifications.
-- No critical-notification bypass when muted.
+## Preferencias por categoría
+
+- `GET /api/v1/clubs/{club}/notification-categories`
+- `PUT /api/v1/clubs/{club}/notification-categories/{category}`
+
+Las categorías cubren, según evento, chat/retos, pichangas y
+solicitudes/invitaciones. Los eventos críticos aplican su política explícita;
+no asumir que un silencio general altera permisos, bandeja o auditoría.
+
+Las notificaciones de chat además excluyen al emisor, usuarios con grupo
+silenciado y presencia activa en esa conversación cuando corresponda.

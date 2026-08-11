@@ -12,9 +12,9 @@ trait UsesInMemorySqlite
     {
         Config::set('database.default', 'sqlite');
         Config::set('database.connections.sqlite.database', ':memory:');
+        DB::setDefaultConnection('sqlite');
         DB::purge('sqlite');
         DB::reconnect('sqlite');
         Schema::enableForeignKeyConstraints();
     }
 }
-
