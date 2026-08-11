@@ -57,6 +57,7 @@ class CompactFilterChoice extends StatelessWidget {
     required this.selected,
     required this.onTap,
     this.icon,
+    this.selectedColor,
     this.fontSize = 12,
     this.maxLines = 1,
     this.controlKey,
@@ -67,6 +68,7 @@ class CompactFilterChoice extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
   final IconData? icon;
+  final Color? selectedColor;
   final double fontSize;
   final int maxLines;
   final Key? controlKey;
@@ -80,7 +82,9 @@ class CompactFilterChoice extends StatelessWidget {
       selected: selected,
       label: label.replaceAll('\n', ' '),
       child: Material(
-        color: selected ? const Color(0xFF1B8F24) : colorScheme.surface,
+        color: selected
+            ? selectedColor ?? const Color(0xFF1B8F24)
+            : colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           key: controlKey,

@@ -118,6 +118,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final topPadding = MediaQuery.of(context).padding.top + 16;
     final ratingsAsync = ref.watch(myRatingHistoryProvider(user.id));
     final rankingAsync = ref.watch(ownPlayerRankingProvider(user.id));
+    final sports = user.sportsProfile;
+    final suggestedPosition =
+        (sports['primary_position'] ?? sports['primary_role'] ?? '—')
+            .toString();
 
     return ListView(
       padding: EdgeInsets.fromLTRB(20, topPadding, 20, 24),
@@ -172,6 +176,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Posición sugerida · $suggestedPosition',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -217,6 +228,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
           ],
         ),
+        const SizedBox(height: 10),
+        _OwnSportsOverview(sports: sports),
         rankingAsync.when(
           loading: () => const SizedBox.shrink(),
           error: (_, _) => const SizedBox.shrink(),
@@ -1018,6 +1031,177 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     await Navigator.of(
       context,
     ).push(MaterialPageRoute<void>(builder: (_) => const EditProfileScreen()));
+  }
+}
+
+class _OwnSportsOverview extends StatelessWidget {
+  const _OwnSportsOverview({required this.sports});
+
+  final Map<String, dynamic> sports;
+
+  String _score(String key) {
+    final value = sports[key] as num?;
+    return value == null ? '—' : value.toDouble().toStringAsFixed(1);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final primaryRole = (sports['primary_role'] ?? '').toString();
+    final skills = (sports['skills'] as Map?)?.cast<String, dynamic>() ?? {};
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _OwnMetric(
+                label: primaryRole == 'jugador'
+                    ? 'Principal · jugador'
+                    : 'Como jugador',
+                value: _score('player_average'),
+                highlighted: primaryRole == 'jugador',
+              ),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: _OwnMetric(
+                label: primaryRole == 'arquero'
+                    ? 'Principal · arquero'
+                    : 'Como arquero',
+                value: _score('goalkeeper_average'),
+                highlighted: primaryRole == 'arquero',
+              ),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: _OwnMetric(
+                label: 'Pichangas',
+                value: '${sports['pichangas_played'] ?? 0}',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Habilidades',
+          style: Theme.of(
+            context,
+          ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 5),
+        for (final skill in const [
+          ('Delantero', 'delantero'),
+          ('Mediocampo', 'mediocampo'),
+          ('Defensa', 'defensa'),
+          ('Arquero', 'arquero'),
+          ('Físico', 'fisico'),
+        ])
+          _OwnSkillLine(
+            label: skill.$1,
+            value: (skills[skill.$2] as num?)?.toDouble(),
+            color: skill.$2 == 'arquero'
+                ? Colors.teal
+                : skill.$2 == 'fisico'
+                ? Colors.amber.shade700
+                : colors.primary,
+          ),
+      ],
+    );
+  }
+}
+
+class _OwnMetric extends StatelessWidget {
+  const _OwnMetric({
+    required this.label,
+    required this.value,
+    this.highlighted = false,
+  });
+
+  final String label;
+  final String value;
+  final bool highlighted;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+      decoration: BoxDecoration(
+        color: highlighted
+            ? colors.primaryContainer
+            : colors.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: highlighted ? colors.primary : colors.outlineVariant,
+          width: highlighted ? 1.5 : 1,
+        ),
+      ),
+      child: Column(
+        children: [
+          Text(
+            value,
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w900,
+              color: highlighted ? colors.onPrimaryContainer : colors.primary,
+            ),
+          ),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 9.5),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OwnSkillLine extends StatelessWidget {
+  const _OwnSkillLine({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final String label;
+  final double? value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 82,
+            child: Text(label, style: const TextStyle(fontSize: 12)),
+          ),
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(99),
+              child: LinearProgressIndicator(
+                value: (value ?? 0).clamp(0, 5) / 5,
+                minHeight: 5,
+                color: color,
+              ),
+            ),
+          ),
+          const SizedBox(width: 7),
+          SizedBox(
+            width: 24,
+            child: Text(
+              value == null ? '—' : value!.toStringAsFixed(1),
+              textAlign: TextAlign.end,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

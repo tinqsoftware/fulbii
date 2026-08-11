@@ -3,14 +3,59 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Services\CombinedSkillRatingService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class MeController extends Controller
 {
     public function show(Request $request)
     {
-        return response()->json($request->user() ?? abort(401));
+        $user = $request->user() ?? abort(401);
+        $summary = [
+            'votos' => 0,
+            'fisico' => null,
+            'arquero' => null,
+            'delantero' => null,
+            'mediocampo' => null,
+            'defensa' => null,
+            'player_average' => null,
+            'goalkeeper_average' => null,
+            'stars' => null,
+            'primary_role' => null,
+            'primary_position' => null,
+        ];
+        if (Schema::hasTable('calificaciones') || Schema::hasTable('group_pichanga_ratings')) {
+            $summary = app(CombinedSkillRatingService::class)->summaryForUser((int) $user->id);
+        }
+
+        $pichangasPlayed = 0;
+        if (Schema::hasTable('group_pichanga_participants')) {
+            $pichangasPlayed = DB::table('group_pichanga_participants')
+                ->where('user_id', $user->id)
+                ->where('status', 'confirmed')
+                ->count();
+        }
+
+        return response()->json([
+            ...$user->toArray(),
+            'sports_profile' => [
+                'star_average' => $summary['stars'],
+                'player_average' => $summary['player_average'],
+                'goalkeeper_average' => $summary['goalkeeper_average'],
+                'primary_role' => $summary['primary_role'],
+                'primary_position' => $summary['primary_position'],
+                'pichangas_played' => $pichangasPlayed,
+                'skills' => [
+                    'fisico' => $summary['fisico'],
+                    'arquero' => $summary['arquero'],
+                    'defensa' => $summary['defensa'],
+                    'mediocampo' => $summary['mediocampo'],
+                    'delantero' => $summary['delantero'],
+                ],
+            ],
+        ]);
     }
 
     public function update(Request $request)

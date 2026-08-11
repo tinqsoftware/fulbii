@@ -18,6 +18,13 @@ void main() {
     expect(range.end, DateTime(2026, 8, 17));
   });
 
+  test('map defaults keep every surface selected', () {
+    const filter = MapFilterState();
+
+    expect(filter.surfaceTypes, MapPichangaDefaults.surfaceTypes);
+    expect(filter.surfaceTypes, ['losa', 'sintetico', 'natural']);
+  });
+
   test('only today and tomorrow receive an urgent map date badge', () {
     final now = DateTime(2026, 8, 11, 10);
 
@@ -66,5 +73,20 @@ void main() {
     final badge = find.byType(MapPichangaDateBadge);
     expect(tester.getSize(badge).width, lessThan(190));
     expect(find.textContaining('Hoy'), findsOneWidget);
+  });
+
+  testWidgets('later dates remain visible without using an urgency badge', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: MapPichangaPlainDate(rawDate: '2026-08-13T19:00:00'),
+        ),
+      ),
+    );
+
+    expect(find.byType(MapPichangaDateBadge), findsNothing);
+    expect(find.textContaining('13'), findsOneWidget);
   });
 }

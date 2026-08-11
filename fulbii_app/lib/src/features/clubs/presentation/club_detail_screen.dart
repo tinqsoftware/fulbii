@@ -240,6 +240,41 @@ class ClubDetailScreen extends ConsumerWidget {
                                 padding: const EdgeInsets.only(top: 6),
                                 child: Text(club['descripcion'].toString()),
                               ),
+                            membersAsync.when(
+                              loading: () => const SizedBox.shrink(),
+                              error: (_, _) => const SizedBox.shrink(),
+                              data: (members) => members.isEmpty
+                                  ? const SizedBox.shrink()
+                                  : Padding(
+                                      padding: const EdgeInsets.only(top: 10),
+                                      child: ClubMemberAvatarStrip(
+                                        members: members,
+                                        onMemberTap: (member) {
+                                          final user =
+                                              (member['user'] as Map?)
+                                                  ?.cast<String, dynamic>() ??
+                                              {};
+                                          final userId = int.tryParse(
+                                            member['user_id']?.toString() ??
+                                                user['id']?.toString() ??
+                                                '',
+                                          );
+                                          if (userId == null || userId <= 0) {
+                                            return;
+                                          }
+                                          Navigator.of(context).push(
+                                            MaterialPageRoute<void>(
+                                              builder: (_) =>
+                                                  PublicPlayerProfileScreen(
+                                                    clubId: clubId,
+                                                    userId: userId,
+                                                  ),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    ),
+                            ),
                             const SizedBox(height: 8),
                             Wrap(
                               spacing: 8,
@@ -1116,6 +1151,114 @@ class _ClubPichangaCard extends StatelessWidget {
   }
 }
 
+class ClubMemberAvatarStrip extends ConsumerWidget {
+  const ClubMemberAvatarStrip({
+    required this.members,
+    required this.onMemberTap,
+    super.key,
+  });
+
+  final List<Map<String, dynamic>> members;
+  final ValueChanged<Map<String, dynamic>> onMemberTap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final config = ref.watch(appConfigProvider);
+    final shown = members.take(6).toList();
+    final remaining = members.length - shown.length;
+    return Semantics(
+      label: '${members.length} integrantes. Toca una foto para ver su perfil.',
+      child: Row(
+        children: [
+          const Icon(Icons.groups_2_outlined, size: 18),
+          const SizedBox(width: 7),
+          SizedBox(
+            height: 38,
+            child: Row(
+              children: [
+                for (var index = 0; index < shown.length; index++)
+                  SizedBox(
+                    width: index == shown.length - 1 && remaining <= 0
+                        ? 38
+                        : 27,
+                    child: _ClubMemberAvatar(
+                      member: shown[index],
+                      config: config,
+                      onTap: () => onMemberTap(shown[index]),
+                    ),
+                  ),
+                if (remaining > 0)
+                  SizedBox(
+                    width: 38,
+                    child: CircleAvatar(
+                      radius: 19,
+                      backgroundColor: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
+                      child: Text(
+                        '+$remaining',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '${members.length} ${members.length == 1 ? 'integrante' : 'integrantes'}',
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ClubMemberAvatar extends StatelessWidget {
+  const _ClubMemberAvatar({
+    required this.member,
+    required this.config,
+    required this.onTap,
+  });
+
+  final Map<String, dynamic> member;
+  final AppConfig config;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final user = (member['user'] as Map?)?.cast<String, dynamic>() ?? {};
+    final name = (user['nick'] ?? user['name'] ?? 'Jugador').toString();
+    final image = resolveClubImageUrl(user['avatar_url']?.toString(), config);
+    return Tooltip(
+      message: name,
+      child: InkResponse(
+        onTap: onTap,
+        radius: 24,
+        child: CircleAvatar(
+          radius: 19,
+          backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+          backgroundImage: image == null || image.isEmpty
+              ? null
+              : NetworkImage(image),
+          child: image == null || image.isEmpty
+              ? Text(
+                  name.isEmpty ? '?' : name.substring(0, 1).toUpperCase(),
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                )
+              : null,
+        ),
+      ),
+    );
+  }
+}
+
 class ClubMembersScreen extends ConsumerWidget {
   const ClubMembersScreen({required this.clubId, super.key});
 
@@ -1135,9 +1278,9 @@ class ClubMembersScreen extends ConsumerWidget {
         error: (error, _) =>
             Center(child: Text('No se pudieron cargar integrantes: $error')),
         data: (items) => ListView.separated(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
           itemCount: items.length,
-          separatorBuilder: (_, _) => const Divider(height: 1),
+          separatorBuilder: (_, _) => const Divider(height: 1, indent: 52),
           itemBuilder: (_, index) {
             final member = items[index];
             final user =
@@ -1180,13 +1323,32 @@ class _ClubMemberTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isAdmin = (member['rol'] ?? 'miembro').toString() == 'admin';
+    final user = (member['user'] as Map?)?.cast<String, dynamic>() ?? {};
+    final config = ref.watch(appConfigProvider);
+    final avatarUrl = resolveClubImageUrl(
+      user['avatar_url']?.toString(),
+      config,
+    );
     return ListTile(
-      contentPadding: const EdgeInsets.symmetric(vertical: 5),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+      visualDensity: VisualDensity.compact,
+      minVerticalPadding: 4,
+      minLeadingWidth: 42,
+      horizontalTitleGap: 8,
       leading: CircleAvatar(
-        child: Text(name.isEmpty ? '?' : name.substring(0, 1).toUpperCase()),
+        radius: 19,
+        backgroundImage: avatarUrl == null || avatarUrl.isEmpty
+            ? null
+            : NetworkImage(avatarUrl),
+        child: avatarUrl == null || avatarUrl.isEmpty
+            ? Text(name.isEmpty ? '?' : name.substring(0, 1).toUpperCase())
+            : null,
       ),
-      title: Text(name),
-      subtitle: Text(isAdmin ? 'Administrador' : 'Miembro'),
+      title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: Text(
+        isAdmin ? 'Administrador' : 'Miembro',
+        style: const TextStyle(fontSize: 12),
+      ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -2105,6 +2267,23 @@ class _GuestClubDetail extends ConsumerWidget {
                               const SizedBox(height: 8),
                               Text(club['descripcion'].toString()),
                             ],
+                            members.when(
+                              loading: () => const SizedBox.shrink(),
+                              error: (_, _) => const SizedBox.shrink(),
+                              data: (items) => items.isEmpty
+                                  ? const SizedBox.shrink()
+                                  : Padding(
+                                      padding: const EdgeInsets.only(top: 10),
+                                      child: ClubMemberAvatarStrip(
+                                        members: items,
+                                        onMemberTap: (_) => requireSignIn(
+                                          context,
+                                          ref,
+                                          action: 'ver perfiles de miembros',
+                                        ),
+                                      ),
+                                    ),
+                            ),
                             const SizedBox(height: 10),
                             const _ClubStatusChip(
                               label: 'Grupo visible públicamente',

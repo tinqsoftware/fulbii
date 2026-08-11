@@ -109,6 +109,9 @@ class PublicPlayerProfileScreen extends ConsumerWidget {
           final goalkeeperAverage = stats['goalkeeper_average'] as num?;
           final ranking =
               (data['ranking'] as Map?)?.cast<String, dynamic>() ?? {};
+          final suggestedPosition =
+              (stats['primary_position'] ?? stats['primary_role'] ?? '—')
+                  .toString();
 
           final latestPichangas =
               (data['latest_pichangas'] as List?)
@@ -153,69 +156,76 @@ class PublicPlayerProfileScreen extends ConsumerWidget {
                             fontSize: 13,
                           ),
                         ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Posición sugerida · $suggestedPosition',
+                          style: Theme.of(context).textTheme.labelMedium
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
                       ],
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 14),
               const Divider(height: 1),
-              const SizedBox(height: 20),
-
-              // Métricas de Rendimiento (Grid 2x2 responsivo y elegante)
-              GridView.count(
-                crossAxisCount: 2,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                childAspectRatio: 2.2,
-                children: [
-                  _Metric(
-                    label: 'Estrellas',
-                    value: stars == null
-                        ? '—'
-                        : '★ ${stars.toDouble().toStringAsFixed(1)}',
-                  ),
-                  _Metric(
-                    label: 'Promedio jugador',
-                    value: playerAverage == null
-                        ? '—'
-                        : playerAverage.toDouble().toStringAsFixed(1),
-                  ),
-                  _Metric(
-                    label: 'Como arquero',
-                    value: goalkeeperAverage == null
-                        ? '—'
-                        : goalkeeperAverage.toDouble().toStringAsFixed(1),
-                  ),
-                  _Metric(
-                    label: 'Pichangas',
-                    value: '${stats['pichangas_played'] ?? 0}',
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               Row(
                 children: [
                   Expanded(
                     child: _Metric(
-                      label: 'Ranking total',
-                      value: ranking['total'] == null
+                      label: suggestedPosition == 'jugador'
+                          ? 'Principal · jugador'
+                          : 'Como jugador',
+                      value: playerAverage == null
                           ? '—'
-                          : '#${ranking['total']}',
+                          : playerAverage.toDouble().toStringAsFixed(1),
+                      highlighted: suggestedPosition == 'jugador',
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 6),
                   Expanded(
                     child: _Metric(
-                      label:
-                          ranking['age_band_label']?.toString() ??
-                          'Ranking edad',
-                      value: ranking['age'] == null
+                      label: suggestedPosition == 'arquero'
+                          ? 'Principal · arquero'
+                          : 'Como arquero',
+                      value: goalkeeperAverage == null
                           ? '—'
-                          : '#${ranking['age']}',
+                          : goalkeeperAverage.toDouble().toStringAsFixed(1),
+                      highlighted: suggestedPosition == 'arquero',
                     ),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: _Metric(
+                      label: 'Pichangas',
+                      value: '${stats['pichangas_played'] ?? 0}',
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  _ProfileMiniChip(
+                    icon: Icons.star_rounded,
+                    label: stars == null
+                        ? 'Sin promedio'
+                        : '★ ${stars.toDouble().toStringAsFixed(1)} principal',
+                  ),
+                  _ProfileMiniChip(
+                    icon: Icons.leaderboard_outlined,
+                    label: ranking['total'] == null
+                        ? 'Ranking total —'
+                        : 'Total #${ranking['total']}',
+                  ),
+                  _ProfileMiniChip(
+                    icon: Icons.cake_outlined,
+                    label: ranking['age'] == null
+                        ? 'Edad —'
+                        : '${ranking['age_band_label'] ?? 'Edad'} #${ranking['age']}',
                   ),
                 ],
               ),
@@ -237,86 +247,14 @@ class PublicPlayerProfileScreen extends ConsumerWidget {
                       )
                     : const SizedBox.shrink(),
               ),
-              const SizedBox(height: 24),
-              const Divider(height: 1),
-              const SizedBox(height: 20),
-
-              Text(
-                'Historial de calificaciones',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 8),
-              ratingHistory.when(
-                loading: () => const LinearProgressIndicator(minHeight: 2),
-                error: (_, _) => const Text('No se pudo cargar el historial.'),
-                data: (items) => items.isEmpty
-                    ? const _EmptyProfileSection(
-                        icon: Icons.history_outlined,
-                        text: 'Aún no tiene calificaciones públicas.',
-                      )
-                    : Column(
-                        children: items
-                            .map(
-                              (item) => ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                leading: Icon(
-                                  item['source'] == 'pichanga'
-                                      ? Icons.sports_soccer_outlined
-                                      : Icons.star_outline,
-                                ),
-                                title: Text(
-                                  '@${item['rater_nick'] ?? 'Jugador'}',
-                                ),
-                                subtitle: Text(
-                                  'F ${item['fisico']} · A ${item['arquero']} · D ${item['delantero']} · M ${item['mediocampo']} · Def ${item['defensa']}${(item['comentario'] ?? '').toString().isEmpty ? '' : '\n${item['comentario']}'}',
-                                ),
-                              ),
-                            )
-                            .toList(),
-                      ),
-              ),
-              const SizedBox(height: 20),
-
-              // Habilidades
-              Text(
-                'Habilidades',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 12),
-              if (stars == null)
-                const _EmptyProfileSection(
-                  icon: Icons.bar_chart_outlined,
-                  text: 'Todavía no tiene calificaciones deportivas.',
-                )
-              else
-                ...[
-                  ('Físico', 'fisico'),
-                  ('Arquero', 'arquero'),
-                  ('Defensa', 'defensa'),
-                  ('Mediocampo', 'mediocampo'),
-                  ('Delantero', 'delantero'),
-                ].map(
-                  (skill) => _SkillBar(
-                    label: skill.$1,
-                    value: (skills[skill.$2] as num?)?.toDouble(),
-                  ),
-                ),
-              const SizedBox(height: 20),
-              const Divider(height: 1),
-              const SizedBox(height: 20),
-
-              // Clips públicos
+              const SizedBox(height: 14),
               Text(
                 'Clips Públicos',
                 style: Theme.of(
                   context,
                 ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               clips.when(
                 loading: () => const Center(
                   child: Padding(
@@ -334,7 +272,7 @@ class PublicPlayerProfileScreen extends ConsumerWidget {
                         text: 'Este jugador aún no tiene clips públicos.',
                       )
                     : SizedBox(
-                        height: 140,
+                        height: 112,
                         child: ListView.separated(
                           scrollDirection: Axis.horizontal,
                           itemCount: items.length,
@@ -351,56 +289,107 @@ class PublicPlayerProfileScreen extends ConsumerWidget {
                         ),
                       ),
               ),
-              const SizedBox(height: 20),
-              const Divider(height: 1),
-              const SizedBox(height: 20),
-
-              // Últimas Pichangas del jugador
+              const SizedBox(height: 14),
               Text(
-                'Últimas Pichangas Jugadas',
+                'Habilidades',
                 style: Theme.of(
                   context,
                 ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
               ),
-              const SizedBox(height: 12),
-              if (latestPichangas.isEmpty)
+              const SizedBox(height: 8),
+              if (stars == null)
                 const _EmptyProfileSection(
-                  icon: Icons.sports_soccer_outlined,
-                  text: 'Aún no registra pichangas jugadas.',
+                  icon: Icons.bar_chart_outlined,
+                  text: 'Todavía no tiene calificaciones deportivas.',
                 )
               else
-                ...latestPichangas.map((item) {
-                  final title = (item['title'] ?? 'Pichanga #${item['id']}')
-                      .toString();
-                  final startsAt = SpanishDateFormatter.pichangaDate(
-                    item['starts_at']?.toString(),
-                  );
-                  final status = SpanishDateFormatter.status(
-                    item['status']?.toString(),
-                  );
-
-                  return ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: CircleAvatar(
-                      radius: 18,
-                      backgroundColor: Theme.of(
-                        context,
-                      ).colorScheme.primaryContainer,
-                      child: const Icon(Icons.sports_soccer_outlined, size: 18),
-                    ),
-                    title: Text(
-                      title,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
+                ...[
+                  ('Delantero', 'delantero'),
+                  ('Mediocampo', 'mediocampo'),
+                  ('Defensa', 'defensa'),
+                  ('Arquero', 'arquero'),
+                  ('Físico', 'fisico'),
+                ].map(
+                  (skill) => _SkillBar(
+                    label: skill.$1,
+                    value: (skills[skill.$2] as num?)?.toDouble(),
+                  ),
+                ),
+              const SizedBox(height: 10),
+              _ProfileActivityTabs(
+                ratings: ratingHistory.when(
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
+                  error: (_, _) => const Center(
+                    child: Text('No se pudo cargar el historial.'),
+                  ),
+                  data: (items) => items.isEmpty
+                      ? const _EmptyProfileSection(
+                          icon: Icons.history_outlined,
+                          text: 'Aún no tiene calificaciones públicas.',
+                        )
+                      : ListView.builder(
+                          padding: EdgeInsets.zero,
+                          itemCount: items.length,
+                          itemBuilder: (context, index) {
+                            final item = items[index];
+                            return ListTile(
+                              dense: true,
+                              visualDensity: VisualDensity.compact,
+                              contentPadding: EdgeInsets.zero,
+                              leading: Icon(
+                                item['source'] == 'pichanga'
+                                    ? Icons.sports_soccer_outlined
+                                    : Icons.star_outline,
+                                size: 18,
+                              ),
+                              title: Text(
+                                '@${item['rater_nick'] ?? 'Jugador'}',
+                              ),
+                              subtitle: Text(
+                                'F ${item['fisico']} · A ${item['arquero']} · D ${item['delantero']} · M ${item['mediocampo']} · Def ${item['defensa']}',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 11),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+                pichangas: latestPichangas.isEmpty
+                    ? const _EmptyProfileSection(
+                        icon: Icons.sports_soccer_outlined,
+                        text: 'Aún no registra pichangas jugadas.',
+                      )
+                    : ListView.builder(
+                        padding: EdgeInsets.zero,
+                        itemCount: latestPichangas.length,
+                        itemBuilder: (context, index) {
+                          final item = latestPichangas[index];
+                          return ListTile(
+                            dense: true,
+                            visualDensity: VisualDensity.compact,
+                            contentPadding: EdgeInsets.zero,
+                            leading: const Icon(
+                              Icons.sports_soccer_outlined,
+                              size: 18,
+                            ),
+                            title: Text(
+                              (item['title'] ?? 'Pichanga #${item['id']}')
+                                  .toString(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            subtitle: Text(
+                              '${SpanishDateFormatter.pichangaDate(item['starts_at']?.toString())} · ${SpanishDateFormatter.status(item['status']?.toString())}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                          );
+                        },
                       ),
-                    ),
-                    subtitle: Text(
-                      '$startsAt · $status',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                  );
-                }),
+              ),
             ],
           );
         },
@@ -686,19 +675,29 @@ class _PublicAvatar extends ConsumerWidget {
 }
 
 class _Metric extends StatelessWidget {
-  const _Metric({required this.label, required this.value});
+  const _Metric({
+    required this.label,
+    required this.value,
+    this.highlighted = false,
+  });
   final String label;
   final String value;
+  final bool highlighted;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+      padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 5),
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest,
+        color: highlighted
+            ? colorScheme.primaryContainer
+            : colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: colorScheme.outlineVariant),
+        border: Border.all(
+          color: highlighted ? colorScheme.primary : colorScheme.outlineVariant,
+          width: highlighted ? 1.5 : 1,
+        ),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -707,7 +706,9 @@ class _Metric extends StatelessWidget {
             value,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w900,
-              color: colorScheme.primary,
+              color: highlighted
+                  ? colorScheme.onPrimaryContainer
+                  : colorScheme.primary,
             ),
           ),
           const SizedBox(height: 2),
@@ -716,6 +717,72 @@ class _Metric extends StatelessWidget {
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
               color: colorScheme.onSurfaceVariant,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileMiniChip extends StatelessWidget {
+  const _ProfileMiniChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: colors.primary),
+          const SizedBox(width: 3),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileActivityTabs extends StatelessWidget {
+  const _ProfileActivityTabs({required this.ratings, required this.pichangas});
+
+  final Widget ratings;
+  final Widget pichangas;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return DefaultTabController(
+      length: 2,
+      child: Column(
+        children: [
+          TabBar(
+            labelStyle: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+            labelPadding: const EdgeInsets.symmetric(horizontal: 6),
+            indicatorSize: TabBarIndicatorSize.tab,
+            dividerColor: colors.outlineVariant,
+            tabs: const [
+              Tab(text: 'Últimas pichangas'),
+              Tab(text: 'Calificaciones'),
+            ],
+          ),
+          SizedBox(
+            height: 184,
+            child: TabBarView(children: [pichangas, ratings]),
           ),
         ],
       ),

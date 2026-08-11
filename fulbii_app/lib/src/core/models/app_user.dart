@@ -8,6 +8,7 @@ class AppUser {
     this.avatarUrl,
     this.fecNac,
     this.alturaCm,
+    this.sportsProfile = const {},
     this.isSuperadmin = false,
     this.isSuspended = false,
   });
@@ -20,6 +21,7 @@ class AppUser {
   final String? avatarUrl;
   final String? fecNac;
   final int? alturaCm;
+  final Map<String, dynamic> sportsProfile;
   final bool isSuperadmin;
   final bool isSuspended;
 
@@ -42,6 +44,8 @@ class AppUser {
       avatarUrl: json['avatar_url']?.toString(),
       fecNac: json['fec_nac']?.toString(),
       alturaCm: parseInt(json['altura_cm']),
+      sportsProfile:
+          (json['sports_profile'] as Map?)?.cast<String, dynamic>() ?? const {},
       isSuperadmin: json['is_superadmin'] == true,
       isSuspended: json['is_suspended'] == true,
     );

@@ -19,11 +19,17 @@ import 'field_detail_screen.dart';
 import 'map_filter_controls.dart';
 import 'field_submission_screen.dart';
 
+const List<String> mapDefaultSurfaceTypes = <String>[
+  'losa',
+  'sintetico',
+  'natural',
+];
+
 class MapFilterState {
   const MapFilterState({
     this.priceMin,
     this.priceMax,
-    this.surfaceTypes = const [],
+    this.surfaceTypes = mapDefaultSurfaceTypes,
     this.vsFormats = const [],
   });
 
@@ -54,6 +60,7 @@ class MapPichangaDefaults {
 
   static const String content = 'pichangas';
   static const String range = 'custom';
+  static const List<String> surfaceTypes = mapDefaultSurfaceTypes;
 
   static DateTimeRange weeklyRange(DateTime now) {
     final today = DateUtils.dateOnly(now);
@@ -214,6 +221,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
   @override
   void initState() {
     super.initState();
+    _selectedSurfaceTypes.addAll(MapPichangaDefaults.surfaceTypes);
     _customPichangaRange = MapPichangaDefaults.weeklyRange(DateTime.now());
     _pulseController =
         AnimationController(
@@ -314,7 +322,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
   Widget _buildHeader() {
     final activeFilters =
-        _selectedSurfaceTypes.length +
+        (_mapContent == 'pichangas' ? 1 : 0) +
+        (_selectedSurfaceTypes.length == _surfaceTypeOptions.length ? 0 : 1) +
         _selectedVsFormats.length +
         (_priceMinController.text.isNotEmpty ||
                 _priceMaxController.text.isNotEmpty
@@ -447,7 +456,20 @@ class _MapScreenState extends ConsumerState<MapScreen>
           Positioned(
             top: 12,
             left: 12,
-            child: _buildResultsBadge(fields.length),
+            child: FutureBuilder<List<Map<String, dynamic>>>(
+              future: _pichangasFuture,
+              builder: (context, snapshot) {
+                final countByField = _pichangaCountsByField(
+                  snapshot.data ?? const <Map<String, dynamic>>[],
+                );
+                final resultCount = _mapContent == 'pichangas'
+                    ? fields
+                          .where((field) => (countByField[field.id] ?? 0) > 0)
+                          .length
+                    : fields.length;
+                return _buildResultsBadge(resultCount);
+              },
+            ),
           ),
         Positioned(
           left: 12,
@@ -501,7 +523,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
   }
 
   bool get _hasActiveFilters =>
-      _selectedSurfaceTypes.isNotEmpty ||
+      _mapContent == 'pichangas' ||
+      _selectedSurfaceTypes.length != _surfaceTypeOptions.length ||
       _selectedVsFormats.isNotEmpty ||
       _priceMinController.text.isNotEmpty ||
       _priceMaxController.text.isNotEmpty;
@@ -530,7 +553,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
               ),
               const SizedBox(width: 6),
               Text(
-                '$resultCount ${resultCount == 1 ? 'cancha' : 'canchas'}',
+                'Filtro activo · $resultCount ${resultCount == 1 ? 'cancha' : 'canchas'}',
                 style: TextStyle(
                   fontWeight: FontWeight.w800,
                   fontSize: 13,
@@ -539,14 +562,14 @@ class _MapScreenState extends ConsumerState<MapScreen>
               ),
               IconButton(
                 onPressed: _clearFilters,
-                tooltip: 'Limpiar filtros',
+                tooltip: 'Restablecer filtros',
                 visualDensity: VisualDensity.compact,
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints.tightFor(
                   width: 30,
                   height: 30,
                 ),
-                icon: const Icon(Icons.close, size: 17),
+                icon: const Icon(Icons.restart_alt, size: 17),
               ),
             ],
           ),
@@ -714,30 +737,33 @@ class _MapScreenState extends ConsumerState<MapScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (mapPichangaUrgencyFor(
-                                  item['starts_at']?.toString(),
-                                ) !=
-                                MapPichangaUrgency.none ||
-                            item['is_my_group'] == true) ...[
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (mapPichangaUrgencyFor(
-                                    item['starts_at']?.toString(),
-                                  ) !=
-                                  MapPichangaUrgency.none)
-                                MapPichangaDateBadge(
-                                  rawDate: item['starts_at']?.toString(),
-                                  selected: selected,
-                                ),
-                              if (item['is_my_group'] == true) ...[
-                                const SizedBox(width: 4),
-                                const MapPichangaStatusTag(label: 'Mi grupo'),
-                              ],
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Align(
+                                alignment: Alignment.topLeft,
+                                child:
+                                    mapPichangaUrgencyFor(
+                                          item['starts_at']?.toString(),
+                                        ) !=
+                                        MapPichangaUrgency.none
+                                    ? MapPichangaDateBadge(
+                                        rawDate: item['starts_at']?.toString(),
+                                        selected: selected,
+                                      )
+                                    : MapPichangaPlainDate(
+                                        rawDate: item['starts_at']?.toString(),
+                                      ),
+                              ),
+                            ),
+                            if (item['is_my_group'] == true) ...[
+                              const SizedBox(width: 4),
+                              const MapPichangaStatusTag(label: 'Mi grupo'),
                             ],
-                          ),
-                          const SizedBox(height: 2),
-                        ],
+                          ],
+                        ),
+                        const SizedBox(height: 2),
                         Text(
                           (item['title'] ?? 'Pichanga').toString(),
                           maxLines: 1,
@@ -1150,26 +1176,47 @@ class _MapScreenState extends ConsumerState<MapScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Mostrar',
+                        'Filtrar',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Mostrar en el mapa',
                         style: TextStyle(fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 8),
-                      SegmentedButton<String>(
-                        segments: const [
-                          ButtonSegment(
-                            value: 'both',
-                            icon: Icon(Icons.stadium_outlined),
-                            label: Text('Todas las canchas\ny pichangas'),
+                      _buildChoiceGrid(
+                        columns: 2,
+                        height: 76,
+                        children: [
+                          CompactFilterChoice(
+                            label: 'Todas las canchas\ny pichangas',
+                            selected: draftContent == 'both',
+                            icon: Icons.stadium_outlined,
+                            selectedColor: const Color(0xFF1D5C37),
+                            controlKey: const Key('map-filter-content-both'),
+                            fontSize: 11,
+                            maxLines: 2,
+                            onTap: () =>
+                                setSheetState(() => draftContent = 'both'),
                           ),
-                          ButtonSegment(
-                            value: 'pichangas',
-                            icon: Icon(Icons.sports_soccer),
-                            label: Text('Solo canchas\ncon pichangas'),
+                          CompactFilterChoice(
+                            label: 'Solo canchas\ncon pichangas',
+                            selected: draftContent == 'pichangas',
+                            icon: Icons.sports_soccer_outlined,
+                            selectedColor: const Color(0xFF1D5C37),
+                            controlKey: const Key(
+                              'map-filter-content-pichangas',
+                            ),
+                            fontSize: 11,
+                            maxLines: 2,
+                            onTap: () =>
+                                setSheetState(() => draftContent = 'pichangas'),
                           ),
                         ],
-                        selected: {draftContent},
-                        onSelectionChanged: (value) =>
-                            setSheetState(() => draftContent = value.first),
                       ),
                       const SizedBox(height: 12),
                       const Text(
@@ -1199,54 +1246,40 @@ class _MapScreenState extends ConsumerState<MapScreen>
                           setSheetState(() => draftRange = value);
                         },
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 12),
                       const Text(
-                        'Buscar',
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                        ),
+                        'Tipo de superficie',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      _buildChoiceGrid(
+                        columns: 3,
+                        height: 62,
+                        children: _surfaceTypeOptions
+                            .map(
+                              (type) => CompactFilterChoice(
+                                label: _surfaceTypeLabel(type),
+                                selected: draftSurfaces.contains(type),
+                                icon: _surfaceTypeIcon(type),
+                                controlKey: Key('map-filter-surface-$type'),
+                                fontSize: 10.5,
+                                maxLines: 2,
+                                onTap: () => setSheetState(() {
+                                  final selected = draftSurfaces.contains(type);
+                                  if (selected) {
+                                    draftSurfaces.remove(type);
+                                  } else {
+                                    draftSurfaces.add(type);
+                                  }
+                                }),
+                              ),
+                            )
+                            .toList(),
                       ),
                       const SizedBox(height: 12),
-                      if (draftContent != 'pichangas')
-                        const Text(
-                          'Tipo de superficie',
-                          style: TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                      if (draftContent != 'pichangas')
-                        _buildChoiceGrid(
-                          columns: 3,
-                          height: 62,
-                          children: _surfaceTypeOptions
-                              .map(
-                                (type) => CompactFilterChoice(
-                                  label: _surfaceTypeLabel(type),
-                                  selected: draftSurfaces.contains(type),
-                                  icon: _surfaceTypeIcon(type),
-                                  controlKey: Key('map-filter-surface-$type'),
-                                  fontSize: 10.5,
-                                  maxLines: 2,
-                                  onTap: () => setSheetState(() {
-                                    final selected = draftSurfaces.contains(
-                                      type,
-                                    );
-                                    if (selected) {
-                                      draftSurfaces.remove(type);
-                                    } else {
-                                      draftSurfaces.add(type);
-                                    }
-                                  }),
-                                ),
-                              )
-                              .toList(),
-                        ),
-                      if (draftContent != 'pichangas')
-                        const SizedBox(height: 12),
-                      if (draftContent != 'pichangas')
-                        const Text(
-                          'Formato',
-                          style: TextStyle(fontWeight: FontWeight.w700),
-                        ),
+                      const Text(
+                        'Formato',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
                       _buildChoiceGrid(
                         columns: 5,
                         height: 40,
@@ -1271,11 +1304,13 @@ class _MapScreenState extends ConsumerState<MapScreen>
                             )
                             .toList(),
                       ),
-                      const SizedBox(height: 12),
-                      const Text(
-                        'Precio por hora',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
+                      if (draftContent != 'pichangas')
+                        const SizedBox(height: 12),
+                      if (draftContent != 'pichangas')
+                        const Text(
+                          'Precio por hora',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
                       if (draftContent != 'pichangas')
                         const SizedBox(height: 4),
                       if (draftContent != 'pichangas')
@@ -1361,6 +1396,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                                   draftSurfaces,
                                   draftFormats,
                                   draftPrice,
+                                  includePrice: draftContent != 'pichangas',
                                 );
                               },
                               child: const Text('Aplicar filtros'),
@@ -1392,18 +1428,21 @@ class _MapScreenState extends ConsumerState<MapScreen>
   void _commitFilters(
     Set<String> surfaces,
     Set<String> formats,
-    RangeValues price,
-  ) {
+    RangeValues price, {
+    required bool includePrice,
+  }) {
     _selectedSurfaceTypes
       ..clear()
       ..addAll(surfaces);
     _selectedVsFormats
       ..clear()
       ..addAll(formats);
-    _priceMinController.text = price.start <= 0
+    _priceMinController.text = !includePrice || price.start <= 0
         ? ''
         : _formatPrice(price.start);
-    _priceMaxController.text = price.end >= 200 ? '' : _formatPrice(price.end);
+    _priceMaxController.text = !includePrice || price.end >= 200
+        ? ''
+        : _formatPrice(price.end);
     _applyFilters();
   }
 
@@ -1526,7 +1565,9 @@ class _MapScreenState extends ConsumerState<MapScreen>
     _priceMinController.clear();
     _priceMaxController.clear();
     setState(() {
-      _selectedSurfaceTypes.clear();
+      _selectedSurfaceTypes
+        ..clear()
+        ..addAll(MapPichangaDefaults.surfaceTypes);
       _selectedVsFormats.clear();
       _mapContent = MapPichangaDefaults.content;
       _pichangaRange = MapPichangaDefaults.range;
@@ -2587,6 +2628,31 @@ class MapPichangaStatusTag extends StatelessWidget {
               fontWeight: FontWeight.w800,
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Date treatment for pichangas after tomorrow: it stays informative without
+/// taking the visual priority reserved for the urgent red/orange badges.
+class MapPichangaPlainDate extends StatelessWidget {
+  const MapPichangaPlainDate({required this.rawDate, super.key});
+
+  final String? rawDate;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: SpanishDateFormatter.pichangaDate(rawDate),
+      child: Text(
+        SpanishDateFormatter.pichangaDate(rawDate),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
         ),
       ),
     );
