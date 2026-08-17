@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\FieldSubmission;
 use App\Models\FieldSubmissionPhoto;
 use App\Models\User;
+use App\Services\FieldSubmissionApprovalService;
 use App\Services\ProductEventService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -16,7 +17,10 @@ use Illuminate\Validation\Rule;
 
 class FieldSubmissionController extends Controller
 {
-    public function __construct(private readonly ProductEventService $eventService)
+    public function __construct(
+        private readonly ProductEventService $eventService,
+        private readonly FieldSubmissionApprovalService $approvalService,
+    )
     {
     }
 
@@ -33,7 +37,7 @@ class FieldSubmissionController extends Controller
 
         return response()->json([
             'items' => $items,
-            'summary' => $this->submissionSummary((int) $user->id),
+            'summary' => $this->submissionSummary($user),
         ]);
     }
 
@@ -90,15 +94,18 @@ class FieldSubmissionController extends Controller
             abort_unless(!empty($data['existing_polideportivo_id']) && \App\Models\Polideportivo::query()->whereKey($data['existing_polideportivo_id'])->exists(), 422, 'El polideportivo seleccionado ya no existe.');
         }
 
-        $submission = DB::transaction(function () use ($data, $user, $request) {
+        $isSuperadmin = $this->isSuperadmin($user);
+        $submission = DB::transaction(function () use ($data, $user, $request, $isSuperadmin) {
             // Locking the parent user row serializes submissions for that
             // user, including the otherwise-racy "no pending rows" case.
             if (Schema::hasTable('users')) {
                 User::query()->lockForUpdate()->findOrFail($user->id);
             }
-            $summary = $this->submissionSummary((int) $user->id, true);
-            abort_if($summary['pending_submission'] !== null, 422, 'Ya tienes una solicitud pendiente. Espera su aprobación o rechazo antes de enviar otra.');
-            abort_if(!$summary['can_submit'], 422, 'Ya alcanzaste el máximo de 3 solicitudes de cancha este mes.');
+            if (!$isSuperadmin) {
+                $summary = $this->submissionSummary($user, true);
+                abort_if($summary['pending_submission'] !== null, 422, 'Ya tienes una solicitud pendiente. Espera su aprobación o rechazo antes de enviar otra.');
+                abort_if(!$summary['can_submit'], 422, 'Ya alcanzaste el máximo de 3 solicitudes de cancha este mes.');
+            }
 
             $submission = FieldSubmission::create([
                 'user_id' => $user->id,
@@ -143,6 +150,13 @@ class FieldSubmissionController extends Controller
             return $submission;
         });
 
+        // A superadmin contributes through the same audited pipeline as every
+        // other user, but their verified content is published immediately.
+        if ($isSuperadmin) {
+            $this->approvalService->decide($submission, $user, 'approve', 'Publicación directa de superadmin.');
+            $submission->refresh();
+        }
+
         $this->eventService->track(
             'field_submission_created',
             (int) $user->id,
@@ -163,15 +177,19 @@ class FieldSubmissionController extends Controller
         }
 
         return response()->json([
-            'message' => 'Solicitud de cancha enviada.',
+            'message' => $isSuperadmin
+                ? 'Cancha publicada y aprobada automáticamente.'
+                : 'Solicitud de cancha enviada.',
             'submission' => $submission->load('photos'),
-            'summary' => $this->submissionSummary((int) $user->id),
+            'summary' => $this->submissionSummary($user),
         ], 201);
     }
 
-    /** @return array{monthly_used:int,monthly_limit:int,pending_submission:?array<string,mixed>,can_submit:bool} */
-    private function submissionSummary(int $userId, bool $lock = false): array
+    /** @return array{monthly_used:int,monthly_limit:?int,pending_submission:?array<string,mixed>,can_submit:bool,is_unlimited:bool} */
+    private function submissionSummary(User $user, bool $lock = false): array
     {
+        $isSuperadmin = $this->isSuperadmin($user);
+        $userId = (int) $user->id;
         $start = now()->startOfMonth();
         $end = now()->endOfMonth();
         $base = FieldSubmission::query()->where('user_id', $userId);
@@ -183,7 +201,7 @@ class FieldSubmissionController extends Controller
 
         return [
             'monthly_used' => $monthlyUsed,
-            'monthly_limit' => 3,
+            'monthly_limit' => $isSuperadmin ? null : 3,
             'pending_submission' => $pending ? [
                 'id' => (int) $pending->id,
                 'nombre' => (string) $pending->nombre,
@@ -191,8 +209,16 @@ class FieldSubmissionController extends Controller
                 'created_at' => optional($pending->created_at)->toISOString(),
                 'status' => (string) $pending->status,
             ] : null,
-            'can_submit' => $pending === null && $monthlyUsed < 3,
+            'can_submit' => $isSuperadmin || ($pending === null && $monthlyUsed < 3),
+            'is_unlimited' => $isSuperadmin,
         ];
+    }
+
+    private function isSuperadmin(User $user): bool
+    {
+        return Schema::hasTable('perfil')
+            && Schema::hasTable('user_perfil')
+            && $user->canPerformCriticalAdminActions();
     }
 
     /** @param array<int,\Illuminate\Http\UploadedFile> $photos */

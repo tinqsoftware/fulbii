@@ -53,6 +53,10 @@ Route::prefix('admin')
     Route::get('/field-submissions', [BackofficeController::class, 'fieldSubmissions'])->name('field-submissions.index');
     Route::post('/field-submissions/{submission}/decision', [BackofficeController::class, 'decideFieldSubmission'])->middleware('throttle:admin-web-mutations')->name('field-submissions.decide');
     Route::post('/field-submissions/bulk-decision', [BackofficeController::class, 'bulkDecisionFieldSubmissions'])->middleware('throttle:admin-web-mutations')->name('field-submissions.bulk-decision');
+    Route::get('/fields', [BackofficeController::class, 'fields'])->name('fields.index');
+    Route::post('/fields', [BackofficeController::class, 'storeField'])->middleware('throttle:admin-web-mutations')->name('fields.store');
+    Route::put('/fields/{field}', [BackofficeController::class, 'updateField'])->middleware('throttle:admin-web-mutations')->name('fields.update');
+    Route::put('/courts/{cancha}', [BackofficeController::class, 'updateCourt'])->middleware('throttle:admin-web-mutations')->name('courts.update');
 
     Route::get('/strikes', [BackofficeController::class, 'strikes'])->name('strikes.index');
     Route::post('/strikes', [BackofficeController::class, 'issueStrike'])->middleware('throttle:admin-web-mutations')->name('strikes.issue');

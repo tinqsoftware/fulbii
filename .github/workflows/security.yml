@@ -1,0 +1,43 @@
+name: Security checks
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '17 4 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: dom, mbstring, sqlite3
+          coverage: none
+      - uses: ramsey/composer-install@v3
+      - run: composer audit --locked --no-interaction
+      - run: php artisan test --stop-on-failure
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm audit --omit=dev --audit-level=high
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.38.9'
+          cache: true
+      - working-directory: fulbii_app
+        run: flutter pub get
+      - working-directory: fulbii_app
+        run: flutter analyze

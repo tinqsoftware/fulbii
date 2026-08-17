@@ -174,6 +174,44 @@ class FieldsRepository {
     final form = FormData.fromMap(data);
     return _api.postMultipartMap('/field-submissions', data: form);
   }
+
+  Future<void> updateField({
+    required int fieldId,
+    required String nombre,
+    String? direccion,
+    String? descripcion,
+    String? celular,
+    bool wsp = false,
+    String? precioDesde,
+  }) async {
+    await _api.putMap(
+      '/admin/fields/$fieldId',
+      data: {
+        'nombre': nombre,
+        'direccion': direccion,
+        'descripcion': descripcion,
+        'celular': celular,
+        'wsp': wsp,
+        'precio_desde': precioDesde,
+      },
+    );
+  }
+
+  Future<void> updateCourt({
+    required int courtId,
+    required String nombre,
+    String? equiposvs,
+    String? tipoSuperficie,
+  }) async {
+    await _api.putMap(
+      '/admin/courts/$courtId',
+      data: {
+        'nombre': nombre,
+        'equiposvs': equiposvs,
+        'tipo_superficie': tipoSuperficie,
+      },
+    );
+  }
 }
 
 class LatLngBias {

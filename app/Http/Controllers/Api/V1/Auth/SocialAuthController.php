@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\AppleIdTokenVerifier;
 use App\Services\ProductEventService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -13,7 +14,10 @@ use Illuminate\Validation\Rule;
 
 class SocialAuthController extends Controller
 {
-    public function __construct(private readonly ProductEventService $eventService)
+    public function __construct(
+        private readonly ProductEventService $eventService,
+        private readonly AppleIdTokenVerifier $appleTokenVerifier,
+    )
     {
     }
 
@@ -22,6 +26,7 @@ class SocialAuthController extends Controller
         $data = $request->validate([
             'provider' => ['required', Rule::in(['google', 'apple'])],
             'id_token' => ['nullable', 'string'],
+            'nonce' => ['nullable', 'string', 'max:255'],
             'provider_uid' => ['nullable', 'string', 'max:191'],
             'email' => ['nullable', 'email', 'max:255'],
             'name' => ['nullable', 'string', 'max:255'],
@@ -77,7 +82,9 @@ class SocialAuthController extends Controller
         $user->save();
 
         $deviceName = trim((string) ($data['device_name'] ?? 'mobile-app'));
-        $token = $user->createToken($deviceName)->plainTextToken;
+        $this->enforceTokenLimit($user);
+        $expiresAt = now()->addMinutes((int) config('sanctum.expiration', 43200));
+        $token = $user->createToken($deviceName, ['*'], $expiresAt)->plainTextToken;
 
         $needsOnboarding = empty($user->nick) || (Schema::hasColumn('users', 'sexo') && empty($user->sexo));
 
@@ -102,7 +109,7 @@ class SocialAuthController extends Controller
             'suspended_until' => optional($user->suspended_until)->toISOString(),
             'user' => $user->fresh(),
             'auth_mode' => config('social_auth.trusted_mode') ? 'trusted_mode' : 'verified_mode',
-        ]);
+        ])->header('Cache-Control', 'no-store, private');
     }
 
     public function logout(Request $request)
@@ -116,12 +123,22 @@ class SocialAuthController extends Controller
         return response()->json(['message' => 'Sesión cerrada.']);
     }
 
+    public function logoutAll(Request $request)
+    {
+        $user = $request->user() ?? abort(401);
+        $deleted = $user->tokens()->delete();
+        $this->eventService->track('auth_sessions_revoked', (int) $user->id, null, null, ['count' => $deleted], 'auth');
+
+        return response()->json(['message' => 'Todas las sesiones fueron cerradas.']);
+    }
+
     private function resolveIdentity(array $data): array
     {
         $provider = $data['provider'];
         $trustedMode = (bool) config('social_auth.trusted_mode', false);
 
         if ($trustedMode) {
+            abort_unless(app()->environment(['local', 'testing']), 503, 'El modo de autenticación confiable no está permitido en este entorno.');
             return [
                 'provider_uid' => $data['provider_uid'] ?? null,
                 'email' => $data['email'] ?? null,
@@ -134,7 +151,7 @@ class SocialAuthController extends Controller
             return $this->resolveGoogleIdentity($data['id_token'] ?? null);
         }
 
-        return $this->resolveAppleIdentityUnverified($data['id_token'] ?? null, $data['email'] ?? null);
+        return $this->resolveAppleIdentity($data['id_token'] ?? null, $data['nonce'] ?? null);
     }
 
     private function resolveGoogleIdentity(?string $idToken): array
@@ -162,40 +179,28 @@ class SocialAuthController extends Controller
         ];
     }
 
-    private function resolveAppleIdentityUnverified(?string $idToken, ?string $email): array
+    private function resolveAppleIdentity(?string $idToken, ?string $nonce): array
     {
         abort_if(empty($idToken), 422, 'id_token de Apple es requerido.');
 
-        $parts = explode('.', $idToken);
-        abort_if(count($parts) < 2, 422, 'Token de Apple inválido.');
-
-        $payload = json_decode($this->base64UrlDecode($parts[1]), true);
-        abort_if(!is_array($payload), 422, 'No se pudo decodificar token de Apple.');
-
-        $issuer = (string) ($payload['iss'] ?? '');
-        abort_if($issuer !== 'https://appleid.apple.com', 422, 'Issuer inválido para token de Apple.');
-
-        $configuredClient = (string) config('services.apple.client_id', '');
-        $aud = (string) ($payload['aud'] ?? '');
-        if ($configuredClient !== '' && $aud !== '' && $aud !== $configuredClient) {
-            abort(422, 'El token de Apple no coincide con el client_id configurado.');
-        }
+        $payload = $this->appleTokenVerifier->verify($idToken, $nonce);
 
         return [
             'provider_uid' => $payload['sub'] ?? null,
-            'email' => $payload['email'] ?? $email,
+            'email' => $payload['email'] ?? null,
             'name' => null,
             'avatar_url' => null,
         ];
     }
 
-    private function base64UrlDecode(string $value): string
+    private function enforceTokenLimit(User $user): void
     {
-        $remainder = strlen($value) % 4;
-        if ($remainder) {
-            $value .= str_repeat('=', 4 - $remainder);
+        $maxTokens = max(1, (int) config('sanctum.max_tokens_per_user', 5));
+        $tokenIds = $user->tokens()->latest('id')->pluck('id');
+        if ($tokenIds->count() < $maxTokens) {
+            return;
         }
 
-        return base64_decode(strtr($value, '-_', '+/')) ?: '';
+        $user->tokens()->whereIn('id', $tokenIds->slice($maxTokens - 1)->all())->delete();
     }
 }

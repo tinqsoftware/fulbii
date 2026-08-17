@@ -13,7 +13,7 @@ void main() {
     final now = DateTime(2026, 8, 11, 19, 30);
     final range = MapPichangaDefaults.weeklyRange(now);
 
-    expect(MapPichangaDefaults.content, 'pichangas');
+    expect(MapPichangaDefaults.content, 'both');
     expect(MapPichangaDefaults.range, 'custom');
     expect(range.start, DateTime(2026, 8, 11));
     expect(range.end, DateTime(2026, 8, 17));

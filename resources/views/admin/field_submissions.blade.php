@@ -62,6 +62,7 @@
             <th>Estado</th>
             <th>Aporte</th>
             <th>Solicita</th>
+            <th>Trazabilidad</th>
             <th>Ubicación</th>
             <th>Fotos</th>
             <th style="width:300px;">Acción</th>
@@ -99,6 +100,12 @@
                 @endif
               </td>
               <td>{{ $item->user->nick ?? $item->user->email ?? 'N/A' }}</td>
+              <td>
+                <small class="d-block">Enviada: {{ optional($item->created_at)->format('d/m/Y H:i') }}</small>
+                @if($item->reviewed_at)
+                  <small class="d-block">Resuelta: {{ $item->reviewed_at->format('d/m/Y H:i') }}</small>
+                @endif
+              </td>
               <td>
                 <div>{{ $item->direccion ?: ($item->existingPolideportivo?->direccion ?? 'N/A') }}</div>
                 @if($item->celular)
@@ -144,7 +151,7 @@
               </td>
             </tr>
           @empty
-            <tr><td colspan="8" class="text-center py-4 text-muted">Sin solicitudes.</td></tr>
+            <tr><td colspan="9" class="text-center py-4 text-muted">Sin solicitudes.</td></tr>
           @endforelse
         </tbody>
       </table>

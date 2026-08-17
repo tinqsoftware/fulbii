@@ -299,6 +299,11 @@ class FieldApiController extends Controller
         );
         $payload['open_pichangas'] = $this->openPichangasForField($field);
         $payload = $this->withContributorAttribution($payload, $field);
+        if (Schema::hasTable('perfil')
+            && Schema::hasTable('user_perfil')
+            && $request->user()?->canPerformCriticalAdminActions()) {
+            $payload['admin_audit'] = $this->adminAudit($field, $payload);
+        }
 
         return response()->json(['field' => $payload]);
     }
@@ -349,6 +354,37 @@ class FieldApiController extends Controller
             'id' => (int) $submission->user_id,
             'nick' => (string) ($submission->user?->nick ?: $submission->user?->name ?: 'Jugador'),
             'avatar_url' => $submission->user?->avatar_url,
+        ];
+    }
+
+    /** @param array<string,mixed> $payload @return array{field:?array<string,mixed>,courts:array<int,array<string,mixed>>} */
+    private function adminAudit(Polideportivo $field, array $payload): array
+    {
+        $base = FieldSubmission::query()
+            ->where('status', 'approved')
+            ->with(['user:id,nick,name', 'reviewer:id,nick,name']);
+        $fieldSubmission = (clone $base)
+            ->where('approved_polideportivo_id', $field->id)
+            ->latest('reviewed_at')
+            ->first();
+        $courtSubmissions = (clone $base)
+            ->whereIn('approved_cancha_id', collect($payload['canchas'] ?? [])->pluck('id')->filter()->all())
+            ->get()
+            ->keyBy('approved_cancha_id');
+        $serialize = static fn (?FieldSubmission $submission) => $submission ? [
+            'submission_id' => (int) $submission->id,
+            'submitted_at' => optional($submission->created_at)->toISOString(),
+            'approved_at' => optional($submission->reviewed_at)->toISOString(),
+            'submitted_by' => (string) ($submission->user?->nick ?: $submission->user?->name ?: 'Usuario'),
+            'reviewed_by_user_id' => $submission->reviewed_by_user_id ? (int) $submission->reviewed_by_user_id : null,
+            'reviewed_by' => (string) ($submission->reviewer?->nick ?: $submission->reviewer?->name ?: 'Administrador'),
+        ] : null;
+
+        return [
+            'field' => $serialize($fieldSubmission),
+            'courts' => collect($payload['canchas'] ?? [])->mapWithKeys(
+                fn (array $court) => [(string) $court['id'] => $serialize($courtSubmissions->get((int) $court['id']))]
+            )->all(),
         ];
     }
 

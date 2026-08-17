@@ -49,7 +49,9 @@ class FieldSubmissionApprovalService
                     'x' => $submission->x, 'y' => $submission->y,
                     'celular' => $submission->celular, 'wsp' => $submission->wsp ? '1' : '0',
                     'id_distrito' => $submission->id_distrito, 'descripcion' => $submission->descripcion,
-                    'id_user_create' => $auth->id, 'precio_desde' => $submission->precio_desde,
+                    // The submitter is the owner/contributor of the data;
+                    // the reviewer is still recorded separately on the audit.
+                    'id_user_create' => $submission->user_id, 'precio_desde' => $submission->precio_desde,
                     'precio_desde_num' => is_numeric($submission->precio_desde) ? $submission->precio_desde : null,
                     'url_foto' => $venuePhotos[0] ?? null,
                 ]);

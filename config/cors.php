@@ -19,7 +19,9 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['*'],
+    // Native clients do not need CORS. Restrict browser callers to the public
+    // application domains instead of reflecting every arbitrary origin.
+    'allowed_origins' => array_values(array_filter(array_map('trim', explode(',', (string) env('CORS_ALLOWED_ORIGINS', env('APP_URL', 'http://localhost')))))),
 
     'allowed_origins_patterns' => [],
 

@@ -12,6 +12,7 @@ Body:
 {
   "provider": "google",
   "id_token": "....",
+  "nonce": "valor aleatorio de un solo uso para Apple",
   "provider_uid": "optional-in-trusted-mode",
   "email": "optional-in-trusted-mode",
   "name": "optional",
@@ -40,4 +41,9 @@ Requires `auth:sanctum` bearer token.
 - `SOCIAL_AUTH_TRUSTED_MODE=false`:
   backend validates provider token.
   - Google: validated via tokeninfo endpoint.
-  - Apple: JWT payload checks (issuer/audience) are applied.
+  - Apple: valida firma RS256 contra JWKS de Apple, `kid`, issuer, audience,
+    expiración, emisión y nonce. La app debe enviar el nonce original; no se
+    aceptan tokens Apple de builds antiguos que no lo incluyan.
+
+`SOCIAL_AUTH_TRUSTED_MODE=true` solo se permite en `local` y `testing`; no es
+una opción válida para staging ni producción.

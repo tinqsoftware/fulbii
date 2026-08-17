@@ -4,12 +4,20 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Services\CombinedSkillRatingService;
+use App\Services\MediaSanitizer;
+use App\Services\PublicMediaService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class MeController extends Controller
 {
+    public function __construct(
+        private readonly PublicMediaService $media,
+        private readonly MediaSanitizer $mediaSanitizer,
+    ) {
+    }
+
     public function show(Request $request)
     {
         $user = $request->user() ?? abort(401);
@@ -73,10 +81,12 @@ class MeController extends Controller
 
         if ($request->hasFile('avatar')) {
             $request->validate([
-                'avatar' => ['image', 'max:2048']
+                'avatar' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:2048', 'dimensions:max_width=4096,max_height=4096']
             ]);
-            $path = $request->file('avatar')->store('avatars', 'public');
+            $previousAvatar = $user->avatar_url;
+            $path = $this->mediaSanitizer->reencodeImage($request->file('avatar'), 'avatars', 'avatar');
             $user->avatar_url = $path;
+            $this->media->deleteManaged($previousAvatar, ['avatars']);
         }
 
         foreach ($data as $field => $value) {

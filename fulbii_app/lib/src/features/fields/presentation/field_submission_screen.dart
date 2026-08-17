@@ -118,6 +118,7 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
     final pending = (summary?['pending_submission'] as Map?)
         ?.cast<String, dynamic>();
     final canSubmit = summary?['can_submit'] == true;
+    final isUnlimited = summary?['is_unlimited'] == true;
     if (widget.showMyContributions) {
       return _buildContributionsScreen(summary, canSubmit);
     }
@@ -125,12 +126,12 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
       appBar: AppBar(title: const Text('Agregar cancha o polideportivo')),
       body: _submissionSummaryLoading
           ? const Center(child: CircularProgressIndicator())
-          : pending != null
+          : pending != null && !isUnlimited
           ? _PendingSubmissionState(
               pending: pending,
               summary: summary ?? const {},
             )
-          : summary != null && !canSubmit
+          : summary != null && !canSubmit && !isUnlimited
           ? _MonthlyLimitState(summary: summary)
           : SafeArea(
               bottom: false,
@@ -179,7 +180,9 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
                                 : _next,
                             child: Text(
                               _isReviewStep
-                                  ? 'Enviar solicitud'
+                                  ? isUnlimited
+                                        ? 'Publicar cancha'
+                                        : 'Enviar solicitud'
                                   : _step == 0
                                   ? !_hasMapSelectedPolideportivo
                                         ? 'Continuar creando polideportivo'
@@ -1546,7 +1549,7 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
         );
         if (!signedIn) return;
       }
-      await ref
+      final result = await ref
           .read(fieldsRepositoryProvider)
           .submitField(
             nombre: _hasExistingPolideportivo
@@ -1574,7 +1577,12 @@ class _FieldSubmissionScreenState extends ConsumerState<FieldSubmissionScreen> {
           );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Solicitud enviada a moderación.')),
+          SnackBar(
+            content: Text(
+              (result['message'] ?? 'Solicitud enviada a moderación.')
+                  .toString(),
+            ),
+          ),
         );
         Navigator.pop(context);
       }
@@ -1615,6 +1623,7 @@ class _SubmissionUsageCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final used = int.tryParse((summary['monthly_used'] ?? 0).toString()) ?? 0;
+    final unlimited = summary['is_unlimited'] == true;
     final limit = int.tryParse((summary['monthly_limit'] ?? 3).toString()) ?? 3;
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1628,7 +1637,9 @@ class _SubmissionUsageCard extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              '$used de $limit aportes enviados este mes',
+              unlimited
+                  ? '$used aportes publicados este mes · sin límite de admin'
+                  : '$used de $limit aportes enviados este mes',
               style: const TextStyle(fontWeight: FontWeight.w800),
             ),
           ),

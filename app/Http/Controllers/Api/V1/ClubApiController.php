@@ -11,6 +11,8 @@ use App\Models\ClubUser;
 use App\Models\GroupPichangaParticipant;
 use App\Models\User;
 use App\Services\CombinedSkillRatingService;
+use App\Services\MediaSanitizer;
+use App\Services\PublicMediaService;
 use App\Services\ClubNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -21,7 +23,11 @@ use Illuminate\Validation\Rule;
 
 class ClubApiController extends Controller
 {
-    public function __construct(private readonly ClubNotificationService $notifications)
+    public function __construct(
+        private readonly ClubNotificationService $notifications,
+        private readonly PublicMediaService $media,
+        private readonly MediaSanitizer $mediaSanitizer,
+    )
     {
     }
 
@@ -204,7 +210,7 @@ class ClubApiController extends Controller
         $data = $request->validate([
             'nombre' => ['required', 'string', 'min:3', 'max:150'],
             'descripcion' => ['nullable', 'string'],
-            'logo' => ['nullable', 'image', 'max:2048'],
+            'logo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048', 'dimensions:max_width=4096,max_height=4096'],
             'is_visible' => ['nullable', 'boolean'],
             'link_join_enabled' => ['nullable', 'boolean'],
             'pichanga_create_scope' => ['nullable', Rule::in(['admins', 'members'])],
@@ -238,7 +244,7 @@ class ClubApiController extends Controller
         }
         $payload = $this->filterPayloadByTableColumns('clubs', $payload);
         if ($request->hasFile('logo')) {
-            $payload['logo_url'] = $request->file('logo')->store('clubs', 'public');
+            $payload['logo_url'] = $this->mediaSanitizer->reencodeImage($request->file('logo'), 'clubs', 'logo');
         }
 
         $club = Club::create($payload);
@@ -328,7 +334,7 @@ class ClubApiController extends Controller
         $data = $request->validate([
             'nombre' => ['sometimes', 'string', 'min:3', 'max:150'],
             'descripcion' => ['sometimes', 'nullable', 'string'],
-            'logo' => ['sometimes', 'nullable', 'image', 'max:2048'],
+            'logo' => ['sometimes', 'nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048', 'dimensions:max_width=4096,max_height=4096'],
             'is_visible' => ['sometimes', 'boolean'],
             'link_join_enabled' => ['sometimes', 'boolean'],
             'pichanga_create_scope' => ['sometimes', Rule::in(['admins', 'members'])],
@@ -358,7 +364,9 @@ class ClubApiController extends Controller
         }
 
         if ($request->hasFile('logo')) {
-            $data['logo_url'] = $request->file('logo')->store('clubs', 'public');
+            $previousLogo = $club->logo_url;
+            $data['logo_url'] = $this->mediaSanitizer->reencodeImage($request->file('logo'), 'clubs', 'logo');
+            $this->media->deleteManaged($previousLogo, ['clubs']);
         }
         unset($data['logo']);
 

@@ -46,7 +46,9 @@ return [
     |
     */
 
-    'expiration' => null,
+    'expiration' => (int) env('SANCTUM_EXPIRATION_MINUTES', 43200),
+
+    'max_tokens_per_user' => (int) env('SANCTUM_MAX_TOKENS_PER_USER', 5),
 
     /*
     |--------------------------------------------------------------------------

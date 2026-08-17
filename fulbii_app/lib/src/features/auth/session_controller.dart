@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'dart:math';
+
+import 'package:crypto/crypto.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
@@ -53,17 +57,32 @@ class SessionController extends StateNotifier<SessionState> {
         user: user,
         needsOnboarding: user.needsOnboarding,
       );
-    } catch (_) {
-      await _tokenStore.clear();
-      await _ref
-          .read(widgetWeeklyServiceProvider)
-          .clearForLoggedOut(ignoreErrors: true);
+    } catch (error) {
+      // A temporary network/API failure must not log a player out. The token
+      // is only deleted after the server conclusively rejects it.
+      if (error is ApiError && error.statusCode == 401) {
+        await _tokenStore.clear();
+        await _ref
+            .read(widgetWeeklyServiceProvider)
+            .clearForLoggedOut(ignoreErrors: true);
+        state = state.copyWith(
+          initialized: true,
+          loading: false,
+          clearToken: true,
+          user: null,
+          needsOnboarding: false,
+        );
+        return;
+      }
+
       state = state.copyWith(
         initialized: true,
         loading: false,
-        clearToken: true,
+        token: token,
         user: null,
         needsOnboarding: false,
+        errorMessage:
+            'No se pudo validar la sesión. Intenta nuevamente al recuperar conexión.',
       );
     }
   }
@@ -127,11 +146,13 @@ class SessionController extends StateNotifier<SessionState> {
         throw ApiError('Apple Sign In no está disponible en este dispositivo.');
       }
 
+      final nonce = _appleNonce();
       final credential = await SignInWithApple.getAppleIDCredential(
         scopes: [
           AppleIDAuthorizationScopes.email,
           AppleIDAuthorizationScopes.fullName,
         ],
+        nonce: sha256.convert(utf8.encode(nonce)).toString(),
       );
 
       final idToken = credential.identityToken;
@@ -148,6 +169,7 @@ class SessionController extends StateNotifier<SessionState> {
       final response = await _authRepository.loginSocial(
         provider: 'apple',
         idToken: idToken,
+        nonce: nonce,
         email: credential.email,
         name: fullName.isEmpty ? null : fullName,
         providerUid: credential.userIdentifier,
@@ -162,6 +184,16 @@ class SessionController extends StateNotifier<SessionState> {
             : 'No se pudo iniciar sesión con Apple.',
       );
     }
+  }
+
+  String _appleNonce() {
+    const alphabet =
+        '0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._';
+    final random = Random.secure();
+    return List<String>.generate(
+      32,
+      (_) => alphabet[random.nextInt(alphabet.length)],
+    ).join();
   }
 
   Future<void> completeOnboarding({

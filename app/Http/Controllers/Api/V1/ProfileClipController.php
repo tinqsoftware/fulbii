@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\UserProfileClip;
+use App\Services\MediaSanitizer;
+use App\Services\PublicMediaService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
@@ -12,6 +14,12 @@ use Illuminate\Support\Facades\Storage;
 class ProfileClipController extends Controller
 {
     private const MAX_ACTIVE_CLIPS = 5;
+
+    public function __construct(
+        private readonly PublicMediaService $media,
+        private readonly MediaSanitizer $mediaSanitizer,
+    ) {
+    }
 
     public function indexMine(Request $request)
     {
@@ -78,14 +86,14 @@ class ProfileClipController extends Controller
 
         $data = $request->validate([
             'title' => ['nullable', 'string', 'max:120'],
-            'clip' => ['required', 'file', 'mimetypes:video/mp4', 'max:1331'],
+            'clip' => ['required', 'file', 'mimetypes:video/mp4', 'mimes:mp4', 'max:10240'],
             'source_duration_ms' => ['required', 'integer', 'min:7000', 'max:20000'],
             'duration_ms' => ['required', 'integer', 'in:7000'],
             'width' => ['nullable', 'integer', 'min:64', 'max:2048'],
             'height' => ['nullable', 'integer', 'min:64', 'max:2048'],
             'has_audio' => ['required', 'integer', 'in:0,1'],
         ], [
-            'clip.max' => 'El clip final no puede superar 1.3MB.',
+            'clip.max' => 'El archivo original no puede superar 10MB.',
         ]);
 
         if (!empty($data['width']) && !empty($data['height'])) {
@@ -93,8 +101,8 @@ class ProfileClipController extends Controller
         }
         abort_if((int) $data['has_audio'] !== 1, 422, 'El clip debe mantener audio.');
 
-        $file = $request->file('clip');
-        $path = $file->store("profile_clips/{$user->id}", 'public');
+        $processed = $this->mediaSanitizer->transcodeProfileClip($request->file('clip'), (int) $user->id);
+        $path = $processed['path'];
         $url = Storage::disk('public')->url($path);
 
         $nextOrder = (int) UserProfileClip::query()
@@ -107,11 +115,11 @@ class ProfileClipController extends Controller
             'user_id' => $user->id,
             'title' => trim((string) ($data['title'] ?? '')),
             'mp4_url' => $url,
-            'duration_ms' => (int) $data['duration_ms'],
-            'width' => $data['width'] ?? null,
-            'height' => $data['height'] ?? null,
-            'has_audio' => (bool) $data['has_audio'],
-            'file_size_bytes' => $file->getSize(),
+            'duration_ms' => $processed['duration_ms'],
+            'width' => $processed['width'],
+            'height' => $processed['height'],
+            'has_audio' => true,
+            'file_size_bytes' => $processed['file_size_bytes'],
             'sort_order' => max(1, $nextOrder),
             'status' => 'active',
         ]);
@@ -128,12 +136,10 @@ class ProfileClipController extends Controller
         $this->ensureTableExists();
         abort_unless((int) $clip->user_id === (int) $user->id, 403);
 
-        if ($clip->status !== 'deleted') {
-            $clip->status = 'deleted';
-            $clip->save();
-        }
+        $this->media->deleteManaged($clip->mp4_url, ['profile_clips']);
+        $clip->delete();
 
-        return response()->json(['message' => 'Clip eliminado.']);
+        return response()->json(['message' => 'Clip eliminado permanentemente.']);
     }
 
     public function reorder(Request $request)

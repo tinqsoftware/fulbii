@@ -352,6 +352,91 @@ class FieldApiControllerTest extends TestCase
         ]);
     }
 
+    public function test_superadmin_submission_is_published_immediately_without_the_monthly_limit(): void
+    {
+        Schema::create('perfil', function (Blueprint $table) {
+            $table->increments('id');
+            $table->string('nombre');
+        });
+        Schema::create('user_perfil', function (Blueprint $table) {
+            $table->unsignedInteger('id_user');
+            $table->unsignedInteger('id_perfil');
+        });
+        DB::table('perfil')->insert(['id' => 1, 'nombre' => 'superadmin']);
+        DB::table('user_perfil')->insert(['id_user' => 1, 'id_perfil' => 1]);
+        foreach (range(1, 3) as $index) {
+            DB::table('field_submissions')->insert([
+                'user_id' => 1,
+                'status' => 'rejected',
+                'submission_type' => 'new_polideportivo',
+                'nombre' => "Aporte previo {$index}",
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        $this->postJson('/api/v1/field-submissions', [
+            'nombre' => 'Polideportivo real',
+            'direccion' => 'Av. Real 123',
+            'cancha_nombre' => 'Cancha principal',
+            'cancha_equiposvs' => '7',
+            'cancha_tipo_superficie' => 'sintetico',
+        ])->assertCreated()
+            ->assertJsonPath('message', 'Cancha publicada y aprobada automáticamente.')
+            ->assertJsonPath('submission.status', 'approved')
+            ->assertJsonPath('summary.is_unlimited', true)
+            ->assertJsonPath('summary.can_submit', true);
+
+        $this->assertDatabaseHas('polideportivo', [
+            'nombre' => 'Polideportivo real',
+            'id_user_create' => 1,
+        ]);
+        $this->assertDatabaseHas('cancha', ['nombre' => 'Cancha principal']);
+    }
+
+    public function test_superadmin_can_edit_a_field_and_its_court(): void
+    {
+        Schema::create('perfil', function (Blueprint $table) {
+            $table->increments('id');
+            $table->string('nombre');
+        });
+        Schema::create('user_perfil', function (Blueprint $table) {
+            $table->unsignedInteger('id_user');
+            $table->unsignedInteger('id_perfil');
+        });
+        DB::table('perfil')->insert(['id' => 1, 'nombre' => 'superadmin']);
+        DB::table('user_perfil')->insert(['id_user' => 1, 'id_perfil' => 1]);
+        DB::table('polideportivo')->insert(['id' => 92, 'nombre' => 'Antes']);
+        DB::table('cancha')->insert([
+            'id' => 93,
+            'id_polideportivo' => 92,
+            'nombre' => 'Cancha antes',
+            'equiposvs' => '5',
+        ]);
+
+        $this->putJson('/api/v1/admin/fields/92', [
+            'nombre' => 'Complejo actualizado',
+            'direccion' => 'Av. Cambio 123',
+            'precio_desde' => '85',
+        ])->assertOk()->assertJsonPath('field_id', 92);
+        $this->putJson('/api/v1/admin/courts/93', [
+            'nombre' => 'Cancha renovada',
+            'equiposvs' => '7',
+            'tipo_superficie' => 'sintetico',
+        ])->assertOk()->assertJsonPath('cancha_id', 93);
+
+        $this->assertDatabaseHas('polideportivo', [
+            'id' => 92,
+            'nombre' => 'Complejo actualizado',
+            'precio_desde_num' => 85,
+        ]);
+        $this->assertDatabaseHas('cancha', [
+            'id' => 93,
+            'nombre' => 'Cancha renovada',
+            'formato_vs' => '7v7',
+        ]);
+    }
+
     public function test_existing_submission_requires_a_destination_id(): void
     {
         $this->postJson('/api/v1/field-submissions', [

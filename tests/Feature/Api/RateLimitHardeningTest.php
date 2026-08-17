@@ -36,6 +36,61 @@ class RateLimitHardeningTest extends TestCase
         $blocked->assertJsonPath('status', 429);
     }
 
+    public function test_apple_login_rejects_an_unsigned_token_before_creating_a_session(): void
+    {
+        config()->set('social_auth.trusted_mode', false);
+        config()->set('social_auth.apple_require_nonce', true);
+        $header = rtrim(strtr(base64_encode(json_encode(['alg' => 'none', 'kid' => 'fake'])), '+/', '-_'), '=');
+        $payload = rtrim(strtr(base64_encode(json_encode(['iss' => 'https://appleid.apple.com', 'sub' => 'victim'])), '+/', '-_'), '=');
+
+        $this->postJson('/api/v1/auth/social/login', [
+            'provider' => 'apple',
+            'id_token' => "{$header}.{$payload}.",
+            'nonce' => 'nonce-that-must-not-be-trusted',
+        ])->assertStatus(422);
+    }
+
+    public function test_social_tokens_expire_and_logout_all_revokes_every_session(): void
+    {
+        config()->set('social_auth.trusted_mode', true);
+        config()->set('sanctum.expiration', 60);
+        config()->set('sanctum.max_tokens_per_user', 2);
+
+        $first = $this->postJson('/api/v1/auth/social/login', [
+            'provider' => 'google',
+            'provider_uid' => 'trusted-local-user',
+            'email' => 'trusted@test.com',
+            'device_name' => 'iPhone de prueba',
+        ])->assertOk();
+
+        $this->assertDatabaseCount('personal_access_tokens', 1);
+        $this->assertNotNull(\DB::table('personal_access_tokens')->value('expires_at'));
+
+        $this->withToken($first->json('access_token'))
+            ->postJson('/api/v1/auth/logout-all')
+            ->assertOk();
+
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+    }
+
+    public function test_trusted_mode_is_refused_outside_local_and_testing_environments(): void
+    {
+        config()->set('social_auth.trusted_mode', true);
+        $this->app->instance('env', 'production');
+
+        try {
+            $this->postJson('/api/v1/auth/social/login', [
+                'provider' => 'google',
+                'provider_uid' => 'forged-production-user',
+                'email' => 'forged@example.test',
+            ])->assertStatus(503);
+
+            $this->assertDatabaseCount('users', 0);
+        } finally {
+            $this->app->instance('env', 'testing');
+        }
+    }
+
     public function test_admin_mutation_rate_limit_returns_429_payload(): void
     {
         $super = User::query()->create([
@@ -97,6 +152,18 @@ class RateLimitHardeningTest extends TestCase
             $table->id();
             $table->unsignedBigInteger('id_user');
             $table->unsignedBigInteger('id_perfil');
+            $table->timestamps();
+        });
+
+        Schema::create('personal_access_tokens', function (Blueprint $table) {
+            $table->id();
+            $table->string('tokenable_type');
+            $table->unsignedBigInteger('tokenable_id');
+            $table->string('name');
+            $table->string('token', 64)->unique();
+            $table->text('abilities')->nullable();
+            $table->timestamp('last_used_at')->nullable();
+            $table->timestamp('expires_at')->nullable();
             $table->timestamps();
         });
     }

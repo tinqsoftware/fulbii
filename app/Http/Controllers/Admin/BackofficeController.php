@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\FieldSubmission;
+use App\Models\Cancha;
 use App\Models\Polideportivo;
 use App\Models\Report;
 use App\Models\Strike;
@@ -207,6 +208,81 @@ class BackofficeController extends Controller
                 ->limit(300)
                 ->get(),
         ]);
+    }
+
+    public function fields(Request $request): View
+    {
+        $auth = $request->user() ?? abort(401);
+        $this->adminAccess->ensureSuper($auth);
+
+        return view('admin.fields', [
+            'items' => Polideportivo::query()->with('canchas')->orderByDesc('id')->paginate(30),
+        ]);
+    }
+
+    public function storeField(Request $request): RedirectResponse
+    {
+        $auth = $request->user() ?? abort(401);
+        $this->adminAccess->ensureSuper($auth);
+        $data = $request->validate([
+            'nombre' => ['required', 'string', 'max:250'],
+            'direccion' => ['nullable', 'string', 'max:255'],
+            'x' => ['nullable', 'numeric', 'between:-90,90'],
+            'y' => ['nullable', 'numeric', 'between:-180,180'],
+            'celular' => ['nullable', 'string', 'max:20'],
+            'wsp' => ['nullable', 'boolean'],
+            'descripcion' => ['nullable', 'string', 'max:300'],
+            'precio_desde' => ['nullable', 'string', 'max:10'],
+            'cancha_nombre' => ['required', 'string', 'max:250'],
+            'cancha_equiposvs' => ['required', Rule::in(['5', '6', '7', '8', '9', '11'])],
+            'cancha_tipo_superficie' => ['required', Rule::in(['losa', 'sintetico', 'natural'])],
+        ]);
+        $submission = FieldSubmission::create($data + [
+            'user_id' => $auth->id,
+            'status' => 'pending',
+            'submission_type' => 'new_polideportivo',
+            'source_type' => 'manual_map',
+        ]);
+        $result = app(\App\Services\FieldSubmissionApprovalService::class)
+            ->decide($submission, $auth, 'approve', 'Publicación directa de superadmin desde backoffice.');
+
+        return redirect()->route('admin.fields.index')
+            ->with('ok', ($result['message'] ?? 'Cancha publicada.') . '');
+    }
+
+    public function updateField(Request $request, Polideportivo $field): RedirectResponse
+    {
+        $auth = $request->user() ?? abort(401);
+        $this->adminAccess->ensureSuper($auth);
+        $data = $request->validate([
+            'nombre' => ['required', 'string', 'max:250'],
+            'direccion' => ['nullable', 'string', 'max:255'],
+            'descripcion' => ['nullable', 'string', 'max:300'],
+            'celular' => ['nullable', 'string', 'max:20'],
+            'wsp' => ['nullable', 'boolean'],
+            'precio_desde' => ['nullable', 'string', 'max:10'],
+        ]);
+        if (Schema::hasColumn('polideportivo', 'precio_desde_num')) {
+            $data['precio_desde_num'] = is_numeric($data['precio_desde'] ?? null) ? (float) $data['precio_desde'] : null;
+        }
+        $field->update($data);
+        return back()->with('ok', 'Polideportivo actualizado.');
+    }
+
+    public function updateCourt(Request $request, Cancha $cancha): RedirectResponse
+    {
+        $auth = $request->user() ?? abort(401);
+        $this->adminAccess->ensureSuper($auth);
+        $data = $request->validate([
+            'nombre' => ['required', 'string', 'max:250'],
+            'equiposvs' => ['required', Rule::in(['5', '6', '7', '8', '9', '11'])],
+            'tipo_superficie' => ['required', Rule::in(['losa', 'sintetico', 'natural'])],
+        ]);
+        if (Schema::hasColumn('cancha', 'formato_vs')) {
+            $data['formato_vs'] = $data['equiposvs'] . 'v' . $data['equiposvs'];
+        }
+        $cancha->update($data);
+        return back()->with('ok', 'Cancha actualizada.');
     }
 
     public function decideFieldSubmission(Request $request, FieldSubmission $submission): RedirectResponse

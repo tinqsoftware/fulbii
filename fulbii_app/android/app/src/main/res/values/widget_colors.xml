@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <color name="launch_background">#071A10</color>
     <color name="widget_status_green">#22C55E</color>
     <color name="widget_status_yellow">#FACC15</color>
     <color name="widget_status_neutral">#4E5E54</color>

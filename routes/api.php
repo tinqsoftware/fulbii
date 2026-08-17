@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\V1\ClubNotificationPreferenceController;
 use App\Http\Controllers\Api\V1\FieldSubmissionController;
 use App\Http\Controllers\Api\V1\FieldApiController;
 use App\Http\Controllers\Api\V1\FieldGeometryController;
+use App\Http\Controllers\Api\V1\AdminFieldManagementController;
 use App\Http\Controllers\Api\V1\GeoController;
 use App\Http\Controllers\Api\V1\GroupPichangaController;
 use App\Http\Controllers\Api\V1\MeDeviceController;
@@ -79,6 +80,7 @@ Route::prefix('v1')->group(function () {
 
 Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::post('/auth/logout', [SocialAuthController::class, 'logout']);
+    Route::post('/auth/logout-all', [SocialAuthController::class, 'logoutAll']);
 
     Route::middleware('user.not_suspended')->group(function () {
         Route::get('/me', [MeController::class, 'show']);
@@ -95,7 +97,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
         Route::post('/me/favorite-fields/{polideportivo}', [MeActivityController::class, 'addFavoriteField']);
         Route::delete('/me/favorite-fields/{polideportivo}', [MeActivityController::class, 'removeFavoriteField']);
         Route::get('/me/profile-clips', [ProfileClipController::class, 'indexMine']);
-        Route::post('/me/profile-clips', [ProfileClipController::class, 'store']);
+        Route::post('/me/profile-clips', [ProfileClipController::class, 'store'])->middleware('throttle:profile-media-upload');
         Route::delete('/me/profile-clips/{clip}', [ProfileClipController::class, 'destroy']);
         Route::put('/me/profile-clips/reorder', [ProfileClipController::class, 'reorder']);
         Route::put('/fields/{field}/geometry', [FieldGeometryController::class, 'upsert']);
@@ -208,6 +210,10 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
             ->middleware('throttle:field-submission-create');
 
         Route::prefix('/admin')->group(function () {
+            Route::put('/fields/{field}', [AdminFieldManagementController::class, 'updateField'])
+                ->middleware('throttle:admin-mutations');
+            Route::put('/courts/{cancha}', [AdminFieldManagementController::class, 'updateCourt'])
+                ->middleware('throttle:admin-mutations');
             Route::get('/metrics/growth', [AdminMetricsController::class, 'growth']);
             Route::get('/ops/release-readiness', [AdminMetricsController::class, 'releaseReadiness']);
             Route::get('/reports', [AdminModerationController::class, 'reports']);
@@ -232,9 +238,9 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
             Route::get('/match-sessions/my-active', [WatchMatchSessionController::class, 'myActive']);
             Route::get('/pichangas/{pichanga}/sessions/me', [WatchMatchSessionController::class, 'sessionsByPichangaMe']);
             Route::get('/pichangas/{pichanga}/heatmap/me', [WatchMatchSessionController::class, 'heatmapByPichangaMe']);
-            Route::post('/match-sessions', [WatchMatchSessionController::class, 'store']);
-            Route::post('/match-sessions/{session}/samples/batch', [WatchMatchSessionController::class, 'batchSamples']);
-            Route::post('/match-sessions/{session}/events/batch', [WatchMatchSessionController::class, 'batchEvents']);
+            Route::post('/match-sessions', [WatchMatchSessionController::class, 'store'])->middleware('throttle:watch-session-create');
+            Route::post('/match-sessions/{session}/samples/batch', [WatchMatchSessionController::class, 'batchSamples'])->middleware('throttle:watch-samples');
+            Route::post('/match-sessions/{session}/events/batch', [WatchMatchSessionController::class, 'batchEvents'])->middleware('throttle:watch-events');
             Route::post('/match-sessions/{session}/finish', [WatchMatchSessionController::class, 'finish']);
         });
     });

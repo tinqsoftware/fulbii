@@ -17,6 +17,12 @@ class Kernel extends ConsoleKernel
             ->everyTenMinutes()
             ->withoutOverlapping()
             ->runInBackground();
+
+        $schedule
+            ->command('watch:purge-retained')
+            ->dailyAt('03:20')
+            ->withoutOverlapping()
+            ->runInBackground();
     }
 
     /**

@@ -14,6 +14,7 @@ use App\Models\WatchMatchSession;
 use App\Models\WatchPositionSample;
 use Illuminate\Support\Collection;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 
@@ -389,7 +390,14 @@ class WatchMatchSessionController extends Controller
         if (!empty($data['group_pichanga_id'])) {
             $pichanga = GroupPichanga::query()->find((int) $data['group_pichanga_id']);
             abort_if(!$pichanga, 422, 'group_pichanga_id inválido.');
+            $this->authorizePichangaSession($pichanga, (int) $user->id, (bool) $user->is_superadmin);
+            $this->applyPichangaTopology($data, $pichanga);
+            $this->ensureSessionTimeFitsPichanga($data['start_time'], $pichanga);
+        } elseif ($source === 'simulated') {
+            abort_unless((bool) $user->is_superadmin, 403, 'Las sesiones simuladas son exclusivas de superadmin.');
         }
+
+        $this->validateFieldTopology($data);
 
         $externalSessionId = trim((string) ($data['external_session_id'] ?? ''));
         if ($externalSessionId !== '') {
@@ -431,7 +439,7 @@ class WatchMatchSessionController extends Controller
         abort_unless((int) $session->user_id === (int) $user->id || (bool) $user->is_superadmin, 403);
 
         $data = $request->validate([
-            'samples' => ['required', 'array', 'min:1', 'max:2000'],
+            'samples' => ['required', 'array', 'min:1', 'max:' . max(1, (int) config('watch.max_samples_per_batch', 500))],
             'samples.*.timestamp' => ['required', 'date'],
             'samples.*.lat' => ['required', 'numeric', 'between:-90,90'],
             'samples.*.lng' => ['required', 'numeric', 'between:-180,180'],
@@ -439,6 +447,11 @@ class WatchMatchSessionController extends Controller
             'samples.*.speed' => ['nullable', 'numeric', 'min:0', 'max:30'],
             'samples.*.quality_flag' => ['nullable', Rule::in(['good', 'weak', 'rejected'])],
         ]);
+
+        abort_if(in_array((string) $session->status, ['finished', 'auto_finished'], true), 422, 'La sesión Watch ya finalizó.');
+        $existingSamples = WatchPositionSample::query()->where('session_id', $session->id)->count();
+        abort_if($existingSamples + count($data['samples']) > (int) config('watch.max_samples_per_session', 10000), 422, 'La sesión Watch alcanzó el máximo de muestras permitidas.');
+        $this->ensureWatchTimestamps($data['samples'], $session, 'timestamp');
 
         $rows = [];
         foreach ($data['samples'] as $sample) {
@@ -469,13 +482,16 @@ class WatchMatchSessionController extends Controller
         abort_unless((int) $session->user_id === (int) $user->id || (bool) $user->is_superadmin, 403);
 
         $data = $request->validate([
-            'events' => ['required', 'array', 'min:1', 'max:200'],
+            'events' => ['required', 'array', 'min:1', 'max:100'],
             'events.*.type' => ['required', Rule::in(['goal', 'assist', 'pause', 'resume', 'side_change'])],
             'events.*.timestamp' => ['required', 'date'],
             'events.*.minute' => ['nullable', 'integer', 'min:1', 'max:300'],
             'events.*.clockTime' => ['nullable', 'string', 'max:20'],
             'events.*.metadata' => ['nullable', 'array'],
         ]);
+
+        abort_if(in_array((string) $session->status, ['finished', 'auto_finished'], true), 422, 'La sesión Watch ya finalizó.');
+        $this->ensureWatchTimestamps($data['events'], $session, 'timestamp');
 
         $rows = [];
         foreach ($data['events'] as $event) {
@@ -547,6 +563,79 @@ class WatchMatchSessionController extends Controller
             501,
             'Watch tables are not available.'
         );
+    }
+
+    private function authorizePichangaSession(GroupPichanga $pichanga, int $userId, bool $isSuperadmin): void
+    {
+        if ($isSuperadmin) {
+            return;
+        }
+
+        $isConfirmed = GroupPichangaParticipant::query()
+            ->where('pichanga_id', $pichanga->id)
+            ->where('user_id', $userId)
+            ->where('status', 'confirmed')
+            ->exists();
+        $clubIds = array_filter([(int) $pichanga->club_id, (int) ($pichanga->rival_club_id ?? 0)]);
+        $isAdmin = ClubUser::query()
+            ->whereIn('club_id', $clubIds)
+            ->where('user_id', $userId)
+            ->active()
+            ->where('rol', 'admin')
+            ->exists();
+
+        abort_unless($isConfirmed || $isAdmin, 403, 'Solo asistentes confirmados o administradores pueden registrar una sesión Watch.');
+    }
+
+    /** @param array<string,mixed> $data */
+    private function applyPichangaTopology(array &$data, GroupPichanga $pichanga): void
+    {
+        foreach (['field_id', 'cancha_id'] as $key) {
+            $expected = (int) ($pichanga->{$key} ?? 0);
+            if ($expected <= 0) {
+                continue;
+            }
+
+            abort_if(!empty($data[$key]) && (int) $data[$key] !== $expected, 422, "{$key} no coincide con la pichanga.");
+            $data[$key] = $expected;
+        }
+    }
+
+    /** @param array<string,mixed> $data */
+    private function validateFieldTopology(array $data): void
+    {
+        $cancha = null;
+        if (!empty($data['cancha_id'])) {
+            $cancha = Cancha::query()->find((int) $data['cancha_id']);
+            abort_if(!$cancha, 422, 'cancha_id inválido.');
+            abort_if(!empty($data['field_id']) && (int) $cancha->id_polideportivo !== (int) $data['field_id'], 422, 'La cancha no pertenece al centro deportivo.');
+        }
+
+        if (!empty($data['field_geometry_id'])) {
+            $geometry = FieldGeometry::query()->find((int) $data['field_geometry_id']);
+            abort_if(!$geometry, 422, 'field_geometry_id inválido.');
+            abort_if($cancha && (int) $geometry->cancha_id !== (int) $cancha->id, 422, 'La geometría no pertenece a la cancha.');
+            abort_if(!empty($data['field_id']) && (int) $geometry->field_id !== (int) $data['field_id'], 422, 'La geometría no pertenece al centro deportivo.');
+        }
+    }
+
+    private function ensureSessionTimeFitsPichanga(string $startTime, GroupPichanga $pichanga): void
+    {
+        $start = Carbon::parse($startTime);
+        $matchStart = $pichanga->starts_at->copy();
+        $matchEnd = $matchStart->copy()->addMinutes(max(30, (int) ($pichanga->duration_minutes ?? 120)));
+        abort_unless($start->betweenIncluded($matchStart->subHours(3), $matchEnd->addHours(3)), 422, 'La hora de la sesión Watch no corresponde a la pichanga.');
+    }
+
+    /** @param array<int,array<string,mixed>> $items */
+    private function ensureWatchTimestamps(array $items, WatchMatchSession $session, string $key): void
+    {
+        $minimum = $session->start_time->copy()->subMinutes(5);
+        $maximum = ($session->end_time ?: now())->copy()->addMinutes(5);
+        foreach ($items as $item) {
+            $timestamp = Carbon::parse((string) $item[$key]);
+            abort_unless($timestamp->betweenIncluded($minimum, $maximum), 422, 'Una marca de tiempo Watch está fuera de la ventana de la sesión.');
+        }
     }
 
     /**

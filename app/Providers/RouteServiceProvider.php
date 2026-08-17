@@ -71,6 +71,30 @@ class RouteServiceProvider extends ServiceProvider
                 ->response(fn () => $this->tooManyAttemptsResponse('Límite de operaciones administrativas del panel alcanzado.', $request));
         });
 
+        RateLimiter::for('watch-session-create', function (Request $request) {
+            return Limit::perMinute((int) config('watch.create_per_minute', 6))
+                ->by((string) ($request->user()?->id ?: $request->ip()))
+                ->response(fn () => $this->tooManyAttemptsResponse('Demasiadas sesiones Watch creadas en poco tiempo.', $request));
+        });
+
+        RateLimiter::for('watch-samples', function (Request $request) {
+            return Limit::perMinute((int) config('watch.sample_batches_per_minute', 12))
+                ->by((string) ($request->user()?->id ?: $request->ip()))
+                ->response(fn () => $this->tooManyAttemptsResponse('Demasiados lotes de ubicación Watch en poco tiempo.', $request));
+        });
+
+        RateLimiter::for('watch-events', function (Request $request) {
+            return Limit::perMinute((int) config('watch.event_batches_per_minute', 20))
+                ->by((string) ($request->user()?->id ?: $request->ip()))
+                ->response(fn () => $this->tooManyAttemptsResponse('Demasiados eventos Watch en poco tiempo.', $request));
+        });
+
+        RateLimiter::for('profile-media-upload', function (Request $request) {
+            return Limit::perMinute(4)
+                ->by((string) ($request->user()?->id ?: $request->ip()))
+                ->response(fn () => $this->tooManyAttemptsResponse('Demasiadas cargas de contenido multimedia en poco tiempo.', $request));
+        });
+
         $this->routes(function () {
             Route::middleware('api')
                 ->prefix('api')

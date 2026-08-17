@@ -14,6 +14,7 @@ class AuthRepository {
     String? name,
     String? avatarUrl,
     String? providerUid,
+    String? nonce,
     String deviceName = 'flutter-app',
   }) {
     return _api.postMap(
@@ -25,6 +26,7 @@ class AuthRepository {
         'name': name,
         'avatar_url': avatarUrl,
         'provider_uid': providerUid,
+        'nonce': nonce,
         'device_name': deviceName,
       },
     );

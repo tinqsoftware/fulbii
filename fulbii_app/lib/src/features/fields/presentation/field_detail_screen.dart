@@ -97,6 +97,12 @@ class _FieldDetailBody extends ConsumerWidget {
                 : colorScheme.surface,
             foregroundColor: colorScheme.onSurface,
             actions: [
+              if (session.user?.isSuperadmin == true)
+                IconButton(
+                  tooltip: 'Editar polideportivo',
+                  icon: const Icon(Icons.edit_outlined),
+                  onPressed: () => _showAdminFieldEditor(context, ref, field),
+                ),
               IconButton(
                 tooltip: isFavorite ? 'Quitar favorito' : 'Agregar favorito',
                 onPressed: () async {
@@ -208,6 +214,11 @@ class _FieldDetailBody extends ConsumerWidget {
                     const SizedBox(height: 10),
                     _ContributionBadge(contributor: field.contributor!),
                   ],
+                  if (session.user?.isSuperadmin == true &&
+                      field.adminAudit != null) ...[
+                    const SizedBox(height: 10),
+                    _AdminAuditCard(audit: field.adminAudit!),
+                  ],
                   if (field.canchas.isNotEmpty) ...[
                     const SizedBox(height: 28),
                     const Text(
@@ -221,7 +232,22 @@ class _FieldDetailBody extends ConsumerWidget {
                     ...field.canchas.map(
                       (court) => Padding(
                         padding: const EdgeInsets.only(bottom: 10),
-                        child: _CourtDetailCard(court: court),
+                        child: _CourtDetailCard(
+                          court: court,
+                          audit:
+                              ((field.adminAudit?['courts']
+                                          as Map?)?['${court.id}']
+                                      as Map?)
+                                  ?.cast<String, dynamic>(),
+                          onEdit: session.user?.isSuperadmin == true
+                              ? () => _showAdminCourtEditor(
+                                  context,
+                                  ref,
+                                  field,
+                                  court,
+                                )
+                              : null,
+                        ),
                       ),
                     ),
                   ],
@@ -349,6 +375,218 @@ class _FieldDetailBody extends ConsumerWidget {
         );
       }
     }
+  }
+}
+
+Future<void> _showAdminFieldEditor(
+  BuildContext context,
+  WidgetRef ref,
+  FieldModel field,
+) async {
+  final name = TextEditingController(text: field.nombre);
+  final address = TextEditingController(text: field.direccion ?? '');
+  final description = TextEditingController(text: field.descripcion ?? '');
+  final phone = TextEditingController(text: field.celular ?? '');
+  final price = TextEditingController(text: field.precioDesde ?? '');
+  var whatsapp = field.wsp;
+  var saving = false;
+  await showDialog<void>(
+    context: context,
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (context, setState) => AlertDialog(
+        title: const Text('Editar polideportivo'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: name,
+                decoration: const InputDecoration(labelText: 'Nombre'),
+              ),
+              TextField(
+                controller: address,
+                decoration: const InputDecoration(labelText: 'Dirección'),
+              ),
+              TextField(
+                controller: phone,
+                decoration: const InputDecoration(labelText: 'Celular'),
+              ),
+              TextField(
+                controller: price,
+                decoration: const InputDecoration(labelText: 'Precio desde'),
+              ),
+              TextField(
+                controller: description,
+                minLines: 2,
+                maxLines: 4,
+                decoration: const InputDecoration(labelText: 'Descripción'),
+              ),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Tiene WhatsApp'),
+                value: whatsapp,
+                onChanged: (value) => setState(() => whatsapp = value),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: saving ? null : () => Navigator.pop(dialogContext),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: saving
+                ? null
+                : () async {
+                    if (name.text.trim().isEmpty) return;
+                    setState(() => saving = true);
+                    try {
+                      await ref
+                          .read(fieldsRepositoryProvider)
+                          .updateField(
+                            fieldId: field.id,
+                            nombre: name.text.trim(),
+                            direccion: address.text.trim(),
+                            descripcion: description.text.trim(),
+                            celular: phone.text.trim(),
+                            wsp: whatsapp,
+                            precioDesde: price.text.trim(),
+                          );
+                      ref.invalidate(fieldDetailProvider(field.id));
+                      if (dialogContext.mounted) Navigator.pop(dialogContext);
+                    } catch (error) {
+                      if (dialogContext.mounted) {
+                        ScaffoldMessenger.of(dialogContext).showSnackBar(
+                          SnackBar(
+                            content: Text('No se pudo actualizar: $error'),
+                          ),
+                        );
+                      }
+                    } finally {
+                      if (dialogContext.mounted) setState(() => saving = false);
+                    }
+                  },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    ),
+  );
+  name.dispose();
+  address.dispose();
+  description.dispose();
+  phone.dispose();
+  price.dispose();
+}
+
+Future<void> _showAdminCourtEditor(
+  BuildContext context,
+  WidgetRef ref,
+  FieldModel field,
+  FieldCourtModel court,
+) async {
+  final name = TextEditingController(text: court.nombre ?? '');
+  var capacity = court.vsFormat?.split('v').first ?? '7';
+  var surface = court.surfaceType ?? 'sintetico';
+  await showDialog<void>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Editar cancha'),
+      content: StatefulBuilder(
+        builder: (context, setState) => Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: name,
+              decoration: const InputDecoration(labelText: 'Nombre'),
+            ),
+            DropdownButtonFormField<String>(
+              value: capacity,
+              decoration: const InputDecoration(
+                labelText: 'Jugadores por equipo',
+              ),
+              items: const ['5', '6', '7', '8', '9', '11']
+                  .map(
+                    (value) => DropdownMenuItem(
+                      value: value,
+                      child: Text('$value vs $value'),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) =>
+                  setState(() => capacity = value ?? capacity),
+            ),
+            DropdownButtonFormField<String>(
+              value: surface,
+              decoration: const InputDecoration(labelText: 'Superficie'),
+              items: const [
+                DropdownMenuItem(value: 'losa', child: Text('Losa')),
+                DropdownMenuItem(
+                  value: 'sintetico',
+                  child: Text('Grass sintético'),
+                ),
+                DropdownMenuItem(
+                  value: 'natural',
+                  child: Text('Grass natural'),
+                ),
+              ],
+              onChanged: (value) => setState(() => surface = value ?? surface),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: () async {
+            if (name.text.trim().isEmpty) return;
+            await ref
+                .read(fieldsRepositoryProvider)
+                .updateCourt(
+                  courtId: court.id,
+                  nombre: name.text.trim(),
+                  equiposvs: capacity,
+                  tipoSuperficie: surface,
+                );
+            ref.invalidate(fieldDetailProvider(field.id));
+            if (dialogContext.mounted) Navigator.pop(dialogContext);
+          },
+          child: const Text('Guardar'),
+        ),
+      ],
+    ),
+  );
+  name.dispose();
+}
+
+class _AdminAuditCard extends StatelessWidget {
+  const _AdminAuditCard({required this.audit});
+
+  final Map<String, dynamic> audit;
+
+  @override
+  Widget build(BuildContext context) {
+    final fieldAudit = (audit['field'] as Map?)?.cast<String, dynamic>();
+    if (fieldAudit == null) return const SizedBox.shrink();
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: scheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        'Administración · enviado por @${fieldAudit['submitted_by'] ?? 'usuario'}\n'
+        'Solicitud: ${fieldAudit['submitted_at'] ?? 'sin fecha'}\n'
+        'Aprobación: ${fieldAudit['approved_at'] ?? 'sin fecha'} · por @${fieldAudit['reviewed_by'] ?? 'administrador'}',
+        style: TextStyle(fontSize: 12, color: scheme.onSecondaryContainer),
+      ),
+    );
   }
 }
 
@@ -715,9 +953,11 @@ class _ContributionBadge extends StatelessWidget {
 }
 
 class _CourtDetailCard extends StatelessWidget {
-  const _CourtDetailCard({required this.court});
+  const _CourtDetailCard({required this.court, this.audit, this.onEdit});
 
   final FieldCourtModel court;
+  final Map<String, dynamic>? audit;
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -793,16 +1033,33 @@ class _CourtDetailCard extends StatelessWidget {
                         compact: true,
                       ),
                     ],
+                    if (audit != null) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        'Aporte: ${audit!['submitted_at'] ?? 'sin fecha'}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
-              Padding(
-                padding: EdgeInsets.only(right: 12),
-                child: Icon(
-                  Icons.chevron_right,
-                  color: colorScheme.onSurfaceVariant,
+              if (onEdit != null)
+                IconButton(
+                  tooltip: 'Editar cancha',
+                  onPressed: onEdit,
+                  icon: const Icon(Icons.edit_outlined),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: Icon(
+                    Icons.chevron_right,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
                 ),
-              ),
             ],
           ),
         ),

@@ -50,6 +50,11 @@ class FieldSubmission extends Model
         return $this->belongsTo(User::class, 'user_id');
     }
 
+    public function reviewer()
+    {
+        return $this->belongsTo(User::class, 'reviewed_by_user_id');
+    }
+
     public function photos()
     {
         return $this->hasMany(FieldSubmissionPhoto::class, 'field_submission_id');

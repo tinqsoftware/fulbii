@@ -20,10 +20,27 @@ use App\Models\UserProfileClip;
 class DatabaseSeeder extends Seeder
 {
     /**
-     * Seed the application's database.
+     * Intentionally does not load disposable demo content.
+     *
+     * Use `php artisan db:seed --class=DemoDataSeeder` only in a local or
+     * testing environment and only after explicitly enabling demo seeding.
      */
     public function run(): void
     {
+        // Keep a normal `php artisan db:seed` harmless for a real database.
+    }
+
+    /**
+     * Seed the application's disposable demo data.
+     */
+    public function runDemo(): void
+    {
+        if (!app()->environment(['local', 'testing']) || !config('demo_seeding.enabled', false)) {
+            throw new \RuntimeException(
+                'El seeder de demo está bloqueado. Solo se permite en local/testing con DEMO_SEEDING_ENABLED=true.'
+            );
+        }
+
         // 1. Limpieza de tablas preservando tokens activos de usuario y cuentas principales
         DB::statement('SET FOREIGN_KEY_CHECKS=0;');
 

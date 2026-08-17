@@ -58,7 +58,10 @@ class MapFilterState {
 class MapPichangaDefaults {
   const MapPichangaDefaults._();
 
-  static const String content = 'pichangas';
+  // Discovery starts broad: venues without an upcoming pichanga stay visible.
+  // The weekly range remains ready for the pichanga carousel and can be used
+  // immediately if the user switches to “Solo canchas con pichangas”.
+  static const String content = 'both';
   static const String range = 'custom';
   static const List<String> surfaceTypes = mapDefaultSurfaceTypes;
 

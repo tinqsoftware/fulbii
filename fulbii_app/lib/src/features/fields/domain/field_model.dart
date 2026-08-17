@@ -73,6 +73,7 @@ class FieldModel {
     this.openPichangas = const [],
     this.distanceM,
     this.contributor,
+    this.adminAudit,
   });
 
   final int id;
@@ -96,6 +97,7 @@ class FieldModel {
   final List<Map<String, dynamic>> openPichangas;
   final int? distanceM;
   final Map<String, dynamic>? contributor;
+  final Map<String, dynamic>? adminAudit;
 
   factory FieldModel.fromJson(Map<String, dynamic> json) {
     int parseInt(dynamic value, {int fallback = 0}) {
@@ -165,6 +167,7 @@ class FieldModel {
           ? null
           : parseInt(json['distance_m']),
       contributor: (json['contributor'] as Map?)?.cast<String, dynamic>(),
+      adminAudit: (json['admin_audit'] as Map?)?.cast<String, dynamic>(),
     );
   }
 }
