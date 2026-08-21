@@ -43,10 +43,43 @@ class ProfileRepository {
   }
 
   Future<Map<String, dynamic>> completeOnboarding({
-    required String nick,
-    required String sexo,
+    String? nick,
+    String? sexo,
+    int? alturaCm,
+    String? fecNac,
+    String? themeMode,
+    Map<String, double>? skills,
+    File? avatarFile,
   }) {
-    return _api.postMap('/onboarding', data: {'nick': nick, 'sexo': sexo});
+    final payload = <String, dynamic>{
+      'nick': nick,
+      'sexo': sexo,
+      'altura_cm': alturaCm,
+      'fec_nac': fecNac,
+      'theme_mode': themeMode,
+      ...?skills,
+    }..removeWhere((key, value) => value == null);
+    if (avatarFile == null) {
+      return _api.postMap('/onboarding', data: payload);
+    }
+    return _api.postMultipartMap(
+      '/onboarding',
+      data: FormData.fromMap({
+        ...payload,
+        'avatar': MultipartFile.fromFileSync(
+          avatarFile.path,
+          filename: 'avatar.jpg',
+        ),
+      }),
+    );
+  }
+
+  Future<bool> isNickAvailable(String nick) async {
+    final response = await _api.getMap(
+      '/onboarding/nick-available',
+      queryParameters: {'nick': nick},
+    );
+    return response['valid'] == true && response['available'] == true;
   }
 
   Future<Map<String, dynamic>> updateProfile(Map<String, dynamic> payload) {

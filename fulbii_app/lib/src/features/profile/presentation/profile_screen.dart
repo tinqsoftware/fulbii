@@ -195,39 +195,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ),
         const SizedBox(height: 18),
 
-        // Info Chips
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _buildInfoChip(
-              context,
-              icon: Icons.wc_outlined,
-              label: user.sexo == 'M'
-                  ? 'Hombre'
-                  : (user.sexo == 'F' ? 'Mujer' : 'Sexo: —'),
-            ),
-            _buildInfoChip(
-              context,
-              icon: Icons.height,
-              label: user.alturaCm != null
-                  ? '${user.alturaCm} cm'
-                  : 'Altura: —',
-            ),
-            _buildInfoChip(
-              context,
-              icon: Icons.cake_outlined,
-              label: SpanishDateFormatter.birthDate(user.fecNac),
-            ),
-            if (user.isSuperadmin)
-              _buildInfoChip(
-                context,
-                icon: Icons.admin_panel_settings_outlined,
-                label: 'Superadmin',
-                color: Colors.amber.shade700,
-              ),
-          ],
-        ),
+        _buildProfileStats(context, user),
+        if (user.isSuperadmin) ...[
+          const SizedBox(height: 8),
+          _buildInfoChip(context, icon: Icons.admin_panel_settings_outlined, label: 'Superadmin', color: Colors.amber.shade700),
+        ],
         const SizedBox(height: 10),
         _OwnSportsOverview(sports: sports),
         rankingAsync.when(
@@ -257,32 +229,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const PlayerRankingsScreen(),
-              ),
-            ),
-            icon: const Icon(Icons.leaderboard_outlined),
-            label: const Text('Ver ranking'),
-          ),
-        ),
-        const SizedBox(height: 10),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) =>
-                    const FieldSubmissionScreen(showMyContributions: true),
-              ),
-            ),
-            icon: const Icon(Icons.add_location_alt_outlined),
-            label: const Text('Mis aportes de canchas'),
-          ),
-        ),
+        Row(children: [
+          Expanded(child: OutlinedButton.icon(onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const PlayerRankingsScreen())), icon: const Icon(Icons.leaderboard_outlined, size: 18), label: const Text('Ranking'))),
+          const SizedBox(width: 10),
+          Expanded(child: OutlinedButton.icon(onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const FieldSubmissionScreen(showMyContributions: true))), icon: const Icon(Icons.add_location_alt_outlined, size: 18), label: const Text('Mis aportes'))),
+        ]),
         const SizedBox(height: 24),
         const Divider(height: 1),
         const SizedBox(height: 20),
@@ -670,6 +621,42 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildProfileStats(BuildContext context, dynamic user) {
+    final theme = Theme.of(context);
+    final age = _ageFromBirthDate(user.fecNac);
+    final surface = theme.brightness == Brightness.dark
+        ? theme.colorScheme.surfaceContainerHighest
+        : theme.colorScheme.surfaceContainerLow;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Row(
+        children: [
+          _profileStat(context, Icons.wc_outlined, 'Sexo', user.sexo == 'M' ? 'Hombre' : user.sexo == 'F' ? 'Mujer' : '—'),
+          _profileStat(context, Icons.height, 'Altura', user.alturaCm == null ? '—' : '${user.alturaCm} cm'),
+          _profileStat(context, Icons.cake_outlined, 'Edad', age == null ? '—' : '$age años'),
+        ],
+      ),
+    );
+  }
+
+  Widget _profileStat(BuildContext context, IconData icon, String label, String value) {
+    return Expanded(child: Row(children: [Icon(icon, size: 17, color: Theme.of(context).colorScheme.primary), const SizedBox(width: 5), Flexible(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(label, style: Theme.of(context).textTheme.labelSmall), Text(value, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13))]))]));
+  }
+
+  int? _ageFromBirthDate(String? raw) {
+    final birth = raw == null ? null : DateTime.tryParse(raw);
+    if (birth == null) return null;
+    final now = DateTime.now();
+    var age = now.year - birth.year;
+    if (now.month < birth.month || (now.month == birth.month && now.day < birth.day)) age--;
+    return age < 0 ? null : age;
   }
 
   Widget _buildClipTile(

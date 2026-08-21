@@ -68,6 +68,9 @@ class MiPerfilController extends Controller
     public function autocalificacionUpsert(Request $r)
     {
         $u = $this->me();
+        if ((bool) ($u->initial_self_rating_locked ?? false)) {
+            return back()->withErrors(['rating' => 'La autocalificación inicial ya no se puede editar.']);
+        }
         $validated = $r->validate([
             'id'         => 'nullable|integer',
             'fisico'     => 'required|numeric|min:0|max:5|decimal:0,1',
@@ -102,8 +105,13 @@ class MiPerfilController extends Controller
         $cal->mediocampo = $validated['mediocampo'];
         $cal->defensa    = $validated['defensa'];
         $cal->comentario = $validated['comentario'] ?? null;
+        $cal->es_autocalificacion = true;
         $wasNew = !$cal->exists;
         $cal->save();
+        if (\Illuminate\Schema\Schema::hasColumn('users', 'initial_self_rating_locked')) {
+            $u->initial_self_rating_locked = true;
+            $u->save();
+        }
 
         return back()->with('ok', $wasNew ? 'Autocalificación registrada' : 'Autocalificación actualizada');
     }

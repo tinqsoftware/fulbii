@@ -86,6 +86,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
         Route::get('/me', [MeController::class, 'show']);
         Route::put('/me', [MeController::class, 'update']);
         Route::post('/onboarding', [OnboardingController::class, 'store']);
+        Route::get('/onboarding/nick-available', [OnboardingController::class, 'nickAvailable']);
         Route::get('/me/devices', [MeDeviceController::class, 'index']);
         Route::post('/me/devices/register', [MeDeviceController::class, 'register']);
         Route::post('/me/devices/{device}/deactivate', [MeDeviceController::class, 'deactivate']);

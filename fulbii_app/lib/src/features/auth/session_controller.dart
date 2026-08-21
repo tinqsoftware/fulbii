@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
+import 'dart:io';
+import 'dart:async';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,6 +13,7 @@ import '../../core/models/app_user.dart';
 import '../../core/network/api_error.dart';
 import '../../core/storage/token_store.dart';
 import '../../services/widget/widget_weekly_service.dart';
+import '../../core/theme/theme_controller.dart';
 import '../profile/data/profile_repository.dart';
 import 'data/auth_repository.dart';
 import 'session_state.dart';
@@ -57,6 +60,7 @@ class SessionController extends StateNotifier<SessionState> {
         user: user,
         needsOnboarding: user.needsOnboarding,
       );
+      _applyServerTheme(user);
     } catch (error) {
       // A temporary network/API failure must not log a player out. The token
       // is only deleted after the server conclusively rejects it.
@@ -197,8 +201,13 @@ class SessionController extends StateNotifier<SessionState> {
   }
 
   Future<void> completeOnboarding({
-    required String nick,
-    required String sexo,
+    String? nick,
+    String? sexo,
+    int? alturaCm,
+    String? fecNac,
+    String? themeMode,
+    Map<String, double>? skills,
+    File? avatarFile,
   }) async {
     state = state.copyWith(loading: true, clearError: true);
 
@@ -206,6 +215,11 @@ class SessionController extends StateNotifier<SessionState> {
       final response = await _profileRepository.completeOnboarding(
         nick: nick,
         sexo: sexo,
+        alturaCm: alturaCm,
+        fecNac: fecNac,
+        themeMode: themeMode,
+        skills: skills,
+        avatarFile: avatarFile,
       );
       final userJson =
           (response['user'] as Map?)?.cast<String, dynamic>() ?? {};
@@ -213,7 +227,7 @@ class SessionController extends StateNotifier<SessionState> {
       state = state.copyWith(
         loading: false,
         user: user,
-        needsOnboarding: false,
+        needsOnboarding: response['needs_onboarding'] == true || user.needsOnboarding,
       );
     } catch (e) {
       state = state.copyWith(
@@ -287,6 +301,14 @@ class SessionController extends StateNotifier<SessionState> {
       needsOnboarding:
           response['needs_onboarding'] == true || user.needsOnboarding,
     );
+    _applyServerTheme(user);
+  }
+
+  void _applyServerTheme(AppUser user) {
+    final mode = user.themeMode;
+    if (mode == 'light' || mode == 'dark') {
+      unawaited(_ref.read(themeModeProvider.notifier).setDarkMode(mode == 'dark'));
+    }
   }
 }
 

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\AppleIdTokenVerifier;
 use App\Services\ProductEventService;
+use App\Http\Controllers\Api\V1\OnboardingController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
@@ -86,7 +87,7 @@ class SocialAuthController extends Controller
         $expiresAt = now()->addMinutes((int) config('sanctum.expiration', 43200));
         $token = $user->createToken($deviceName, ['*'], $expiresAt)->plainTextToken;
 
-        $needsOnboarding = empty($user->nick) || (Schema::hasColumn('users', 'sexo') && empty($user->sexo));
+        $needsOnboarding = OnboardingController::needsOnboarding($user);
 
         $this->eventService->track(
             'auth_social_login_success',
@@ -107,7 +108,10 @@ class SocialAuthController extends Controller
             'needs_onboarding' => $needsOnboarding,
             'is_suspended' => $user->isSuspended(),
             'suspended_until' => optional($user->suspended_until)->toISOString(),
-            'user' => $user->fresh(),
+            'user' => array_merge($user->fresh()->toArray(), [
+                'onboarding_completed' => !$needsOnboarding,
+                'onboarding_step' => (int) ($user->onboarding_step ?? 1),
+            ]),
             'auth_mode' => config('social_auth.trusted_mode') ? 'trusted_mode' : 'verified_mode',
         ])->header('Cache-Control', 'no-store, private');
     }

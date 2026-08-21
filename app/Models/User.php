@@ -22,6 +22,10 @@ class User extends Authenticatable
         'avatar_url',
         'auth_provider',
         'provider_uid',
+        'onboarding_completed_at',
+        'onboarding_step',
+        'theme_mode',
+        'initial_self_rating_locked',
         'suspended_until',
         'suspension_reason',
     ];
@@ -36,6 +40,9 @@ class User extends Authenticatable
         'fec_nac' => 'date',
         'altura_cm' => 'integer',
         'suspended_until' => 'datetime',
+        'onboarding_completed_at' => 'datetime',
+        'onboarding_step' => 'integer',
+        'initial_self_rating_locked' => 'boolean',
     ];
 
     /** ---------------------------

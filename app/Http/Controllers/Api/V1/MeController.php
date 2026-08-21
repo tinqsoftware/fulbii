@@ -55,6 +55,7 @@ class MeController extends Controller
                 'primary_role' => $summary['primary_role'],
                 'primary_position' => $summary['primary_position'],
                 'pichangas_played' => $pichangasPlayed,
+                'self_rating_locked' => (bool) ($user->initial_self_rating_locked ?? false),
                 'skills' => [
                     'fisico' => $summary['fisico'],
                     'arquero' => $summary['arquero'],
@@ -63,6 +64,8 @@ class MeController extends Controller
                     'delantero' => $summary['delantero'],
                 ],
             ],
+            'onboarding_completed' => !\App\Http\Controllers\Api\V1\OnboardingController::needsOnboarding($user),
+            'onboarding_step' => (int) ($user->onboarding_step ?? 1),
         ]);
     }
 
@@ -77,6 +80,7 @@ class MeController extends Controller
             'fec_nac' => ['sometimes', 'nullable', 'date'],
             'altura_cm' => ['sometimes', 'nullable', 'integer', 'min:90', 'max:260'],
             'sexo' => ['sometimes', 'nullable', 'in:M,F'],
+            'theme_mode' => ['sometimes', 'nullable', 'in:light,dark'],
         ]);
 
         if ($request->hasFile('avatar')) {

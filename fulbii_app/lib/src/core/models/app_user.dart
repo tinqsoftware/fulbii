@@ -11,6 +11,9 @@ class AppUser {
     this.sportsProfile = const {},
     this.isSuperadmin = false,
     this.isSuspended = false,
+    this.onboardingStep = 1,
+    this.themeMode,
+    this.onboardingCompleted = false,
   });
 
   final int id;
@@ -24,9 +27,15 @@ class AppUser {
   final Map<String, dynamic> sportsProfile;
   final bool isSuperadmin;
   final bool isSuspended;
+  final int onboardingStep;
+  final String? themeMode;
+  final bool onboardingCompleted;
 
-  bool get needsOnboarding =>
-      (nick == null || nick!.isEmpty) || (sexo == null || sexo!.isEmpty);
+  bool get needsOnboarding => !onboardingCompleted && (
+        nick == null || nick!.isEmpty || sexo == null || sexo!.isEmpty ||
+        alturaCm == null || fecNac == null || themeMode == null ||
+        sportsProfile['self_rating_locked'] != true
+      );
 
   factory AppUser.fromJson(Map<String, dynamic> json) {
     int? parseInt(dynamic value) {
@@ -48,6 +57,9 @@ class AppUser {
           (json['sports_profile'] as Map?)?.cast<String, dynamic>() ?? const {},
       isSuperadmin: json['is_superadmin'] == true,
       isSuspended: json['is_suspended'] == true,
+      onboardingStep: parseInt(json['onboarding_step']) ?? 1,
+      themeMode: json['theme_mode']?.toString(),
+      onboardingCompleted: json['onboarding_completed'] == true || json['onboarding_completed_at'] != null,
     );
   }
 }
