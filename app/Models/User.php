@@ -149,6 +149,21 @@ class User extends Authenticatable
         return $this->hasMany(ClubChallenge::class, 'created_by_user_id');
     }
 
+    public function createdChampionships()
+    {
+        return $this->hasMany(Championship::class, 'created_by_user_id');
+    }
+
+    public function championshipMemberships()
+    {
+        return $this->hasMany(ChampionshipTeamMember::class, 'user_id');
+    }
+
+    public function championshipAdministrations()
+    {
+        return $this->hasMany(ChampionshipAdmin::class, 'user_id');
+    }
+
     public function challengeMessages()
     {
         return $this->hasMany(ClubChallengeMessage::class, 'sender_user_id');

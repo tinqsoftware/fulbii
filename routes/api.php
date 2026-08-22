@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\V1\AdminMetricsController;
 use App\Http\Controllers\Api\V1\AdminModerationController;
 use App\Http\Controllers\Api\V1\ClubApiController;
 use App\Http\Controllers\Api\V1\ClubChallengeController;
+use App\Http\Controllers\Api\V1\ChampionshipController;
 use App\Http\Controllers\Api\V1\ClubInvitationApiController;
 use App\Http\Controllers\Api\V1\ClubGroupChatController;
 use App\Http\Controllers\Api\V1\ClubJoinRequestController;
@@ -75,6 +76,21 @@ Route::prefix('v1')->group(function () {
         ->middleware('auth.optional')
         ->whereNumber('pichanga');
     Route::get('/pichangas/map', [GroupPichangaController::class, 'map'])
+        ->middleware('auth.optional');
+
+    // Public championship discovery and read-only views. Private/link
+    // championships are filtered by the controller using the optional user.
+    Route::get('/championships', [ChampionshipController::class, 'index'])
+        ->middleware('auth.optional');
+    Route::get('/championships/{championship}', [ChampionshipController::class, 'show'])
+        ->middleware('auth.optional');
+    Route::get('/championships/{championship}/standings', [ChampionshipController::class, 'standings'])
+        ->middleware('auth.optional');
+    Route::get('/championships/{championship}/fixture', [ChampionshipController::class, 'fixture'])
+        ->middleware('auth.optional');
+    Route::get('/championships/{championship}/player-stats', [ChampionshipController::class, 'playerStats'])
+        ->middleware('auth.optional');
+    Route::get('/championship-matches/{match}', [ChampionshipController::class, 'match'])
         ->middleware('auth.optional');
 });
 
@@ -157,6 +173,27 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
         Route::put('/clubs/{club}/notification-categories/{category}', [ClubNotificationPreferenceController::class, 'updateCategory'])->middleware('club.active:club');
 
         Route::post('/clubs/{club}/pichangas', [GroupPichangaController::class, 'store'])->middleware('club.active:club');
+
+        // Championship creation is restricted to superadmins. Managers and
+        // captains receive scoped management access after the draft exists.
+        Route::post('/championships', [ChampionshipController::class, 'store']);
+        Route::post('/championships/{championship}/admins', [ChampionshipController::class, 'storeAdmin']);
+        Route::delete('/championships/{championship}/admins/{user}', [ChampionshipController::class, 'removeAdmin']);
+        Route::post('/championships/{championship}/teams', [ChampionshipController::class, 'storeTeam']);
+        Route::post('/championships/{championship}/fixture/generate', [ChampionshipController::class, 'generateFixture']);
+        Route::post('/championship-teams/{team}/members/invite', [ChampionshipController::class, 'inviteTeamMember']);
+        Route::post('/championship-teams/{team}/captain', [ChampionshipController::class, 'setTeamCaptain']);
+        Route::get('/championship-teams/{team}/members', [ChampionshipController::class, 'teamMembers']);
+        Route::get('/championship-teams/{team}/invitations', [ChampionshipController::class, 'teamInvitations']);
+        Route::delete('/championship-teams/{team}/members/{user}', [ChampionshipController::class, 'removeTeamMember']);
+        Route::post('/championship-team-invitations/{invitation}/respond', [ChampionshipController::class, 'respondTeamInvitation']);
+        Route::get('/me/championship-invitations', [ChampionshipController::class, 'myTeamInvitations']);
+        Route::get('/championship-team-invitations/by-token/{token}', [ChampionshipController::class, 'invitationByToken']);
+        Route::post('/championship-team-invitations/{invitation}/revoke', [ChampionshipController::class, 'revokeTeamInvitation']);
+        Route::post('/championship-matchdays/{matchday}/schedule', [ChampionshipController::class, 'scheduleMatchday']);
+        Route::post('/championship-matches/{match}/schedule', [ChampionshipController::class, 'scheduleMatch']);
+        Route::post('/championship-matches/{match}/result', [ChampionshipController::class, 'recordResult']);
+        Route::post('/championship-matches/{match}/squad', [ChampionshipController::class, 'updateSquad']);
 
         Route::get('/pichangas/available', [GroupPichangaController::class, 'available']);
         Route::get('/pichangas/my-board', [GroupPichangaController::class, 'myBoard']);

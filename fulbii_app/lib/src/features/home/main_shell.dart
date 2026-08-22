@@ -11,6 +11,8 @@ import '../challenges/presentation/challenge_detail_screen.dart';
 import '../clubs/presentation/clubs_screen.dart';
 import '../clubs/presentation/club_detail_screen.dart';
 import '../clubs/presentation/club_group_chat_screen.dart';
+import '../championships/presentation/championships_screen.dart';
+import '../championships/presentation/championship_invitations_screen.dart';
 import '../notifications/presentation/inbox_screen.dart'
     show InboxScreen, inboxProvider, unreadNotificationsCountProvider;
 import '../pichangas/presentation/pichanga_detail_screen.dart';
@@ -176,10 +178,40 @@ class _MainShellState extends ConsumerState<MainShell>
       _openPichanga(pichangaId);
       return;
     }
+    final championshipId = int.tryParse(
+      (data['championship_id'] ?? '').toString(),
+    );
+    final targetType = (data['target_type'] ?? '').toString();
+    if (targetType == 'championship_team_invitation') {
+      Navigator.of(context)
+          .push(
+            MaterialPageRoute<void>(
+              builder: (_) => const ChampionshipInvitationsScreen(),
+            ),
+          )
+          .then((_) {
+            ref.invalidate(inboxProvider);
+            ref.invalidate(unreadNotificationsCountProvider);
+          });
+      return;
+    }
+    if (championshipId != null && championshipId > 0) {
+      Navigator.of(context)
+          .push(
+            MaterialPageRoute<void>(
+              builder: (_) =>
+                  ChampionshipDetailScreen(championshipId: championshipId),
+            ),
+          )
+          .then((_) {
+            ref.invalidate(inboxProvider);
+            ref.invalidate(unreadNotificationsCountProvider);
+          });
+      return;
+    }
     if (!mounted) return;
     final clubId = int.tryParse((data['club_id'] ?? '').toString()) ?? 0;
     final targetId = int.tryParse((data['target_id'] ?? '').toString()) ?? 0;
-    final targetType = (data['target_type'] ?? '').toString();
     final fieldId = int.tryParse((data['field_id'] ?? '').toString()) ?? 0;
     if (targetType == 'field' && (fieldId > 0 || targetId > 0)) {
       Navigator.of(context).push(

@@ -21,6 +21,8 @@ class GroupPichanga extends Model
         'auto_reminder_enabled' => 'boolean',
         'invited_link_enabled' => 'boolean',
         'notify_degree' => 'integer',
+        'championship_id' => 'integer',
+        'championship_match_id' => 'integer',
         'field_id' => 'integer',
         'cancha_id' => 'integer',
         'capacity' => 'integer',
@@ -87,5 +89,15 @@ class GroupPichanga extends Model
     public function challenge()
     {
         return $this->belongsTo(ClubChallenge::class, 'challenge_id');
+    }
+
+    public function championship()
+    {
+        return $this->belongsTo(Championship::class, 'championship_id');
+    }
+
+    public function championshipMatch()
+    {
+        return $this->belongsTo(ChampionshipMatch::class, 'championship_match_id');
     }
 }

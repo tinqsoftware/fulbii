@@ -10,6 +10,7 @@
       <a href="{{ route('admin.strikes.index') }}" class="btn btn-sm {{ request()->routeIs('admin.strikes.*') ? 'btn-primary' : 'btn-outline-primary' }}">Strikes</a>
       <a href="{{ route('admin.metrics.growth') }}" class="btn btn-sm {{ request()->routeIs('admin.metrics.*') ? 'btn-primary' : 'btn-outline-primary' }}">Métricas</a>
       <a href="{{ route('admin.ops.readiness') }}" class="btn btn-sm {{ request()->routeIs('admin.ops.*') ? 'btn-primary' : 'btn-outline-primary' }}">Ops Readiness</a>
+      <a href="{{ route('admin.championships.index') }}" class="btn btn-sm {{ request()->routeIs('admin.championships.*') ? 'btn-primary' : 'btn-outline-primary' }}">Campeonatos</a>
     </div>
   </div>
 </div>

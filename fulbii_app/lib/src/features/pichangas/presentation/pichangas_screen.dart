@@ -7,6 +7,7 @@ import '../data/pichangas_repository.dart';
 import 'pichanga_detail_screen.dart';
 import '../../home/main_shell.dart';
 import '../../fields/presentation/map_screen.dart';
+import '../../championships/presentation/championships_screen.dart';
 
 final pichangasBoardProvider = FutureProvider.autoDispose<Map<String, dynamic>>(
   (ref) => ref.watch(pichangasRepositoryProvider).myBoard(days: 7),
@@ -89,9 +90,24 @@ class _PichangasScreenState extends ConsumerState<PichangasScreen>
         final confirmed = _asItems(board['confirmed_items']);
         final pending = _asItems(board['pending_items']);
         final terminated = _asItems(board['terminated_items']);
-        return Column(
-          children: [
-            SizedBox(
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const ChampionshipsScreen(),
+                ),
+              ),
+              icon: const Icon(Icons.emoji_events_outlined, size: 18),
+              label: const Text('Campeonatos'),
+            ),
+          ),
+        ),
+        SizedBox(
               height: 58,
               child: Row(
                 children: [
@@ -648,7 +664,7 @@ class _PichangasCalendar extends StatelessWidget {
               itemCount: firstWeekday + daysInMonth,
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 7,
-                childAspectRatio: 1.2,
+                mainAxisExtent: 40,
               ),
               itemBuilder: (context, index) {
                 if (index < firstWeekday) return const SizedBox.shrink();

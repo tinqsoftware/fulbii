@@ -5,6 +5,8 @@ import '../../../core/network/api_error.dart';
 import '../../challenges/presentation/challenge_detail_screen.dart';
 import '../../clubs/presentation/club_detail_screen.dart';
 import '../../clubs/presentation/club_group_chat_screen.dart';
+import '../../championships/presentation/championships_screen.dart';
+import '../../championships/presentation/championship_invitations_screen.dart';
 import '../../pichangas/presentation/pichanga_detail_screen.dart';
 import '../../profile/presentation/public_player_profile_screen.dart';
 import '../data/notifications_repository.dart';
@@ -223,6 +225,10 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
     final pichanga = int.tryParse(
       (data['pichanga_id'] ?? item['group_pichanga_id'] ?? '').toString(),
     );
+    final championship = int.tryParse(
+      (data['championship_id'] ?? '').toString(),
+    );
+    final targetType = (data['target_type'] ?? '').toString();
     if (!mounted) return;
     if (challenge != null) {
       await Navigator.of(context).push(
@@ -236,8 +242,20 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
           builder: (_) => PichangaDetailScreen(pichangaId: pichanga),
         ),
       );
+    } else if (targetType == 'championship_team_invitation') {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => const ChampionshipInvitationsScreen(),
+        ),
+      );
+    } else if (championship != null && championship > 0) {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) =>
+              ChampionshipDetailScreen(championshipId: championship),
+        ),
+      );
     } else {
-      final targetType = (data['target_type'] ?? '').toString();
       final targetId = int.tryParse((data['target_id'] ?? '').toString()) ?? 0;
       final clubId =
           int.tryParse((data['club_id'] ?? item['club_id'] ?? '').toString()) ??

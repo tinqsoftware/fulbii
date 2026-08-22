@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Admin\BackofficeController;
+use App\Http\Controllers\Admin\ChampionshipController;
 use App\Http\Controllers\WellKnownController;
 use App\Http\Controllers\PublicLandingController;
 
@@ -66,4 +67,26 @@ Route::prefix('admin')
 
     Route::get('/metrics/growth', [BackofficeController::class, 'metricsGrowth'])->name('metrics.growth');
     Route::get('/ops/readiness', [BackofficeController::class, 'opsReadiness'])->name('ops.readiness');
+
+  });
+
+// Championship operations are scoped independently from the generic
+// backoffice. Superadmins can create and discover all championships; delegated
+// managers can operate only the championship permissions they were granted.
+Route::prefix('admin')
+  ->name('admin.')
+  ->middleware(['auth'])
+  ->group(function () {
+    Route::get('/championships', [ChampionshipController::class, 'index'])->name('championships.index');
+    Route::get('/championships/create', [ChampionshipController::class, 'create'])->name('championships.create');
+    Route::post('/championships', [ChampionshipController::class, 'store'])->middleware('throttle:admin-web-mutations')->name('championships.store');
+    Route::get('/championships/{championship}', [ChampionshipController::class, 'show'])->name('championships.show');
+    Route::post('/championships/{championship}/fixture/generate', [ChampionshipController::class, 'generateFixture'])->middleware('throttle:admin-web-mutations')->name('championships.fixture.generate');
+    Route::post('/championships/{championship}/publish', [ChampionshipController::class, 'publish'])->middleware('throttle:admin-web-mutations')->name('championships.publish');
+    Route::post('/championships/{championship}/admins', [ChampionshipController::class, 'storeAdmin'])->middleware('throttle:admin-web-mutations')->name('championships.admins.store');
+    Route::post('/championships/{championship}/teams', [ChampionshipController::class, 'storeTeam'])->middleware('throttle:admin-web-mutations')->name('championships.teams.store');
+    Route::post('/championship-teams/{team}/members/invite', [ChampionshipController::class, 'inviteTeamMember'])->middleware('throttle:admin-web-mutations')->name('championships.teams.members.invite');
+    Route::post('/championship-matchdays/{matchday}/schedule', [ChampionshipController::class, 'scheduleMatchday'])->middleware('throttle:admin-web-mutations')->name('championships.matchdays.schedule');
+    Route::post('/championship-matches/{match}/schedule', [ChampionshipController::class, 'scheduleMatch'])->middleware('throttle:admin-web-mutations')->name('championships.matches.schedule');
+    Route::post('/championship-matches/{match}/result', [ChampionshipController::class, 'recordResult'])->middleware('throttle:admin-web-mutations')->name('championships.matches.result');
   });
