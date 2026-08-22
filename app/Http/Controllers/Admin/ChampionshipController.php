@@ -185,9 +185,24 @@ class ChampionshipController extends Controller
             'admins.user:id,name,nick',
             'teams.captain:id,name,nick',
             'teams.members.user:id,name,nick,avatar_url',
+            'teams.homeMatches:id,home_team_id,status',
+            'teams.awayMatches:id,away_team_id,status',
             'matchdays.matches.homeTeam',
             'matchdays.matches.awayTeam',
         ])->loadCount('teams');
+        $captainChangeStatuses = ['draft', 'registration', 'published'];
+        $startedMatchStatuses = ['live', 'pending_result', 'finished'];
+        $championship->teams->each(function ($team) use ($championship, $captainChangeStatuses, $startedMatchStatuses): void {
+            $hasStartedMatch = $team->homeMatches->contains(
+                fn ($match): bool => in_array($match->status, $startedMatchStatuses, true)
+            ) || $team->awayMatches->contains(
+                fn ($match): bool => in_array($match->status, $startedMatchStatuses, true)
+            );
+            $team->setAttribute(
+                'captain_change_allowed',
+                in_array($championship->status, $captainChangeStatuses, true) && !$hasStartedMatch
+            );
+        });
         $venues = Polideportivo::query()
             ->with(['canchas:id,id_polideportivo,nombre'])
             ->select(['id', 'nombre', 'direccion'])
@@ -557,7 +572,11 @@ class ChampionshipController extends Controller
     {
         $championship = $team->championship()->firstOrFail();
         $this->ensureChampionshipPermission($request, $championship, 'manage_teams');
-        abort_if(!in_array($championship->status, ['draft', 'registration'], true), 422, 'El capitán solo puede cambiarse antes de publicar.');
+        abort_if(
+            !in_array($championship->status, ['draft', 'registration', 'published'], true),
+            422,
+            'El capitán solo puede cambiarse mientras el campeonato esté activo.'
+        );
         abort_if(
             $team->homeMatches()->whereIn('status', ['live', 'pending_result', 'finished'])->exists()
             || $team->awayMatches()->whereIn('status', ['live', 'pending_result', 'finished'])->exists(),
