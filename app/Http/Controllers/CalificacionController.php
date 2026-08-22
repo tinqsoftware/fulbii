@@ -45,12 +45,12 @@ class CalificacionController extends Controller
             return response('Ya calificaste esta semana a este pichanguero.', 422);
         }
 
-        // regla adicional: autocalificación solo una vez (podrá editarla nuevamente)
+        // Regla adicional: la autocalificación se identifica por la igualdad de
+        // los IDs y solo puede registrarse una vez por usuario.
         $esSelf = ($u->id == $data['user_calificado_id']);
         if ($esSelf) {
             $selfExists = Calificacion::where('user_calificador_id', $u->id)
-                ->where('user_calificado_id', $u->id)
-                ->where('es_autocalificacion', true)
+                ->whereColumn('user_calificador_id', 'user_calificado_id')
                 ->exists();
             if ($selfExists) {
                 return response('Ya registraste tu autocalificación.', 422);
@@ -123,8 +123,7 @@ class CalificacionController extends Controller
         if ($u->id === $user->id) {
             $selfExists = Calificacion::where('club_id', $club->id)
                 ->where('user_calificador_id', $u->id)
-                ->where('user_calificado_id', $u->id)
-                ->where('es_autocalificacion', true)
+                ->whereColumn('user_calificador_id', 'user_calificado_id')
                 ->exists();
             if ($selfExists) {
                 return response()->json(['allow' => false, 'reason' => 'self-exists']);

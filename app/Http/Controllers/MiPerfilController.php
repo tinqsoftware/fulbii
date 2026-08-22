@@ -105,7 +105,6 @@ class MiPerfilController extends Controller
         $cal->mediocampo = $validated['mediocampo'];
         $cal->defensa    = $validated['defensa'];
         $cal->comentario = $validated['comentario'] ?? null;
-        $cal->es_autocalificacion = true;
         $wasNew = !$cal->exists;
         $cal->save();
         if (\Illuminate\Schema\Schema::hasColumn('users', 'initial_self_rating_locked')) {

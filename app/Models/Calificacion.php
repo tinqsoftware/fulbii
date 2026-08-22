@@ -7,7 +7,9 @@ use Illuminate\Database\Eloquent\Model;
 class Calificacion extends Model
 {
     protected $table = 'calificaciones';
-    protected $guarded = ['id'];
+    // es_autocalificacion puede ser una columna generada por MySQL. Nunca se
+    // debe incluir en INSERT/UPDATE; se deriva de los dos IDs del registro.
+    protected $guarded = ['id', 'es_autocalificacion'];
 
     protected $casts = [
         'es_autocalificacion' => 'boolean',

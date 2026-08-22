@@ -75,7 +75,6 @@ class OnboardingController extends Controller
                     'club_id' => null,
                 ]);
                 $rating->fill(array_intersect_key($data, array_flip($skills)));
-                $rating->es_autocalificacion = true;
                 $rating->save();
                 if (Schema::hasColumn('users', 'initial_self_rating_locked')) {
                     $user->initial_self_rating_locked = true;
