@@ -36,6 +36,12 @@ class Championship extends Model
         return $this->belongsTo(Club::class, 'club_id');
     }
 
+    public function clubs()
+    {
+        return $this->belongsToMany(Club::class, 'championship_clubs', 'championship_id', 'club_id')
+            ->withTimestamps();
+    }
+
     public function admins()
     {
         return $this->hasMany(ChampionshipAdmin::class, 'championship_id');

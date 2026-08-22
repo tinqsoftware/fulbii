@@ -122,6 +122,7 @@ class ClubNotificationService
             'club_id' => $club->id,
             'group_pichanga_id' => $payload['group_pichanga_id'] ?? null,
             'type' => (string) ($payload['type'] ?? 'club_update'),
+            'dedupe_key' => $payload['dedupe_key'] ?? null,
             'title' => (string) ($payload['title'] ?? $club->nombre),
             'body' => (string) ($payload['body'] ?? ''),
             'data_json' => $data,

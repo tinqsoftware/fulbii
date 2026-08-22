@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Jobs\SendPushNotificationJob;
 use App\Models\PushNotification;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Schema;
 
 class PushNotificationService
@@ -16,6 +17,7 @@ class PushNotificationService
         $clubId = $payload['club_id'] ?? null;
         $pichangaId = $payload['group_pichanga_id'] ?? null;
         $data = (array) ($payload['data_json'] ?? []);
+        $dedupeKey = isset($payload['dedupe_key']) ? trim((string) $payload['dedupe_key']) : null;
         if (!isset($data['club_id']) && $clubId) {
             $data['club_id'] = (string) $clubId;
         }
@@ -34,6 +36,7 @@ class PushNotificationService
             'club_id' => $clubId,
             'group_pichanga_id' => $pichangaId,
             'type' => (string) ($payload['type'] ?? 'generic'),
+            'dedupe_key' => $dedupeKey ?: null,
             'title' => (string) ($payload['title'] ?? 'Notificación'),
             'body' => (string) ($payload['body'] ?? ''),
             'data_json' => $data ?: null,
@@ -45,9 +48,35 @@ class PushNotificationService
             return new PushNotification($attributes);
         }
 
-        $notification = PushNotification::create($attributes);
+        $hasDedupeColumn = $dedupeKey && Schema::hasColumn('push_notifications', 'dedupe_key');
+        if (!$hasDedupeColumn) {
+            unset($attributes['dedupe_key']);
+        }
 
-        SendPushNotificationJob::dispatch((int) $notification->id)->onQueue('push');
+        if ($hasDedupeColumn) {
+            try {
+                $notification = PushNotification::query()->firstOrCreate(
+                    ['user_id' => $userId, 'dedupe_key' => $dedupeKey],
+                    $attributes
+                );
+            } catch (QueryException $exception) {
+                // A concurrent retry can race between the SELECT and INSERT.
+                // The unique key is the final guard; return the row created by
+                // the other request instead of failing the domain action.
+                $notification = PushNotification::query()
+                    ->forDedupeKey($userId, $dedupeKey)
+                    ->first();
+                if (!$notification) {
+                    throw $exception;
+                }
+            }
+        } else {
+            $notification = PushNotification::create($attributes);
+        }
+
+        if ($notification->wasRecentlyCreated) {
+            SendPushNotificationJob::dispatch((int) $notification->id)->onQueue('push');
+        }
         return $notification;
     }
 

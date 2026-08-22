@@ -79,12 +79,18 @@ Route::prefix('admin')
   ->group(function () {
     Route::get('/championships', [ChampionshipController::class, 'index'])->name('championships.index');
     Route::get('/championships/create', [ChampionshipController::class, 'create'])->name('championships.create');
+    Route::get('/championships/groups/search', [ChampionshipController::class, 'searchGroups'])->name('championships.groups.search');
+    Route::get('/championships/users/search', [ChampionshipController::class, 'searchUsers'])->name('championships.users.search');
     Route::post('/championships', [ChampionshipController::class, 'store'])->middleware('throttle:admin-web-mutations')->name('championships.store');
     Route::get('/championships/{championship}', [ChampionshipController::class, 'show'])->name('championships.show');
     Route::post('/championships/{championship}/fixture/generate', [ChampionshipController::class, 'generateFixture'])->middleware('throttle:admin-web-mutations')->name('championships.fixture.generate');
     Route::post('/championships/{championship}/publish', [ChampionshipController::class, 'publish'])->middleware('throttle:admin-web-mutations')->name('championships.publish');
+    Route::put('/championships/{championship}/groups', [ChampionshipController::class, 'updateGroups'])->middleware('throttle:admin-web-mutations')->name('championships.groups.update');
     Route::post('/championships/{championship}/admins', [ChampionshipController::class, 'storeAdmin'])->middleware('throttle:admin-web-mutations')->name('championships.admins.store');
+    Route::delete('/championships/{championship}/admins/{admin}', [ChampionshipController::class, 'destroyAdmin'])->middleware('throttle:admin-web-mutations')->name('championships.admins.destroy');
+    Route::delete('/championships/{championship}', [ChampionshipController::class, 'destroy'])->middleware('throttle:admin-web-mutations')->name('championships.destroy');
     Route::post('/championships/{championship}/teams', [ChampionshipController::class, 'storeTeam'])->middleware('throttle:admin-web-mutations')->name('championships.teams.store');
+    Route::post('/championship-teams/{team}/captain', [ChampionshipController::class, 'setCaptain'])->middleware('throttle:admin-web-mutations')->name('championships.teams.captain');
     Route::post('/championship-teams/{team}/members/invite', [ChampionshipController::class, 'inviteTeamMember'])->middleware('throttle:admin-web-mutations')->name('championships.teams.members.invite');
     Route::post('/championship-matchdays/{matchday}/schedule', [ChampionshipController::class, 'scheduleMatchday'])->middleware('throttle:admin-web-mutations')->name('championships.matchdays.schedule');
     Route::post('/championship-matches/{match}/schedule', [ChampionshipController::class, 'scheduleMatch'])->middleware('throttle:admin-web-mutations')->name('championships.matches.schedule');

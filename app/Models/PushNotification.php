@@ -16,6 +16,11 @@ class PushNotification extends Model
         'read_at' => 'datetime',
     ];
 
+    public function scopeForDedupeKey($query, int $userId, string $dedupeKey)
+    {
+        return $query->where('user_id', $userId)->where('dedupe_key', $dedupeKey);
+    }
+
     public function user()
     {
         return $this->belongsTo(User::class, 'user_id');

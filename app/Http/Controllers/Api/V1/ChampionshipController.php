@@ -14,11 +14,15 @@ use App\Models\ChampionshipPlayerStat;
 use App\Models\ChampionshipTeamInvitation;
 use App\Models\ChampionshipTeam;
 use App\Models\ChampionshipTeamMember;
+use App\Models\Club;
+use App\Models\ClubUser;
 use App\Models\GroupPichanga;
 use App\Models\Polideportivo;
 use App\Models\User;
 use App\Services\ChampionshipFixtureService;
 use App\Services\ChampionshipStatisticsService;
+use App\Services\ClubNotificationService;
+use App\Services\PushNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -29,7 +33,9 @@ class ChampionshipController extends Controller
 {
     public function __construct(
         private readonly ChampionshipFixtureService $fixtures,
-        private readonly ChampionshipStatisticsService $statistics
+        private readonly ChampionshipStatisticsService $statistics,
+        private readonly ClubNotificationService $clubNotifications,
+        private readonly PushNotificationService $push
     )
     {
     }
@@ -38,6 +44,9 @@ class ChampionshipController extends Controller
     {
         $user = $request->user();
         $query = Championship::query()->withCount('teams');
+        if (Schema::hasTable('championship_clubs')) {
+            $query->with('clubs:id,nombre,logo_url');
+        }
 
         if ($user && $user->is_superadmin) {
             // Superadmin sees drafts and private championships as well.
@@ -82,6 +91,8 @@ class ChampionshipController extends Controller
             'max_teams' => ['sometimes', 'integer', 'min:2', 'max:32'],
             'players_per_team' => ['sometimes', 'integer', 'min:5', 'max:11'],
             'club_id' => ['nullable', 'integer', 'exists:clubs,id'],
+            'club_ids' => ['nullable', 'array', 'min:1'],
+            'club_ids.*' => ['integer', 'distinct', 'exists:clubs,id'],
             'field_id' => ['nullable', 'integer', 'exists:polideportivo,id'],
             'registration_starts_at' => ['nullable', 'date'],
             'registration_ends_at' => ['nullable', 'date', 'after_or_equal:registration_starts_at'],
@@ -96,8 +107,10 @@ class ChampionshipController extends Controller
             $slug = $baseSlug . '-' . $suffix++;
         }
 
+        $championshipData = $data;
+        unset($championshipData['club_ids']);
         $championship = Championship::create([
-            ...$data,
+            ...$championshipData,
             'slug' => $slug,
             'share_token' => ($data['visibility'] ?? null) === 'link' ? Str::random(48) : null,
             'format' => $data['format'] ?? 'league',
@@ -116,6 +129,17 @@ class ChampionshipController extends Controller
             'role' => 'owner',
             'permissions_json' => ['all' => true],
         ]);
+        $clubIds = array_values(array_unique(array_map('intval', $data['club_ids'] ?? [])));
+        if (empty($clubIds) && !empty($data['club_id'])) {
+            $clubIds = [(int) $data['club_id']];
+        }
+        if (in_array($data['visibility'], ['public', 'link'], true) && !$clubIds) {
+            abort(422, 'Asocia al menos un grupo para un campeonato dirigido a la comunidad.');
+        }
+        if (!empty($clubIds) && Schema::hasTable('championship_clubs')) {
+            $championship->clubs()->sync($clubIds);
+            $championship->update(['club_id' => $clubIds[0]]);
+        }
 
         return response()->json([
             'message' => 'Campeonato creado como borrador.',
@@ -131,6 +155,7 @@ class ChampionshipController extends Controller
             'creator:id,name,nick,avatar_url',
             'venue:id,nombre,direccion',
             'admins.user:id,name,nick,avatar_url',
+            'clubs:id,nombre,logo_url',
             'teams.captain:id,name,nick,avatar_url',
             'teams.members',
         ])->loadCount('teams');
@@ -945,6 +970,13 @@ class ChampionshipController extends Controller
             'starts_at' => optional($championship->starts_at)->toISOString(),
             'ends_at' => optional($championship->ends_at)->toISOString(),
             'teams_count' => (int) ($championship->teams_count ?? $championship->teams?->count() ?? 0),
+            'groups' => $championship->relationLoaded('clubs')
+                ? $championship->clubs->map(fn ($club) => [
+                    'id' => (int) $club->id,
+                    'name' => $club->nombre,
+                    'logo_url' => $club->logo_url,
+                ])->values()
+                : [],
         ];
 
         if ($full) {
@@ -1136,18 +1168,44 @@ class ChampionshipController extends Controller
             'image_kind' => 'championship',
         ]);
 
-        app(\App\Services\PushNotificationService::class)->createForUsers(
-            array_values(array_diff(
-                array_unique(array_map('intval', $userIds)),
-                $actor ? [(int) $actor] : []
-            )),
-            [...$payload, 'data_json' => $data]
-        );
+        $recipients = array_values(array_diff(
+            array_unique(array_map('intval', $userIds)),
+            $actor ? [(int) $actor] : []
+        ));
+        if (!$recipients) {
+            return;
+        }
+
+        $notificationPayload = [
+            ...$payload,
+            'category' => $payload['category'] ?? 'pichangas',
+            'dedupe_key' => $payload['dedupe_key'] ?? implode(':', [
+                'championship',
+                $championship->id,
+                (string) ($payload['type'] ?? 'update'),
+                (string) ($payload['target_id'] ?? $data['target_id']),
+            ]),
+            'data_json' => $data,
+        ];
+        $clubIds = $this->associatedClubIds($championship);
+        if ($clubIds) {
+            foreach (Club::query()->whereIn('id', $clubIds)->get() as $club) {
+                $this->clubNotifications->notifyUsers($club, $recipients, $notificationPayload, $actor);
+            }
+            return;
+        }
+
+        $this->push->createForUsers($recipients, $notificationPayload);
     }
 
     /** @return array<int> */
     private function championshipAudienceIds(Championship $championship): array
     {
+        $groupMembers = ClubUser::query()
+            ->whereIn('club_id', $this->associatedClubIds($championship))
+            ->active()
+            ->pluck('user_id')
+            ->all();
         $admins = $championship->admins()->pluck('user_id')->all();
         $members = ChampionshipTeamMember::query()
             ->whereHas('team', fn ($teams) => $teams->where('championship_id', $championship->id))
@@ -1155,7 +1213,17 @@ class ChampionshipController extends Controller
             ->pluck('user_id')
             ->all();
 
-        return array_values(array_unique(array_merge($admins, $members)));
+        return array_values(array_unique(array_merge($groupMembers, $admins, $members)));
+    }
+
+    /** @return array<int> */
+    private function associatedClubIds(Championship $championship): array
+    {
+        if (Schema::hasTable('championship_clubs')) {
+            return $championship->clubs()->pluck('clubs.id')->map(fn ($id) => (int) $id)->all();
+        }
+
+        return $championship->club_id ? [(int) $championship->club_id] : [];
     }
 
     /** @return array<int> */

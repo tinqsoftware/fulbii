@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Cancha;
 use App\Models\Championship;
+use App\Models\Club;
+use App\Models\ClubUser;
 use App\Models\ChampionshipMatchEvent;
 use App\Models\ChampionshipMatch;
 use App\Models\ChampionshipAdmin;
@@ -17,6 +19,8 @@ use App\Models\User;
 use App\Services\AdminAccessService;
 use App\Services\ChampionshipFixtureService;
 use App\Services\ChampionshipStatisticsService;
+use App\Services\ChampionshipDeletionService;
+use App\Services\ClubNotificationService;
 use App\Services\PushNotificationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -33,7 +37,9 @@ class ChampionshipController extends Controller
         private readonly AdminAccessService $adminAccess,
         private readonly ChampionshipFixtureService $fixtures,
         private readonly ChampionshipStatisticsService $statistics,
-        private readonly PushNotificationService $push
+        private readonly PushNotificationService $push,
+        private readonly ChampionshipDeletionService $deletion,
+        private readonly ClubNotificationService $clubNotifications
     ) {
     }
 
@@ -69,6 +75,53 @@ class ChampionshipController extends Controller
         ]);
     }
 
+    public function searchGroups(Request $request)
+    {
+        $this->adminAccess->ensureSuper($request->user());
+        $query = trim((string) $request->query('q', ''));
+        abort_if(mb_strlen($query) < 2, 422, 'Escribe al menos dos caracteres.');
+
+        return response()->json(Club::query()
+            ->select(['id', 'nombre', 'logo_url', 'is_visible'])
+            ->where(function ($clubs) use ($query): void {
+                $clubs->where('nombre', 'like', '%' . $query . '%')
+                    ->orWhere('slug', 'like', '%' . $query . '%');
+            })
+            ->orderBy('nombre')
+            ->limit(20)
+            ->get()
+            ->map(fn (Club $club) => [
+                'id' => (int) $club->id,
+                'name' => $club->nombre,
+                'logo_url' => $club->logo_url,
+                'is_visible' => (bool) $club->is_visible,
+            ]));
+    }
+
+    public function searchUsers(Request $request)
+    {
+        $this->adminAccess->ensureBackoffice($request->user());
+        $query = trim((string) $request->query('q', ''));
+        abort_if(mb_strlen($query) < 2, 422, 'Escribe al menos dos caracteres.');
+
+        return response()->json(User::query()
+            ->select(['id', 'name', 'nick', 'avatar_url'])
+            ->where(function ($users) use ($query): void {
+                $users->where('nick', 'like', '%' . $query . '%')
+                    ->orWhere('name', 'like', '%' . $query . '%');
+            })
+            ->orderByRaw('CASE WHEN nick LIKE ? THEN 0 ELSE 1 END', [$query . '%'])
+            ->orderBy('nick')
+            ->limit(20)
+            ->get()
+            ->map(fn (User $user) => [
+                'id' => (int) $user->id,
+                'name' => $user->name,
+                'nick' => $user->nick,
+                'avatar_url' => $user->avatar_url,
+            ]));
+    }
+
     public function store(Request $request): RedirectResponse
     {
         $this->adminAccess->ensureSuper($request->user());
@@ -88,6 +141,8 @@ class ChampionshipController extends Controller
             'registration_ends_at' => ['nullable', 'date', 'after_or_equal:registration_starts_at'],
             'starts_at' => ['nullable', 'date'],
             'ends_at' => ['nullable', 'date', 'after_or_equal:starts_at'],
+            'club_ids' => ['required', 'array', 'min:1'],
+            'club_ids.*' => ['integer', 'distinct', 'exists:clubs,id'],
         ]);
         $slug = Str::slug($data['name']) ?: 'campeonato';
         $baseSlug = $slug;
@@ -96,8 +151,10 @@ class ChampionshipController extends Controller
             $slug = $baseSlug . '-' . $suffix++;
         }
 
+        $championshipData = $data;
+        unset($championshipData['club_ids']);
         $championship = Championship::create([
-            ...$data,
+            ...$championshipData,
             'slug' => $slug,
             'format' => $data['format'],
             'status' => 'draft',
@@ -109,6 +166,9 @@ class ChampionshipController extends Controller
             'role' => 'owner',
             'permissions_json' => ['all' => true],
         ]);
+        $clubIds = array_values(array_unique(array_map('intval', $data['club_ids'])));
+        $championship->clubs()->sync($clubIds);
+        $championship->update(['club_id' => $clubIds[0]]);
 
         return redirect()->route('admin.championships.show', $championship)->with('ok', 'Campeonato creado como borrador.');
     }
@@ -116,11 +176,11 @@ class ChampionshipController extends Controller
     public function show(Request $request, Championship $championship): View
     {
         // The web backoffice is intentionally limited to superadmins, owners
-        // and delegated championship managers. Captain actions remain in the
-        // mobile/API phase and are not exposed here yet.
+        // and delegated championship managers.
         $this->ensureChampionshipAdminAccess($request, $championship);
         $championship->load([
             'creator:id,name,nick',
+            'clubs:id,nombre,logo_url',
             'venue:id,nombre,direccion',
             'admins.user:id,name,nick',
             'teams.captain:id,name,nick',
@@ -167,49 +227,115 @@ class ChampionshipController extends Controller
         $data = $request->validate([
             'status' => ['required', Rule::in(['registration', 'published'])],
         ]);
-        abort_if($championship->teams()->count() < 2, 422, 'Añade al menos dos equipos antes de publicar.');
+        if ($data['status'] === 'registration') {
+            if ($championship->status !== 'draft') {
+                return back()->withErrors(['status' => 'Las inscripciones ya fueron abiertas.']);
+            }
+        }
+        if ($data['status'] === 'registration' && $championship->clubs()->count() < 1) {
+            return back()->withErrors(['club_ids' => 'Asocia al menos un grupo antes de abrir inscripciones.']);
+        }
         if ($data['status'] === 'published') {
-            abort_if(!$championship->matches()->exists(), 422, 'Genera el fixture antes de publicar el campeonato.');
+            if ($championship->clubs()->count() < 1) {
+                return back()->withErrors(['club_ids' => 'Asocia al menos un grupo antes de publicar.']);
+            }
+            if ($championship->teams()->count() < 2) {
+                return back()->withErrors(['teams' => 'Añade al menos dos equipos antes de publicar.']);
+            }
+            if (!$championship->matches()->exists()) {
+                return back()->withErrors(['fixture' => 'Genera el fixture antes de publicar el campeonato.']);
+            }
         }
         if ($championship->visibility === 'link' && !$championship->share_token) {
             $championship->share_token = Str::random(48);
         }
+        $previousStatus = $championship->status;
         $championship->update(['status' => $data['status']]);
-        $this->notifyChampionshipUsers(
-            $championship,
-            $this->championshipAudienceIds($championship),
-            [
-                'type' => 'championship_published',
-                'title' => $data['status'] === 'registration' ? 'Inscripciones abiertas' : 'Campeonato publicado',
-                'body' => "Ya puedes consultar {$championship->name} en Fulbii.",
-                'data_json' => ['target_type' => 'championship', 'target_id' => (string) $championship->id],
-            ],
-            (int) $request->user()->id
-        );
+        if ($previousStatus !== $data['status']) {
+            $this->notifyChampionshipUsers(
+                $championship,
+                $this->championshipAudienceIds($championship),
+                [
+                    'type' => $data['status'] === 'registration' ? 'championship_registration_opened' : 'championship_published',
+                    'title' => $data['status'] === 'registration' ? 'Inscripciones abiertas' : 'Campeonato publicado',
+                    'body' => "Ya puedes consultar {$championship->name} en Fulbii.",
+                    'dedupe_key' => 'championship:' . $championship->id . ':status:' . $data['status'],
+                    'data_json' => [
+                        'target_type' => 'championship',
+                        'target_id' => (string) $championship->id,
+                        'club_ids' => $championship->clubs()->pluck('clubs.id')->map(fn ($id) => (string) $id)->all(),
+                        'image_url' => $championship->clubs()->value('logo_url'),
+                    ],
+                ],
+                (int) $request->user()->id
+            );
+        }
         return back()->with('ok', $data['status'] === 'registration' ? 'Inscripciones abiertas.' : 'Campeonato publicado.');
+    }
+
+    public function updateGroups(Request $request, Championship $championship): RedirectResponse
+    {
+        $this->ensureChampionshipPermission($request, $championship, 'manage_settings');
+        abort_if(!in_array($championship->status, ['draft', 'registration'], true), 422, 'Los grupos solo pueden editarse antes de publicar.');
+        $data = $request->validate([
+            'club_ids' => ['required', 'array', 'min:1'],
+            'club_ids.*' => ['integer', 'distinct', 'exists:clubs,id'],
+        ]);
+        $clubIds = array_values(array_unique(array_map('intval', $data['club_ids'])));
+        $championship->clubs()->sync($clubIds);
+        $championship->update(['club_id' => $clubIds[0]]);
+        return back()->with('ok', 'Grupos asociados actualizados.');
     }
 
     public function storeAdmin(Request $request, Championship $championship): RedirectResponse
     {
         $this->ensureChampionshipPermission($request, $championship, 'manage_admins');
         $data = $request->validate([
-            'user_id' => ['required', 'integer', 'exists:users,id'],
+            'user_ids' => ['nullable', 'array', 'min:1'],
+            'user_ids.*' => ['integer', 'distinct', 'exists:users,id'],
+            'user_id' => ['nullable', 'integer', 'exists:users,id'],
             'permissions' => ['nullable', 'array'],
         ]);
-        $championship->admins()->updateOrCreate(
-            ['user_id' => (int) $data['user_id']],
-            [
-                'role' => 'manager',
-                'permissions_json' => $data['permissions'] ?? [
-                    'manage_teams' => true,
-                    'manage_rosters' => true,
-                    'manage_fixture' => true,
-                    'manage_match_live' => true,
-                    'manage_match_results' => true,
-                ],
-            ]
-        );
-        return back()->with('ok', 'Gestor añadido al campeonato.');
+        $userIds = array_values(array_unique(array_map('intval', $data['user_ids'] ?? [])));
+        if (empty($userIds) && !empty($data['user_id'])) {
+            $userIds = [(int) $data['user_id']];
+        }
+        abort_if(empty($userIds), 422, 'Selecciona al menos un gestor.');
+        $permissions = $data['permissions'] ?? [
+            'manage_teams' => true,
+            'manage_rosters' => true,
+            'manage_fixture' => true,
+            'manage_match_live' => true,
+            'manage_match_results' => true,
+        ];
+        foreach ($userIds as $userId) {
+            $championship->admins()->updateOrCreate(
+                ['user_id' => $userId],
+                ['role' => 'manager', 'permissions_json' => $permissions]
+            );
+        }
+        return back()->with('ok', count($userIds) . ' gestor(es) añadido(s) al campeonato.');
+    }
+
+    public function destroyAdmin(Request $request, Championship $championship, ChampionshipAdmin $admin): RedirectResponse
+    {
+        $this->ensureChampionshipPermission($request, $championship, 'manage_admins');
+        abort_unless((int) $admin->championship_id === (int) $championship->id, 404);
+        abort_if($admin->role === 'owner', 422, 'El propietario no puede eliminarse del campeonato.');
+        abort_if($championship->admins()->where('role', 'owner')->doesntExist(), 422, 'El campeonato debe conservar un propietario.');
+        $admin->delete();
+        return back()->with('ok', 'Gestor retirado del campeonato.');
+    }
+
+    public function destroy(Request $request, Championship $championship): RedirectResponse
+    {
+        $this->ensureChampionshipPermission($request, $championship, 'manage_settings');
+        $data = $request->validate([
+            'confirmation' => ['required', 'string'],
+        ]);
+        abort_unless(trim($data['confirmation']) === $championship->name, 422, 'Escribe exactamente el nombre del campeonato para eliminarlo.');
+        $this->deletion->delete($championship);
+        return redirect()->route('admin.championships.index')->with('ok', 'Campeonato eliminado con todos sus datos relacionados.');
     }
 
     public function scheduleMatch(Request $request, ChampionshipMatch $match): RedirectResponse
@@ -427,6 +553,51 @@ class ChampionshipController extends Controller
         return back()->with('ok', 'Equipo añadido al campeonato.');
     }
 
+    public function setCaptain(Request $request, ChampionshipTeam $team): RedirectResponse
+    {
+        $championship = $team->championship()->firstOrFail();
+        $this->ensureChampionshipPermission($request, $championship, 'manage_teams');
+        abort_if(!in_array($championship->status, ['draft', 'registration'], true), 422, 'El capitán solo puede cambiarse antes de publicar.');
+        abort_if(
+            $team->homeMatches()->whereIn('status', ['live', 'pending_result', 'finished'])->exists()
+            || $team->awayMatches()->whereIn('status', ['live', 'pending_result', 'finished'])->exists(),
+            422,
+            'No puedes cambiar el capitán después de iniciar un partido.'
+        );
+        $data = $request->validate([
+            'user_id' => ['required', 'integer', 'exists:users,id'],
+        ]);
+        $userId = (int) $data['user_id'];
+        abort_if(
+            ChampionshipTeamMember::query()
+                ->where('user_id', $userId)
+                ->whereHas('team', fn ($teams) => $teams
+                    ->where('championship_id', $championship->id)
+                    ->where('id', '<>', $team->id))
+                ->whereIn('status', ['approved', 'invited', 'pending'])
+                ->exists(),
+            422,
+            'Ese usuario ya es miembro de otro equipo de este campeonato.'
+        );
+
+        DB::transaction(function () use ($team, $userId, $request): void {
+            $team->members()->where('role', 'captain')->update(['role' => 'player']);
+            $team->members()->updateOrCreate(
+                ['user_id' => $userId],
+                [
+                    'invited_by_user_id' => $request->user()->id,
+                    'status' => 'approved',
+                    'role' => 'captain',
+                    'joined_at' => now(),
+                    'removed_at' => null,
+                ]
+            );
+            $team->update(['captain_user_id' => $userId]);
+        });
+
+        return back()->with('ok', 'Capitán actualizado.');
+    }
+
     private function ensureChampionshipPermission(
         Request $request,
         Championship $championship,
@@ -503,7 +674,14 @@ class ChampionshipController extends Controller
     /** @return array<int> */
     private function championshipAudienceIds(Championship $championship): array
     {
+        $clubIds = $this->associatedClubIds($championship);
+        $groupMembers = ClubUser::query()
+            ->whereIn('club_id', $clubIds)
+            ->active()
+            ->pluck('user_id')
+            ->all();
         return array_values(array_unique(array_merge(
+            $groupMembers,
             $championship->admins()->pluck('user_id')->all(),
             ChampionshipTeamMember::query()->whereHas('team', fn ($teams) => $teams->where('championship_id', $championship->id))
                 ->whereIn('status', ['approved', 'invited'])->pluck('user_id')->all()
@@ -512,15 +690,55 @@ class ChampionshipController extends Controller
 
     private function notifyChampionshipUsers(Championship $championship, array $userIds, array $payload, ?int $actor = null): void
     {
-        $this->push->createForUsers(
-            array_values(array_diff(array_unique(array_map('intval', $userIds)), $actor ? [(int) $actor] : [])),
-            [...$payload, 'data_json' => array_merge((array) ($payload['data_json'] ?? []), [
-                'target_type' => $payload['data_json']['target_type'] ?? 'championship',
-                'target_id' => $payload['data_json']['target_id'] ?? (string) $championship->id,
-                'championship_id' => (string) $championship->id,
-                'image_kind' => 'championship',
-            ])]
-        );
+        $recipients = array_values(array_diff(
+            array_unique(array_map('intval', $userIds)),
+            $actor ? [(int) $actor] : []
+        ));
+        if (!$recipients) {
+            return;
+        }
+
+        $data = array_merge((array) ($payload['data_json'] ?? []), [
+            'target_type' => $payload['data_json']['target_type'] ?? 'championship',
+            'target_id' => $payload['data_json']['target_id'] ?? (string) $championship->id,
+            'championship_id' => (string) $championship->id,
+            'image_kind' => 'championship',
+        ]);
+        $notificationPayload = [
+            ...$payload,
+            'category' => $payload['category'] ?? 'pichangas',
+            'dedupe_key' => $payload['dedupe_key'] ?? implode(':', [
+                'championship',
+                $championship->id,
+                (string) ($payload['type'] ?? 'update'),
+                (string) ($payload['target_id'] ?? $data['target_id']),
+            ]),
+            'data_json' => $data,
+        ];
+
+        // Deliver through every associated group so each user's mute and
+        // category preference is respected. The shared key keeps members of
+        // multiple groups from receiving duplicate rows.
+        $clubIds = $this->associatedClubIds($championship);
+        if ($clubIds) {
+            foreach (Club::query()->whereIn('id', $clubIds)->get() as $club) {
+                $this->clubNotifications->notifyUsers($club, $recipients, $notificationPayload, $actor);
+            }
+            return;
+        }
+
+        // Legacy championships without an association remain deliverable.
+        $this->push->createForUsers($recipients, $notificationPayload);
+    }
+
+    /** @return array<int> */
+    private function associatedClubIds(Championship $championship): array
+    {
+        if (Schema::hasTable('championship_clubs')) {
+            return $championship->clubs()->pluck('clubs.id')->map(fn ($id) => (int) $id)->all();
+        }
+
+        return $championship->club_id ? [(int) $championship->club_id] : [];
     }
 
     private function upsertPichanga(
