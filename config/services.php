@@ -33,6 +33,13 @@ return [
 
     'google' => [
         'client_id' => env('GOOGLE_CLIENT_ID'),
+        // Keep the legacy single value for existing deployments while
+        // allowing a migration window where old iOS builds and the new
+        // Android Firebase project are both accepted.
+        'client_ids' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('GOOGLE_CLIENT_IDS', env('GOOGLE_CLIENT_ID', '')))
+        ))),
     ],
 
     'apple' => [

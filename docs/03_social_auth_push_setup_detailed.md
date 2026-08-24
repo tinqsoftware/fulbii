@@ -81,7 +81,10 @@ Estado:
 
 ### B.3 Backend
 ```env
-GOOGLE_CLIENT_ID=<WEB_CLIENT_ID>
+# Cliente Web del proyecto Firebase actual.
+GOOGLE_CLIENT_ID=706272816323-4bnqeamoe4qucq7the2oscmq8si5huep.apps.googleusercontent.com
+# Mantiene compatibles los builds iOS anteriores durante la migración.
+GOOGLE_CLIENT_IDS=14247591730-nru6ieshjvg4fp480rheupp2fjevkq2s.apps.googleusercontent.com,706272816323-4bnqeamoe4qucq7the2oscmq8si5huep.apps.googleusercontent.com
 SOCIAL_AUTH_TRUSTED_MODE=false
 ```
 

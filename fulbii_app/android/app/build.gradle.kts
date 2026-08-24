@@ -14,6 +14,12 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(keystorePropertiesFile.inputStream())
 }
 
+val localProperties = Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localProperties.load(localPropertiesFile.inputStream())
+}
+
 android {
     namespace = "com.fulbii.fulbii_app"
     compileSdk = flutter.compileSdkVersion
@@ -36,6 +42,7 @@ android {
         versionName = flutter.versionName
         manifestPlaceholders["GOOGLE_MAPS_API_KEY"] =
             (project.findProperty("GOOGLE_MAPS_API_KEY") as String?)
+                ?: localProperties.getProperty("GOOGLE_MAPS_API_KEY")
                 ?: "YOUR_GOOGLE_MAPS_API_KEY"
     }
 

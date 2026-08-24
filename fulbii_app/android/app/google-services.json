@@ -12,7 +12,28 @@
           "package_name": "com.fulbii.fulbii_app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "706272816323-3jp15ov2hc55rbac6mvl4uvunba73ncu.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.fulbii.fulbii_app",
+            "certificate_hash": "bfaee6a354e70ea49edb5894f416195b94c4c0be"
+          }
+        },
+        {
+          "client_id": "706272816323-4d23p9ct8n19bhb8pdhu6v8ojptagsq9.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.fulbii.fulbii_app",
+            "certificate_hash": "09e5c6454905ad5c7d0c762c39528e6d0041eb43"
+          }
+        },
+        {
+          "client_id": "706272816323-4bnqeamoe4qucq7the2oscmq8si5huep.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBv-XWZDj-KfKBjLmP4yEqoDXGbBuoTThs"
@@ -20,7 +41,20 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "706272816323-4bnqeamoe4qucq7the2oscmq8si5huep.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "706272816323-gu6ue79ekgh93b7v0gaepfeajbrkl9r3.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.fulbii",
+                "app_store_id": "6760973807"
+              }
+            }
+          ]
         }
       }
     }

@@ -39,26 +39,14 @@ class PushService {
       return;
     }
 
-    try {
-      await Firebase.initializeApp();
-    } catch (_) {
-      debugPrint('Firebase no está configurado todavía.');
+    if (!await _initializeFirebase()) {
       return;
     }
 
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
     final messaging = FirebaseMessaging.instance;
-    final permission = await messaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-      provisional: false,
-    );
-    debugPrint(
-      'Push permission => status=${permission.authorizationStatus.name} '
-      'alert=${permission.alert} badge=${permission.badge} sound=${permission.sound}',
-    );
+    await _requestNotificationPermission(messaging);
 
     if (Platform.isIOS) {
       String? apnsToken = await messaging.getAPNSToken();
@@ -119,6 +107,33 @@ class PushService {
     }
 
     _initialized = true;
+  }
+
+  Future<bool> _initializeFirebase() async {
+    try {
+      if (Firebase.apps.isEmpty) {
+        await Firebase.initializeApp();
+      }
+      return true;
+    } catch (_) {
+      debugPrint('Firebase no está configurado todavía.');
+      return false;
+    }
+  }
+
+  Future<void> _requestNotificationPermission(
+    FirebaseMessaging messaging,
+  ) async {
+    final permission = await messaging.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+      provisional: false,
+    );
+    debugPrint(
+      'Push permission => status=${permission.authorizationStatus.name} '
+      'alert=${permission.alert} badge=${permission.badge} sound=${permission.sound}',
+    );
   }
 
   Future<void> dispose() async {

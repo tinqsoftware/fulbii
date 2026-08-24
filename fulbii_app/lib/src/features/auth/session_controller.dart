@@ -37,16 +37,19 @@ class SessionController extends StateNotifier<SessionState> {
   Future<void> bootstrap() async {
     state = state.copyWith(loading: true, clearError: true);
 
-    final token = await _tokenStore.loadToken();
+    String? token;
+    try {
+      token = await _tokenStore.loadToken();
+    } catch (_) {
+      // Android's encrypted storage can fail on a device with an invalidated
+      // keystore entry. Do not leave the app on its loading screen: the player
+      // can still start a new session from the home screen.
+      _finishUnauthenticatedBootstrap();
+      return;
+    }
+
     if (token == null || token.isEmpty) {
-      await _ref
-          .read(widgetWeeklyServiceProvider)
-          .clearForLoggedOut(ignoreErrors: true);
-      state = state.copyWith(
-        initialized: true,
-        loading: false,
-        clearToken: true,
-      );
+      _finishUnauthenticatedBootstrap();
       return;
     }
 
@@ -65,17 +68,7 @@ class SessionController extends StateNotifier<SessionState> {
       // A temporary network/API failure must not log a player out. The token
       // is only deleted after the server conclusively rejects it.
       if (error is ApiError && error.statusCode == 401) {
-        await _tokenStore.clear();
-        await _ref
-            .read(widgetWeeklyServiceProvider)
-            .clearForLoggedOut(ignoreErrors: true);
-        state = state.copyWith(
-          initialized: true,
-          loading: false,
-          clearToken: true,
-          user: null,
-          needsOnboarding: false,
-        );
+        _finishUnauthenticatedBootstrap(clearStoredToken: true);
         return;
       }
 
@@ -88,6 +81,42 @@ class SessionController extends StateNotifier<SessionState> {
         errorMessage:
             'No se pudo validar la sesión. Intenta nuevamente al recuperar conexión.',
       );
+    }
+  }
+
+  /// Completes startup before any optional native widget work. On Android,
+  /// waiting for a widget platform-channel call here could otherwise keep the
+  /// whole app on its initial loading screen.
+  void _finishUnauthenticatedBootstrap({bool clearStoredToken = false}) {
+    state = state.copyWith(
+      initialized: true,
+      loading: false,
+      clearToken: true,
+      user: null,
+      needsOnboarding: false,
+    );
+
+    if (clearStoredToken) {
+      unawaited(_clearStoredToken());
+    }
+    unawaited(_clearWidgetsForLoggedOut());
+  }
+
+  Future<void> _clearStoredToken() async {
+    try {
+      await _tokenStore.clear();
+    } catch (_) {
+      // The next sign-in overwrites any token that could not be cleared.
+    }
+  }
+
+  Future<void> _clearWidgetsForLoggedOut() async {
+    try {
+      await _ref
+          .read(widgetWeeklyServiceProvider)
+          .clearForLoggedOut(ignoreErrors: true);
+    } catch (_) {
+      // Widget maintenance is optional and must never hold up startup.
     }
   }
 
@@ -227,7 +256,8 @@ class SessionController extends StateNotifier<SessionState> {
       state = state.copyWith(
         loading: false,
         user: user,
-        needsOnboarding: response['needs_onboarding'] == true || user.needsOnboarding,
+        needsOnboarding:
+            response['needs_onboarding'] == true || user.needsOnboarding,
       );
     } catch (e) {
       state = state.copyWith(
@@ -307,7 +337,9 @@ class SessionController extends StateNotifier<SessionState> {
   void _applyServerTheme(AppUser user) {
     final mode = user.themeMode;
     if (mode == 'light' || mode == 'dark') {
-      unawaited(_ref.read(themeModeProvider.notifier).setDarkMode(mode == 'dark'));
+      unawaited(
+        _ref.read(themeModeProvider.notifier).setDarkMode(mode == 'dark'),
+      );
     }
   }
 }

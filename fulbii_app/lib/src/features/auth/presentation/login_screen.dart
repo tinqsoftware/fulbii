@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -10,6 +11,7 @@ class LoginScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(sessionControllerProvider);
     final controller = ref.read(sessionControllerProvider.notifier);
+    final isAppleAvailable = defaultTargetPlatform == TargetPlatform.iOS;
 
     return Scaffold(
       body: SafeArea(
@@ -31,7 +33,9 @@ class LoginScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Ingresa con Google o Apple para empezar.',
+                    isAppleAvailable
+                        ? 'Ingresa con Google o Apple para empezar.'
+                        : 'Ingresa con Google para empezar.',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
@@ -49,14 +53,16 @@ class LoginScreen extends ConsumerWidget {
                         : const Icon(Icons.g_mobiledata),
                     label: const Text('Continuar con Google'),
                   ),
-                  const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: session.loading
-                        ? null
-                        : controller.signInWithApple,
-                    icon: const Icon(Icons.apple),
-                    label: const Text('Continuar con Apple'),
-                  ),
+                  if (isAppleAvailable) ...[
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: session.loading
+                          ? null
+                          : controller.signInWithApple,
+                      icon: const Icon(Icons.apple),
+                      label: const Text('Continuar con Apple'),
+                    ),
+                  ],
                   const SizedBox(height: 24),
                   if (session.errorMessage != null)
                     Text(

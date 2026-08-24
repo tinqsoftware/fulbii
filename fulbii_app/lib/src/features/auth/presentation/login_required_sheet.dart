@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -38,6 +39,7 @@ class _LoginRequiredSheet extends ConsumerWidget {
     }
 
     final isLoading = session.loading;
+    final isAppleAvailable = defaultTargetPlatform == TargetPlatform.iOS;
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 18, 24, 28),
       decoration: BoxDecoration(
@@ -87,16 +89,18 @@ class _LoginRequiredSheet extends ConsumerWidget {
             ),
             label: const Text('Continuar con Google'),
           ),
-          const SizedBox(height: 10),
-          OutlinedButton.icon(
-            onPressed: isLoading
-                ? null
-                : () => ref
-                      .read(sessionControllerProvider.notifier)
-                      .signInWithApple(),
-            icon: const Icon(Icons.apple),
-            label: const Text('Continuar con Apple'),
-          ),
+          if (isAppleAvailable) ...[
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: isLoading
+                  ? null
+                  : () => ref
+                        .read(sessionControllerProvider.notifier)
+                        .signInWithApple(),
+              icon: const Icon(Icons.apple),
+              label: const Text('Continuar con Apple'),
+            ),
+          ],
           if (session.errorMessage != null) ...[
             const SizedBox(height: 12),
             Text(

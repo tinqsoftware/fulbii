@@ -170,8 +170,17 @@ class SocialAuthController extends Controller
 
         $payload = $response->json();
         $aud = (string) ($payload['aud'] ?? '');
-        $configuredClient = (string) config('services.google.client_id', '');
-        if ($configuredClient !== '' && $aud !== $configuredClient) {
+        $configuredClients = config('services.google.client_ids', []);
+        if (!is_array($configuredClients)) {
+            $configuredClients = [];
+        }
+        if ($configuredClients === []) {
+            $configuredClient = (string) config('services.google.client_id', '');
+            if ($configuredClient !== '') {
+                $configuredClients = [$configuredClient];
+            }
+        }
+        if ($configuredClients !== [] && !in_array($aud, $configuredClients, true)) {
             abort(422, 'El token de Google no coincide con el client_id configurado.');
         }
 

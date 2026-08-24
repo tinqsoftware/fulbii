@@ -3,6 +3,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 enum AppEnv { dev, stg, prod }
 
+// OAuth 2.0 Web client IDs are not secrets. Android was migrated to the
+// current Firebase project; keep the existing iOS client as the default for
+// new iOS builds so the working TestFlight configuration is not replaced.
+const _defaultAndroidGoogleWebClientId =
+    '706272816323-4bnqeamoe4qucq7the2oscmq8si5huep.apps.googleusercontent.com';
+const _defaultIosGoogleWebClientId =
+    '14247591730-nru6ieshjvg4fp480rheupp2fjevkq2s.apps.googleusercontent.com';
+const _configuredGoogleWebClientId = String.fromEnvironment(
+  'GOOGLE_WEB_CLIENT_ID',
+  defaultValue: '',
+);
+
 class AppConfig {
   const AppConfig({
     required this.env,
@@ -32,10 +44,11 @@ class AppConfig {
         'APP_LINK_BASE_URL',
         defaultValue: '',
       ),
-      googleWebClientId: const String.fromEnvironment(
-        'GOOGLE_WEB_CLIENT_ID',
-        defaultValue: '',
-      ),
+      googleWebClientId: _configuredGoogleWebClientId.trim().isEmpty
+          ? (defaultTargetPlatform == TargetPlatform.iOS
+              ? _defaultIosGoogleWebClientId
+              : _defaultAndroidGoogleWebClientId)
+          : _configuredGoogleWebClientId.trim(),
     );
   }
 

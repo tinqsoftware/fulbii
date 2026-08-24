@@ -473,6 +473,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
                 style: Theme.of(context).brightness == Brightness.dark
                     ? _mapStyle
                     : null,
+                zoomControlsEnabled: false,
+                zoomGesturesEnabled: true,
                 myLocationEnabled: _myLocationEnabled,
                 myLocationButtonEnabled: false,
                 mapToolbarEnabled: true,
@@ -2261,33 +2263,32 @@ class _MapScreenState extends ConsumerState<MapScreen>
   }
 
   Future<void> _restoreLocationLayer() async {
+    final permission = await Geolocator.checkPermission();
+
+    if (permission != LocationPermission.always &&
+        permission != LocationPermission.whileInUse) {
+      return;
+    }
+
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) return;
 
-    var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
+    _startLocationUpdates();
+    if (_didAutoCenterOnLocation) return;
 
-    if (permission == LocationPermission.always ||
-        permission == LocationPermission.whileInUse) {
-      _startLocationUpdates();
-      if (_didAutoCenterOnLocation) return;
-
-      try {
-        final position = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.high,
-          ),
-        );
-        if (!mounted) return;
-        _didAutoCenterOnLocation = true;
-        final latLng = LatLng(position.latitude, position.longitude);
-        setState(() => _currentUserLocation = latLng);
-        await _moveCameraToUserLocation(latLng);
-      } catch (_) {
-        // The map remains on its default area when the device has no location.
-      }
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
+      );
+      if (!mounted) return;
+      _didAutoCenterOnLocation = true;
+      final latLng = LatLng(position.latitude, position.longitude);
+      setState(() => _currentUserLocation = latLng);
+      await _moveCameraToUserLocation(latLng);
+    } catch (_) {
+      // The map remains on its default area when the device has no location.
     }
   }
 
