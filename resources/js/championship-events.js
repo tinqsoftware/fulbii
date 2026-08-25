@@ -104,7 +104,7 @@ function initEventEditor(editor) {
 
   function updateSecondary(row) {
     const type = row.querySelector('[data-event-field="event_type"]').value;
-    const secondaryField = row.querySelector('[data-secondary-field]');
+    const secondaryField = row.querySelector('[data-secondary-field], .admin-event-secondary');
     const secondary = row.querySelector('[data-event-field="secondary_player_user_id"]');
     const isGoal = type === 'goal';
     secondaryField.classList.toggle('d-none', !isGoal);
