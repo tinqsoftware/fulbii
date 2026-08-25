@@ -29,6 +29,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class ChampionshipController extends Controller
@@ -187,8 +188,10 @@ class ChampionshipController extends Controller
             'teams.members.user:id,name,nick,avatar_url',
             'teams.homeMatches:id,home_team_id,status',
             'teams.awayMatches:id,away_team_id,status',
-            'matchdays.matches.homeTeam',
-            'matchdays.matches.awayTeam',
+            'matchdays.matches.homeTeam.members.user:id,name,nick,avatar_url',
+            'matchdays.matches.awayTeam.members.user:id,name,nick,avatar_url',
+            'matchdays.matches.events.player:id,name,nick,avatar_url',
+            'matchdays.matches.events.secondaryPlayer:id,name,nick,avatar_url',
         ])->loadCount('teams');
         $captainChangeStatuses = ['draft', 'registration', 'published'];
         $startedMatchStatuses = ['live', 'pending_result', 'finished'];
@@ -419,14 +422,14 @@ class ChampionshipController extends Controller
             ->where('status', 'approved')
             ->pluck('user_id')->map(fn ($id) => (int) $id)->all();
         foreach ($events as $event) {
-            abort_if(
-                !empty($event['championship_team_id']) && !in_array((int) $event['championship_team_id'], $teamIds, true),
-                422,
-                'El evento no pertenece a los equipos del partido.'
-            );
+            if (!empty($event['championship_team_id']) && !in_array((int) $event['championship_team_id'], $teamIds, true)) {
+                throw ValidationException::withMessages(['events_json' => 'Uno de los eventos no pertenece a los equipos de este partido.']);
+            }
             foreach (['player_user_id', 'secondary_player_user_id'] as $key) {
                 if (!empty($event[$key])) {
-                    abort_if(!in_array((int) $event[$key], $memberIds, true), 422, 'El acta solo puede incluir jugadores convocables.');
+                    if (!in_array((int) $event[$key], $memberIds, true)) {
+                        throw ValidationException::withMessages(['events_json' => 'El acta solo puede incluir jugadores aprobados de los equipos.']);
+                    }
                 }
             }
         }
@@ -676,16 +679,24 @@ class ChampionshipController extends Controller
             return [];
         }
         $decoded = json_decode($json, true);
-        abort_if(!is_array($decoded), 422, 'El JSON de eventos no es válido.');
+        if (!is_array($decoded)) {
+            throw ValidationException::withMessages(['events_json' => 'El contenido avanzado de eventos no es una lista válida.']);
+        }
         $allowed = ['goal', 'own_goal', 'assist', 'yellow_card', 'red_card', 'substitution_in', 'substitution_out'];
         return collect($decoded)->map(function ($event) use ($allowed) {
-            abort_if(!is_array($event) || !in_array($event['event_type'] ?? null, $allowed, true), 422, 'Tipo de evento inválido.');
+            if (!is_array($event) || !in_array($event['event_type'] ?? null, $allowed, true)) {
+                throw ValidationException::withMessages(['events_json' => 'El tipo de evento no es válido.']);
+            }
+            $minute = $event['minute'] ?? null;
+            if ($minute !== null && (!is_numeric($minute) || floor((float) $minute) !== (float) $minute || (float) $minute < 0 || (float) $minute > 200)) {
+                throw ValidationException::withMessages(['events_json' => 'El minuto de un evento debe estar entre 0 y 200.']);
+            }
             return [
                 'event_type' => $event['event_type'],
                 'championship_team_id' => !empty($event['championship_team_id']) ? (int) $event['championship_team_id'] : null,
                 'player_user_id' => !empty($event['player_user_id']) ? (int) $event['player_user_id'] : null,
                 'secondary_player_user_id' => !empty($event['secondary_player_user_id']) ? (int) $event['secondary_player_user_id'] : null,
-                'minute' => isset($event['minute']) ? (int) $event['minute'] : null,
+                'minute' => $minute !== null ? (int) $minute : null,
             ];
         })->values()->all();
     }

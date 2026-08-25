@@ -143,12 +143,27 @@
               </form>
               @endif
               @if($canManageResults)
-              <form method="post" action="{{ route('admin.championships.matches.result', $match) }}" class="row g-2 mt-2">
+              @php
+                $eventTeams = collect([$match->homeTeam, $match->awayTeam])->filter();
+                $eventTeamOptions = $eventTeams->map(fn ($team) => ['id' => (int) $team->id, 'name' => $team->name])->values()->all();
+                $eventMembers = $eventTeams->mapWithKeys(fn ($team) => [(string) $team->id => $team->members->where('status', 'approved')->map(fn ($member) => ['id' => (int) $member->user_id, 'nick' => $member->user?->nick, 'name' => $member->user?->name, 'avatar_url' => $member->user?->avatar_url])->values()->all()])->all();
+                $eventSeed = $match->events->map(fn ($event) => ['event_type' => $event->event_type, 'championship_team_id' => $event->championship_team_id, 'player_user_id' => $event->player_user_id, 'secondary_player_user_id' => $event->secondary_player_user_id, 'minute' => $event->minute])->values()->all();
+              @endphp
+              <form method="post" action="{{ route('admin.championships.matches.result', $match) }}" class="row g-2 mt-2 admin-result-form" data-result-form>
                 @csrf
-                <div class="col-md-2"><label class="form-label small">Local</label><input required type="number" name="home_score" min="0" max="99" value="{{ $match->home_score ?? 0 }}" class="form-control admin-score-input" aria-label="Goles local"></div>
-                <div class="col-md-2"><label class="form-label small">Visitante</label><input required type="number" name="away_score" min="0" max="99" value="{{ $match->away_score ?? 0 }}" class="form-control admin-score-input" aria-label="Goles visitante"></div>
-                <div class="col-md-3"><button class="btn btn-outline-success">Guardar resultado</button></div>
-                <div class="col-12"><textarea name="events_json" rows="2" class="form-control form-control-sm" placeholder='Eventos opcionales JSON: [{"event_type":"goal","player_user_id":123,"championship_team_id":4,"minute":12,"secondary_player_user_id":456}]'></textarea><small class="text-muted">Los eventos se guardan en el acta y alimentan goles, asistencias y tarjetas.</small></div>
+                <div class="col-12"><div class="admin-result-scorebar"><div><span class="admin-eyebrow mb-1">Acta del partido</span><strong>{{ $match->homeTeam?->name }} <span class="text-muted">vs</span> {{ $match->awayTeam?->name }}</strong></div><div class="admin-score-fields"><label>Local<input required type="number" name="home_score" min="0" max="99" value="{{ $match->home_score ?? 0 }}" class="form-control admin-score-input" aria-label="Goles local"></label><span class="admin-score-separator">–</span><label>Visitante<input required type="number" name="away_score" min="0" max="99" value="{{ $match->away_score ?? 0 }}" class="form-control admin-score-input" aria-label="Goles visitante"></label></div></div></div>
+                <div class="col-12">
+                  <div class="admin-events-editor" data-events-editor data-event-seed="{{ e(json_encode($eventSeed, JSON_UNESCAPED_UNICODE)) }}" data-event-teams="{{ e(json_encode($eventTeamOptions, JSON_UNESCAPED_UNICODE)) }}" data-event-members="{{ e(json_encode($eventMembers, JSON_UNESCAPED_UNICODE)) }}">
+                    <div class="admin-events-header"><div><h4 class="h6 mb-1">Eventos del partido</h4><p class="small text-muted mb-0">Registra goles, tarjetas y cambios sin escribir código.</p></div><div class="admin-event-summary" data-events-summary aria-live="polite"></div></div>
+                    <div class="admin-events-list" data-events-list></div>
+                    <div class="admin-events-empty" data-events-empty><span class="admin-empty-icon">⚽</span><strong>Aún no hay eventos</strong><span>Agrega el primer evento del acta.</span></div>
+                    <div class="d-flex flex-wrap align-items-center gap-2 mt-3"><button type="button" class="btn btn-sm btn-outline-primary" data-add-event>+ Agregar evento</button><span class="small text-muted">Los jugadores disponibles son los miembros aprobados de ambos equipos.</span></div>
+                    <input type="hidden" name="events_json" value="[]" data-events-json>
+                    <details class="admin-events-advanced mt-3"><summary>Opciones avanzadas <span class="small text-muted">(solo para casos especiales)</span></summary><div class="pt-3"><p class="small text-muted">El editor visual genera este JSON automáticamente. Puedes revisarlo o editarlo y luego aplicar los cambios.</p><textarea class="form-control admin-json-editor" rows="6" data-json-editor readonly aria-label="JSON avanzado de eventos"></textarea><div class="d-flex flex-wrap gap-2 mt-2"><button type="button" class="btn btn-sm btn-outline-secondary" data-toggle-json>Editar JSON</button><button type="button" class="btn btn-sm btn-primary d-none" data-apply-json>Aplicar JSON</button></div><div class="small text-danger mt-2 d-none" data-json-error role="alert"></div></div></details>
+                    <div class="small text-danger mt-2 d-none" data-events-error role="alert"></div>
+                  </div>
+                </div>
+                <div class="col-12 d-flex justify-content-end"><button class="btn btn-success" type="submit">Guardar resultado y acta</button></div>
               </form>
               @endif
             </div></div>

@@ -1,9 +1,11 @@
 import './bootstrap';
+import './championship-events';
 
 // Small, dependency-free affordances shared by the administrative screens.
 if (document.body?.classList.contains('admin-page')) {
   document.querySelectorAll('form').forEach((form) => {
-    form.addEventListener('submit', () => {
+    form.addEventListener('submit', (event) => {
+      if (event.defaultPrevented) return;
       if (form.dataset.submitted === 'true') return;
       form.dataset.submitted = 'true';
       const submit = form.querySelector('button[type="submit"], button:not([type])');
