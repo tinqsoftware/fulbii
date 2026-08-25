@@ -2,50 +2,20 @@
 
 @section('content')
 <div class="container">
-  <h3 class="mb-3">Backoffice Operativo</h3>
+  <div class="admin-page-title"><div><p class="admin-eyebrow">Centro de control</p><h1>Backoffice operativo</h1><p class="admin-page-subtitle">Supervisa la salud de Fulbii y atiende las tareas que requieren acción.</p></div><a class="btn btn-primary" href="{{ route('admin.championships.index') }}">Ver campeonatos</a></div>
   @include('admin.partials.nav')
 
   @if(session('ok'))
     <div class="alert alert-success">{{ session('ok') }}</div>
   @endif
 
-  <div class="row g-3 mb-3">
-    <div class="col-md-3">
-      <div class="card h-100"><div class="card-body">
-        <div class="text-muted">Reportes pendientes</div>
-        <div class="fs-3 fw-bold">{{ $stats['pending_reports'] }}</div>
-      </div></div>
-    </div>
-    <div class="col-md-3">
-      <div class="card h-100"><div class="card-body">
-        <div class="text-muted">Grupos sin admin</div>
-        <div class="fs-3 fw-bold">{{ $stats['groups_without_admin'] }}</div>
-      </div></div>
-    </div>
-    <div class="col-md-3">
-      <div class="card h-100"><div class="card-body">
-        <div class="text-muted">Retos sin coordinador</div>
-        <div class="fs-3 fw-bold">{{ $stats['challenges_needing_coordinator'] }}</div>
-      </div></div>
-    </div>
-    <div class="col-md-3">
-      <div class="card h-100"><div class="card-body">
-        <div class="text-muted">Canchas pendientes</div>
-        <div class="fs-3 fw-bold">{{ $stats['pending_field_submissions'] }}</div>
-      </div></div>
-    </div>
-    <div class="col-md-3">
-      <div class="card h-100"><div class="card-body">
-        <div class="text-muted">Strikes activos</div>
-        <div class="fs-3 fw-bold">{{ $stats['active_strikes'] }}</div>
-      </div></div>
-    </div>
-    <div class="col-md-3">
-      <div class="card h-100"><div class="card-body">
-        <div class="text-muted">Jobs pendientes</div>
-        <div class="fs-3 fw-bold">{{ $stats['jobs_pending'] }}</div>
-      </div></div>
-    </div>
+  <div class="admin-kpi-grid mb-3">
+    <div class="admin-kpi"><div class="admin-kpi-label">Reportes pendientes</div><div class="admin-kpi-value">{{ $stats['pending_reports'] }}</div></div>
+    <div class="admin-kpi"><div class="admin-kpi-label">Grupos sin admin</div><div class="admin-kpi-value">{{ $stats['groups_without_admin'] }}</div></div>
+    <div class="admin-kpi"><div class="admin-kpi-label">Retos sin coordinador</div><div class="admin-kpi-value">{{ $stats['challenges_needing_coordinator'] }}</div></div>
+    <div class="admin-kpi"><div class="admin-kpi-label">Canchas pendientes</div><div class="admin-kpi-value">{{ $stats['pending_field_submissions'] }}</div></div>
+    <div class="admin-kpi"><div class="admin-kpi-label">Strikes activos</div><div class="admin-kpi-value">{{ $stats['active_strikes'] }}</div></div>
+    <div class="admin-kpi"><div class="admin-kpi-label">Jobs pendientes</div><div class="admin-kpi-value">{{ $stats['jobs_pending'] }}</div></div>
   </div>
 
   <div class="row g-3">

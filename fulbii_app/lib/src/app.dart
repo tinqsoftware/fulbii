@@ -18,6 +18,7 @@ import 'features/pichangas/presentation/pichanga_widget_share_screen.dart';
 import 'features/pichangas/data/pichangas_repository.dart';
 import 'services/deep_links/deep_link_service.dart';
 import 'services/watch/watch_bridge_service.dart';
+import 'services/watch/watch_sync_policy.dart';
 import 'services/widget/widget_weekly_service.dart';
 import 'core/theme/theme_controller.dart';
 
@@ -45,6 +46,12 @@ class _FulbiiAppState extends ConsumerState<FulbiiApp>
   bool _watchSyncInFlight = false;
   bool _pendingWatchSync = false;
   bool _pendingWatchClear = false;
+  final _watchPolicy = WatchSyncPolicy();
+  Timer? _watchRetryTimer;
+  int _watchRetryAttempt = 0;
+  DateTime? _lastWatchSyncAt;
+  String? _watchAttemptToken;
+  int? _watchAttemptUserId;
   List<Map<String, dynamic>> _lastWatchConfirmedMatches = const [];
   List<Map<String, dynamic>> _lastWatchPendingMatches = const [];
   String? _pendingJoinCode;
@@ -194,16 +201,34 @@ class _FulbiiAppState extends ConsumerState<FulbiiApp>
   }
 
   void _syncWatchAuth(SessionState session, {bool force = false}) {
-    if (session.isAuthenticated &&
-        session.token != null &&
-        session.user != null &&
-        session.user!.id > 0) {
+    if (!_watchPolicy.isSupported) {
+      return;
+    }
+
+    if (session.needsOnboarding) {
+      _cancelWatchRetry();
+      _pendingWatchSync = false;
+      return;
+    }
+
+    if (_watchPolicy.shouldSync(session)) {
       final token = session.token!;
       final userId = session.user!.id;
+      if (_watchAttemptToken != token || _watchAttemptUserId != userId) {
+        _watchRetryAttempt = 0;
+        _cancelWatchRetry();
+        _lastWatchSyncAt = null;
+        _watchAttemptToken = token;
+        _watchAttemptUserId = userId;
+      }
       _pendingWatchClear = false;
       final alreadySynced =
           _lastWatchToken == token && _lastWatchUserId == userId;
-      if (alreadySynced && !_pendingWatchSync && !force) {
+      final lastSyncFresh =
+          _lastWatchSyncAt != null &&
+          DateTime.now().difference(_lastWatchSyncAt!) <
+              const Duration(seconds: 30);
+      if (alreadySynced && !_pendingWatchSync && (!force || lastSyncFresh)) {
         return;
       }
       if (_watchSyncInFlight) {
@@ -246,23 +271,29 @@ class _FulbiiAppState extends ConsumerState<FulbiiApp>
       return;
     }
     _watchSyncInFlight = true;
-    final success = await _pushWatchContext(
-      userId: userId,
-      token: token,
-      userNick: userNick,
-      userName: userName,
-    );
-    if (success) {
-      _lastWatchToken = token;
-      _lastWatchUserId = userId;
-      _pendingWatchSync = false;
-      debugPrint('[WatchBridge] Sync success user=$userId');
-    } else {
-      _pendingWatchSync = true;
-      _scheduleWatchSyncRetry();
-      debugPrint('[WatchBridge] Sync pending retry user=$userId');
+    try {
+      final success = await _pushWatchContext(
+        userId: userId,
+        token: token,
+        userNick: userNick,
+        userName: userName,
+      );
+      if (success) {
+        _lastWatchToken = token;
+        _lastWatchUserId = userId;
+        _lastWatchSyncAt = DateTime.now();
+        _pendingWatchSync = false;
+        _watchRetryAttempt = 0;
+        _cancelWatchRetry();
+        debugPrint('[WatchBridge] Sync success user=$userId');
+      } else {
+        _pendingWatchSync = true;
+        _scheduleWatchSyncRetry();
+        debugPrint('[WatchBridge] Sync pending retry user=$userId');
+      }
+    } finally {
+      _watchSyncInFlight = false;
     }
-    _watchSyncInFlight = false;
   }
 
   Future<void> _clearWatchContextAndTrack() async {
@@ -276,8 +307,13 @@ class _FulbiiAppState extends ConsumerState<FulbiiApp>
     if (success) {
       _lastWatchToken = null;
       _lastWatchUserId = null;
+      _watchAttemptToken = null;
+      _watchAttemptUserId = null;
+      _lastWatchSyncAt = null;
       _pendingWatchClear = false;
       _pendingWatchSync = false;
+      _watchRetryAttempt = 0;
+      _cancelWatchRetry();
       _lastWatchConfirmedMatches = const [];
       _lastWatchPendingMatches = const [];
     } else {
@@ -420,12 +456,28 @@ class _FulbiiAppState extends ConsumerState<FulbiiApp>
   }
 
   void _scheduleWatchSyncRetry() {
-    Future<void>.delayed(const Duration(seconds: 2), () {
-      if (!mounted) {
-        return;
+    if (!_watchPolicy.isSupported || _watchRetryTimer != null) {
+      return;
+    }
+    final delay = _watchPolicy.retryDelay(_watchRetryAttempt);
+    if (delay == null) {
+      debugPrint(
+        '[WatchBridge] Retry limit reached; waiting for next lifecycle event',
+      );
+      return;
+    }
+    _watchRetryAttempt++;
+    _watchRetryTimer = Timer(delay, () {
+      _watchRetryTimer = null;
+      if (mounted) {
+        _syncWatchAuth(ref.read(sessionControllerProvider), force: true);
       }
-      _syncWatchAuth(ref.read(sessionControllerProvider), force: true);
     });
+  }
+
+  void _cancelWatchRetry() {
+    _watchRetryTimer?.cancel();
+    _watchRetryTimer = null;
   }
 
   Map<String, dynamic>? _toWatchMatchPayload(Map<String, dynamic> item) {
@@ -741,6 +793,7 @@ class _FulbiiAppState extends ConsumerState<FulbiiApp>
 
   @override
   void dispose() {
+    _cancelWatchRetry();
     WidgetsBinding.instance.removeObserver(this);
     ref.read(deepLinkServiceProvider).dispose();
     super.dispose();

@@ -2,7 +2,7 @@
 
 @section('content')
 <div class="container">
-  <h3 class="mb-3">Métricas Growth</h3>
+  <div class="admin-page-title"><div><p class="admin-eyebrow">Analítica</p><h1>Métricas Growth</h1><p class="admin-page-subtitle">Observa adquisición, actividad y automatizaciones por periodo.</p></div></div>
   @include('admin.partials.nav')
 
   <form method="GET" class="card mb-3">

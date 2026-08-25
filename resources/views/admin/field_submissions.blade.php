@@ -2,7 +2,7 @@
 
 @section('content')
 <div class="container">
-  <h3 class="mb-3">Moderación · Solicitudes de Canchas</h3>
+  <div class="admin-page-title"><div><p class="admin-eyebrow">Moderación</p><h1>Solicitudes de canchas</h1><p class="admin-page-subtitle">Valida aportes de la comunidad y publícalos en el mapa.</p></div></div>
   @include('admin.partials.nav')
 
   @if(session('ok'))

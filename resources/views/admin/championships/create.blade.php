@@ -2,7 +2,7 @@
 
 @section('content')
 <div class="container">
-  <h3 class="mb-3">Crear campeonato</h3>
+  <div class="admin-page-title"><div><p class="admin-eyebrow">Competición</p><h1>Crear campeonato</h1><p class="admin-page-subtitle">Configura la liga por bloques. Podrás completar equipos, fixture y horarios después.</p></div><a href="{{ route('admin.championships.index') }}" class="btn btn-outline-secondary">Volver a campeonatos</a></div>
   @include('admin.partials.nav')
   @if($errors->any())
     <div class="alert alert-danger"><strong>Revisa el formulario.</strong><ul class="mb-0">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>
@@ -10,13 +10,16 @@
   <form method="post" action="{{ route('admin.championships.store') }}" class="card card-body" id="championship-create-form">
     @csrf
     <div class="row g-3">
-      <div class="col-md-8"><label class="form-label">Nombre</label><input required name="name" value="{{ old('name') }}" class="form-control"></div>
+      <div class="col-12"><p class="admin-eyebrow mb-0">1 · Información básica</p></div>
+      <div class="col-md-8"><label class="form-label">Nombre del campeonato</label><input required name="name" value="{{ old('name') }}" class="form-control" placeholder="Ej. Liga Fulbii Surco"></div>
       <div class="col-md-4"><label class="form-label">Visibilidad</label><select name="visibility" class="form-select"><option value="public">Público</option><option value="private" @selected(old('visibility') === 'private')>Privado</option><option value="link" @selected(old('visibility') === 'link')>Solo con enlace</option></select></div>
-      <div class="col-12">
+      <div class="col-12 pt-2">
+        <p class="admin-eyebrow mb-1">2 · Comunidad</p>
         <div class="d-flex justify-content-between align-items-center mb-1"><label class="form-label mb-0">Grupos asociados</label><button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#groups-modal">Añadir grupos</button></div>
         <div id="selected-groups" class="d-flex flex-wrap gap-2 p-2 border rounded bg-light"><span class="text-muted small" id="groups-empty">Selecciona uno o varios grupos para notificar a sus integrantes.</span></div>
         <div id="group-inputs"></div>
       </div>
+      <div class="col-12 pt-2"><p class="admin-eyebrow mb-0">3 · Competición y calendario</p></div>
       <div class="col-md-4"><label class="form-label">Formato</label><select name="format" class="form-select"><option value="league">Liga por puntos</option><option value="knockout">Llaves de eliminación</option><option value="hybrid">Liga + playoffs (base)</option></select></div>
       <div class="col-12"><label class="form-label">Descripción</label><textarea name="description" rows="3" class="form-control">{{ old('description') }}</textarea></div>
       <div class="col-md-3"><label class="form-label">Puntos victoria</label><input type="number" min="0" max="100" name="points_win" value="{{ old('points_win', 3) }}" class="form-control"></div>

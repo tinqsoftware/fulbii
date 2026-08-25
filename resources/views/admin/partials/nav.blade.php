@@ -1,6 +1,6 @@
-<div class="card mb-3">
+<div class="card admin-nav mb-3">
   <div class="card-body py-2">
-    <div class="d-flex flex-wrap gap-2">
+    <nav class="nav-scroll" aria-label="Navegación del backoffice">
       <a href="{{ route('admin.dashboard') }}" class="btn btn-sm {{ request()->routeIs('admin.dashboard') ? 'btn-primary' : 'btn-outline-primary' }}">Dashboard</a>
       <a href="{{ route('admin.reports.index') }}" class="btn btn-sm {{ request()->routeIs('admin.reports.*') ? 'btn-primary' : 'btn-outline-primary' }}">Reportes</a>
       <a href="{{ route('admin.field-submissions.index') }}" class="btn btn-sm {{ request()->routeIs('admin.field-submissions.*') ? 'btn-primary' : 'btn-outline-primary' }}">Solicitudes de canchas</a>
@@ -11,6 +11,6 @@
       <a href="{{ route('admin.metrics.growth') }}" class="btn btn-sm {{ request()->routeIs('admin.metrics.*') ? 'btn-primary' : 'btn-outline-primary' }}">Métricas</a>
       <a href="{{ route('admin.ops.readiness') }}" class="btn btn-sm {{ request()->routeIs('admin.ops.*') ? 'btn-primary' : 'btn-outline-primary' }}">Ops Readiness</a>
       <a href="{{ route('admin.championships.index') }}" class="btn btn-sm {{ request()->routeIs('admin.championships.*') ? 'btn-primary' : 'btn-outline-primary' }}">Campeonatos</a>
-    </div>
+    </nav>
   </div>
 </div>

@@ -1,0 +1,141 @@
+// Fulbii backoffice visual system. Everything is scoped to .admin-page so the
+// public site and authentication screens keep their existing presentation.
+.admin-page {
+  --ful-green: #1a7a43;
+  --ful-green-dark: #145c32;
+  --ful-mint: #e9f8ee;
+  --ful-surface: #ffffff;
+  --ful-bg: #f4f8f5;
+  --ful-ink: #102018;
+  --ful-muted: #64736a;
+  --ful-line: #dce8df;
+  --ful-warning: #9a5a00;
+  --ful-danger: #b42318;
+  background: radial-gradient(circle at 100% 0, #eaf6ec 0, transparent 34rem), var(--ful-bg);
+  color: var(--ful-ink);
+
+  .admin-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 1030;
+    min-height: 68px;
+    border-bottom: 1px solid rgba(26, 122, 67, .12);
+    background: rgba(255, 255, 255, .9) !important;
+    backdrop-filter: blur(14px);
+  }
+
+  .admin-topbar .navbar-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: .55rem;
+    color: var(--ful-ink);
+    font-weight: 850;
+    letter-spacing: -.04em;
+  }
+
+  .admin-brand-mark, .admin-avatar {
+    display: inline-grid;
+    place-items: center;
+    border-radius: 12px;
+    background: var(--ful-green);
+    color: #fff;
+    font-weight: 800;
+  }
+
+  .admin-brand-mark { width: 32px; height: 32px; font-size: 1rem; }
+  .admin-avatar { width: 30px; height: 30px; border-radius: 50%; font-size: .78rem; }
+  .admin-user-menu .nav-link { display: inline-flex; align-items: center; gap: .5rem; color: var(--ful-ink); font-weight: 700; }
+
+  main.py-4 { padding-top: 1.75rem !important; }
+  .container { max-width: 1480px; }
+
+  .admin-page-title { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; }
+  .admin-eyebrow { margin: 0 0 .35rem; color: var(--ful-green); font-size: .72rem; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
+  .admin-page-title h1, .admin-page-title h2, .admin-page-title h3 { margin: 0; color: var(--ful-ink); font-weight: 850; letter-spacing: -.045em; }
+  .admin-page-subtitle { margin: .45rem 0 0; color: var(--ful-muted); }
+
+  .admin-nav { margin-bottom: 1.25rem; border: 1px solid var(--ful-line); border-radius: 18px; background: rgba(255,255,255,.82); box-shadow: 0 8px 24px rgba(16, 48, 27, .04); }
+  .admin-nav .card-body { padding: .55rem; }
+  .admin-nav .nav-scroll { display: flex; gap: .4rem; overflow-x: auto; scrollbar-width: thin; }
+  .admin-nav .btn { flex: 0 0 auto; border: 0; border-radius: 11px; color: var(--ful-muted); font-size: .83rem; font-weight: 750; white-space: nowrap; }
+  .admin-nav .btn:hover, .admin-nav .btn:focus-visible { color: var(--ful-green-dark); background: var(--ful-mint); }
+  .admin-nav .btn-primary { background: var(--ful-green); color: #fff; box-shadow: 0 5px 12px rgba(26,122,67,.18); }
+
+  .admin-page .card { border: 1px solid var(--ful-line); border-radius: 18px; background: rgba(255,255,255,.92); box-shadow: 0 10px 30px rgba(21, 62, 35, .055); }
+  .admin-page .card-header { border-bottom: 1px solid var(--ful-line); background: transparent; font-weight: 800; }
+  .admin-page .card-body { padding: 1.15rem; }
+  .admin-page .form-control, .admin-page .form-select { min-height: 42px; border-color: #ceddd2; border-radius: 11px; color: var(--ful-ink); }
+  .admin-page textarea.form-control { min-height: auto; }
+  .admin-page .form-control:focus, .admin-page .form-select:focus { border-color: var(--ful-green); box-shadow: 0 0 0 .22rem rgba(26,122,67,.14); }
+  .admin-page .form-label { margin-bottom: .35rem; color: #33463a; font-size: .82rem; font-weight: 750; }
+  .admin-page .form-text, .admin-page .text-muted { color: var(--ful-muted) !important; }
+
+  .admin-page .btn { border-radius: 11px; font-weight: 750; }
+  .admin-page .btn-primary, .admin-page .btn-success { border-color: var(--ful-green); background: var(--ful-green); }
+  .admin-page .btn-primary:hover, .admin-page .btn-success:hover { border-color: var(--ful-green-dark); background: var(--ful-green-dark); }
+  .admin-page .btn-outline-primary { border-color: #78aa88; color: var(--ful-green-dark); }
+  .admin-page .btn-outline-primary:hover, .admin-page .btn-outline-primary:focus-visible { border-color: var(--ful-green); background: var(--ful-mint); color: var(--ful-green-dark); }
+  .admin-page .btn-outline-danger { color: var(--ful-danger); }
+
+  .admin-page .alert { border: 0; border-radius: 14px; box-shadow: 0 8px 22px rgba(16,48,27,.06); }
+  .admin-page .alert-success { background: #e8f7ed; color: #175c30; }
+  .admin-page .alert-danger { background: #fff0ef; color: #8f1d15; }
+  .admin-page .badge { border-radius: 999px; padding: .42rem .65rem; font-weight: 750; }
+  .admin-status { display: inline-flex; align-items: center; gap: .35rem; border: 1px solid transparent; }
+  .admin-status::before { width: .42rem; height: .42rem; border-radius: 50%; background: currentColor; content: ''; }
+  .admin-status--success { background: #e7f7eb; border-color: #b9e3c4; color: #176b35; }
+  .admin-status--warning { background: #fff5df; border-color: #f0d19a; color: var(--ful-warning); }
+  .admin-status--muted { background: #eef3ef; border-color: #d8e1da; color: #5c6c61; }
+  .admin-status--danger { background: #fff0ef; border-color: #f2c0bc; color: var(--ful-danger); }
+
+  .admin-kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .8rem; }
+  .admin-kpi { position: relative; overflow: hidden; min-height: 105px; padding: 1rem; border: 1px solid var(--ful-line); border-radius: 16px; background: var(--ful-surface); }
+  .admin-kpi::after { position: absolute; right: -20px; bottom: -30px; width: 90px; height: 90px; border-radius: 50%; background: var(--ful-mint); content: ''; }
+  .admin-kpi-label { position: relative; z-index: 1; color: var(--ful-muted); font-size: .78rem; font-weight: 700; }
+  .admin-kpi-value { position: relative; z-index: 1; margin-top: .25rem; color: var(--ful-ink); font-size: 1.65rem; font-weight: 850; letter-spacing: -.04em; }
+
+  .admin-table-wrap { overflow: hidden; border: 1px solid var(--ful-line); border-radius: 16px; background: #fff; }
+  .admin-page .table { margin-bottom: 0; }
+  .admin-page .table > :not(caption) > * > * { padding: .85rem .9rem; border-bottom-color: #e8f0ea; }
+  .admin-page .table thead th { background: #f5faf6; color: #52645a; font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+  .admin-page .table tbody tr:hover { background: #fbfefb; }
+  .admin-empty { padding: 2.5rem 1rem; text-align: center; color: var(--ful-muted); }
+  .admin-empty-icon { display: grid; place-items: center; width: 48px; height: 48px; margin: 0 auto .7rem; border-radius: 15px; background: var(--ful-mint); color: var(--ful-green); font-size: 1.35rem; }
+
+  .admin-section-nav { position: sticky; top: 76px; z-index: 20; display: flex; gap: .35rem; overflow-x: auto; margin-bottom: 1rem; padding: .35rem; border: 1px solid var(--ful-line); border-radius: 14px; background: rgba(255,255,255,.92); backdrop-filter: blur(10px); }
+  .admin-section-nav a { flex: 0 0 auto; padding: .5rem .75rem; border-radius: 9px; color: var(--ful-muted); font-size: .82rem; font-weight: 800; text-decoration: none; }
+  .admin-section-nav a:hover { background: var(--ful-mint); color: var(--ful-green-dark); }
+
+  .admin-team-card { height: 100%; border: 1px solid var(--ful-line); border-radius: 16px; background: #fff; }
+  .admin-team-card .team-head { display: flex; align-items: start; justify-content: space-between; gap: .75rem; padding: 1rem; border-bottom: 1px solid #edf3ee; }
+  .admin-team-card .team-body { padding: 1rem; }
+  .admin-avatar-stack { display: flex; padding-left: .25rem; }
+  .admin-avatar-stack .admin-avatar { margin-left: -.25rem; border: 2px solid #fff; }
+  .admin-member-row { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .55rem 0; border-bottom: 1px solid #edf3ee; }
+  .admin-member-row:last-child { border-bottom: 0; }
+
+  .admin-matchday { overflow: hidden; border: 1px solid var(--ful-line); border-radius: 16px; background: #fff; }
+  .admin-matchday + .admin-matchday { margin-top: .8rem; }
+  .admin-matchday > summary { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem; cursor: pointer; list-style: none; }
+  .admin-matchday > summary::-webkit-details-marker { display: none; }
+  .admin-matchday > summary:hover { background: #fbfefb; }
+  .admin-match { margin: 0 1rem 1rem; padding: .9rem; border: 1px solid #e5eee7; border-radius: 13px; background: #fbfefb; }
+  .admin-score-input { max-width: 88px; text-align: center; font-size: 1.15rem; font-weight: 850; }
+
+  @media (max-width: 991.98px) {
+    .admin-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .admin-section-nav { top: 68px; }
+  }
+  @media (max-width: 575.98px) {
+    main.py-4 { padding-top: 1rem !important; }
+    .admin-user-name { display: none; }
+    .admin-kpi-grid { grid-template-columns: 1fr 1fr; gap: .55rem; }
+    .admin-kpi { min-height: 90px; padding: .75rem; }
+    .admin-kpi-value { font-size: 1.35rem; }
+    .admin-page .card-body { padding: .9rem; }
+    .admin-page-title { align-items: start; }
+    .admin-page-title .btn, .admin-page-title form { width: 100%; }
+    .admin-page-title form .btn { width: 100%; }
+    .admin-match { margin-right: .65rem; margin-left: .65rem; }
+  }
+}

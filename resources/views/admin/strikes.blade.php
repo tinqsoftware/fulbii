@@ -2,7 +2,7 @@
 
 @section('content')
 <div class="container">
-  <h3 class="mb-3">Moderación · Strikes</h3>
+  <div class="admin-page-title"><div><p class="admin-eyebrow">Moderación</p><h1>Strikes</h1><p class="admin-page-subtitle">Gestiona sanciones activas y conserva el historial de decisiones.</p></div></div>
   @include('admin.partials.nav')
 
   @if(session('ok'))

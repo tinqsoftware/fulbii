@@ -2,7 +2,7 @@
 
 @section('content')
 <div class="container">
-  <h3 class="mb-3">Ops Readiness</h3>
+  <div class="admin-page-title"><div><p class="admin-eyebrow">Operaciones</p><h1>Ops Readiness</h1><p class="admin-page-subtitle">Consulta rápidamente la salud técnica del backoffice.</p></div></div>
   @include('admin.partials.nav')
 
   <div class="card">

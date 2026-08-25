@@ -2,7 +2,7 @@
 
 @section('content')
 <div class="container">
-  <h3 class="mb-3">Canchas reales</h3>
+  <div class="admin-page-title"><div><p class="admin-eyebrow">Catálogo</p><h1>Canchas reales</h1><p class="admin-page-subtitle">Mantén sedes y canchas publicadas con información confiable.</p></div></div>
   @include('admin.partials.nav')
   @if(session('ok')) <div class="alert alert-success">{{ session('ok') }}</div> @endif
   @if($errors->any()) <div class="alert alert-danger">{{ $errors->first() }}</div> @endif

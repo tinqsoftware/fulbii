@@ -2,26 +2,20 @@
 
 @section('content')
 <div class="container">
-  <h3 class="mb-3">Campeonatos</h3>
+  <div class="admin-page-title"><div><p class="admin-eyebrow">Competición</p><h1>Campeonatos</h1><p class="admin-page-subtitle">Crea, publica y administra ligas desde un solo lugar.</p></div>@if(Auth::user()?->canPerformCriticalAdminActions())<a href="{{ route('admin.championships.create') }}" class="btn btn-primary">Crear campeonato</a>@endif</div>
   @include('admin.partials.nav')
   @if(session('ok')) <div class="alert alert-success">{{ session('ok') }}</div> @endif
-  <div class="d-flex justify-content-between align-items-center mb-3">
-    <p class="text-muted mb-0">Liga por puntos · primera entrega</p>
-    @if(Auth::user()?->canPerformCriticalAdminActions())
-      <a href="{{ route('admin.championships.create') }}" class="btn btn-primary">Crear campeonato</a>
-    @endif
-  </div>
-  <div class="card"><div class="table-responsive"><table class="table align-middle mb-0">
+  <div class="admin-table-wrap"><div class="table-responsive"><table class="table align-middle mb-0">
     <thead><tr><th>Nombre</th><th>Estado</th><th>Visibilidad</th><th>Equipos</th><th></th></tr></thead>
     <tbody>
       @forelse($items as $item)
         <tr>
           <td><strong>{{ $item->name }}</strong><br><small class="text-muted">{{ $item->creator?->nick ?: $item->creator?->name }}</small></td>
-          <td>{{ $item->status }}</td><td>{{ $item->visibility }}</td><td>{{ $item->teams_count }}</td>
+          <td><span class="badge admin-status {{ in_array($item->status, ['published','completed'], true) ? 'admin-status--success' : ($item->status === 'registration' ? 'admin-status--warning' : 'admin-status--muted') }}">{{ ['draft'=>'Borrador','registration'=>'Inscripciones','published'=>'Publicado','completed'=>'Finalizado'][$item->status] ?? ucfirst($item->status) }}</span></td><td>{{ $item->visibility === 'public' ? 'Público' : ($item->visibility === 'private' ? 'Privado' : 'Solo con enlace') }}</td><td><strong>{{ $item->teams_count }}</strong></td>
           <td><a class="btn btn-sm btn-outline-primary" href="{{ route('admin.championships.show', $item) }}">Gestionar</a></td>
         </tr>
       @empty
-        <tr><td colspan="5" class="text-muted">Todavía no hay campeonatos.</td></tr>
+        <tr><td colspan="5"><div class="admin-empty"><div class="admin-empty-icon">🏆</div><strong>Aún no hay campeonatos</strong><div>Cuando crees uno aparecerá aquí para gestionarlo.</div></div></td></tr>
       @endforelse
     </tbody>
   </table></div></div>
