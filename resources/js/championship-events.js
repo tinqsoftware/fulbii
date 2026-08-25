@@ -77,7 +77,7 @@ function initEventEditor(editor) {
   }
 
   function ensureOption(select, value, label) {
-    if (!value || [...select.options].some((option) => option.value === String(value))) return;
+    if (!value || Array.from(select.options).some((option) => option.value === String(value))) return;
     const option = document.createElement('option');
     option.value = String(value);
     option.textContent = label || `Jugador #${value} (ya no está disponible)`;
@@ -189,7 +189,7 @@ function initEventEditor(editor) {
   }
 
   function serialize() {
-    const rows = [...list.querySelectorAll('[data-event-row]')];
+    const rows = Array.from(list.querySelectorAll('[data-event-row]'));
     const events = [];
     const errors = [];
     rows.forEach((row, index) => {
