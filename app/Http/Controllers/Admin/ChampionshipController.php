@@ -466,7 +466,7 @@ class ChampionshipController extends Controller
             }
         }
         $before = $match->only(['status', 'home_score', 'away_score']);
-        DB::transaction(function () use ($match, $data, $request, $events): void {
+        DB::transaction(function () use ($match, $data, $request, $events, $before): void {
             $match->update([
                 'home_score' => $data['home_score'],
                 'away_score' => $data['away_score'],
