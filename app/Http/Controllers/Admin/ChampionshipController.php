@@ -421,16 +421,48 @@ class ChampionshipController extends Controller
             ->whereIn('championship_team_id', $teamIds)
             ->where('status', 'approved')
             ->pluck('user_id')->map(fn ($id) => (int) $id)->all();
+        $approvedByTeam = ChampionshipTeamMember::query()
+            ->whereIn('championship_team_id', $teamIds)
+            ->where('status', 'approved')
+            ->get(['championship_team_id', 'user_id'])
+            ->groupBy('championship_team_id')
+            ->map(fn ($members) => $members->pluck('user_id')->map(fn ($id) => (int) $id)->all())
+            ->all();
+        $calculatedScore = [(int) $match->home_team_id => 0, (int) $match->away_team_id => 0];
+        $hasScoringEvents = false;
         foreach ($events as $event) {
-            if (!empty($event['championship_team_id']) && !in_array((int) $event['championship_team_id'], $teamIds, true)) {
+            $eventType = (string) ($event['event_type'] ?? '');
+            $eventTeamId = (int) ($event['championship_team_id'] ?? 0);
+            $isScoring = in_array($eventType, ['goal', 'own_goal'], true);
+            if (($isScoring || in_array($eventType, ['assist', 'yellow_card', 'red_card', 'substitution_in', 'substitution_out'], true)) && !$eventTeamId) {
+                throw ValidationException::withMessages(['events_json' => 'Cada evento debe tener un equipo.']);
+            }
+            if (!$isScoring && empty($event['player_user_id'])) {
+                throw ValidationException::withMessages(['events_json' => 'Las tarjetas, asistencias y cambios deben tener un jugador.']);
+            }
+            if ($eventTeamId && !in_array($eventTeamId, $teamIds, true)) {
                 throw ValidationException::withMessages(['events_json' => 'Uno de los eventos no pertenece a los equipos de este partido.']);
+            }
+            if ($isScoring) {
+                $hasScoringEvents = true;
+                $creditedTeamId = $eventType === 'goal'
+                    ? $eventTeamId
+                    : ($eventTeamId === (int) $match->home_team_id ? (int) $match->away_team_id : (int) $match->home_team_id);
+                $calculatedScore[$creditedTeamId]++;
             }
             foreach (['player_user_id', 'secondary_player_user_id'] as $key) {
                 if (!empty($event[$key])) {
-                    if (!in_array((int) $event[$key], $memberIds, true)) {
+                    $playerTeamIds = $eventTeamId ? ($approvedByTeam[$eventTeamId] ?? []) : $memberIds;
+                    if (!in_array((int) $event[$key], $playerTeamIds, true)) {
                         throw ValidationException::withMessages(['events_json' => 'El acta solo puede incluir jugadores aprobados de los equipos.']);
                     }
                 }
+            }
+        }
+        if ($hasScoringEvents || (int) $data['home_score'] + (int) $data['away_score'] > 0) {
+            if ((int) $data['home_score'] !== $calculatedScore[(int) $match->home_team_id]
+                || (int) $data['away_score'] !== $calculatedScore[(int) $match->away_team_id]) {
+                throw ValidationException::withMessages(['events_json' => 'El marcador debe coincidir con los goles registrados.']);
             }
         }
         $before = $match->only(['status', 'home_score', 'away_score']);
