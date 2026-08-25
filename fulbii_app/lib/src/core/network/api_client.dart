@@ -137,6 +137,12 @@ class ApiClient {
         message = e.message!;
       }
 
+      if (statusCode == 429 &&
+          message.trim().toLowerCase() == 'too many attempts.') {
+        message =
+            'Demasiadas solicitudes. Espera unos segundos e inténtalo nuevamente.';
+      }
+
       throw ApiError(message, statusCode: statusCode);
     }
   }

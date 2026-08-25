@@ -101,8 +101,8 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::middleware('user.not_suspended')->group(function () {
         Route::get('/me', [MeController::class, 'show']);
         Route::put('/me', [MeController::class, 'update']);
-        Route::post('/onboarding', [OnboardingController::class, 'store']);
-        Route::get('/onboarding/nick-available', [OnboardingController::class, 'nickAvailable']);
+        Route::post('/onboarding', [OnboardingController::class, 'store'])->middleware('throttle:onboarding');
+        Route::get('/onboarding/nick-available', [OnboardingController::class, 'nickAvailable'])->middleware('throttle:nickname-availability');
         Route::get('/me/devices', [MeDeviceController::class, 'index']);
         Route::post('/me/devices/register', [MeDeviceController::class, 'register']);
         Route::post('/me/devices/{device}/deactivate', [MeDeviceController::class, 'deactivate']);
@@ -127,9 +127,11 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
 
         Route::post('/clubs', [ClubApiController::class, 'store']);
         Route::get('/clubs/join/{joinCode}', [ClubJoinRequestController::class, 'previewByCode']);
-        Route::post('/clubs/join/{joinCode}/request', [ClubJoinRequestController::class, 'requestByCode']);
+        Route::post('/clubs/join/{joinCode}/request', [ClubJoinRequestController::class, 'requestByCode'])->middleware('throttle:club-join');
         Route::put('/clubs/{club}', [ClubApiController::class, 'update'])->middleware('club.active:club');
-        Route::post('/clubs/{club}/join-requests', [ClubJoinRequestController::class, 'requestByClub'])->middleware('club.active:club');
+        Route::post('/clubs/{club}/join-requests', [ClubJoinRequestController::class, 'requestByClub'])
+            ->middleware('club.active:club')
+            ->middleware('throttle:club-join');
         Route::get('/clubs/{club}/join-requests', [ClubJoinRequestController::class, 'listByClub']);
         Route::post('/clubs/{club}/join-requests/{joinRequest}/decision', [ClubJoinRequestController::class, 'decide'])->middleware('club.active:club');
         Route::post('/clubs/{club}/join-requests/{joinRequest}/cancel', [ClubJoinRequestController::class, 'cancel'])->middleware('club.active:club');

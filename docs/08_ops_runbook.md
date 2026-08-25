@@ -24,6 +24,20 @@ journalctl -u fulbii-queue -n 100 --no-pager
 No detener el worker manual con `Ctrl+C` como solución permanente: al hacerlo,
 la bandeja seguirá creándose, pero el push no se enviará.
 
+## Límites de la API y caché
+
+La API conserva un límite global de 60 solicitudes por minuto. Las solicitudes
+autenticadas se contabilizan por el hash SHA-256 de su token Bearer; las visitas
+sin token se contabilizan por IP. Además, existen límites específicos para
+disponibilidad de nickname (20/min), guardado de onboarding (12/min) y
+solicitudes de ingreso a grupos (6/min).
+
+El VPS actual usa `CACHE_DRIVER=file`, suficiente mientras exista un solo nodo.
+Antes de agregar servidores o workers distribuidos, migrar los límites a Redis
+(`CACHE_DRIVER=redis` y las variables `REDIS_*` correspondientes), verificar la
+conectividad desde PHP y ejecutar `php artisan optimize:clear` antes de reiniciar
+los procesos. Sin un almacén compartido, cada nodo tendría un contador distinto.
+
 ## Diagnóstico push
 
 ```bash

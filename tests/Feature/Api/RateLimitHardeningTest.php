@@ -3,8 +3,10 @@
 namespace Tests\Feature\Api;
 
 use App\Models\User;
+use Illuminate\Http\Request;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\RateLimiter;
 use Laravel\Sanctum\Sanctum;
 use Tests\Feature\Concerns\UsesInMemorySqlite;
 use Tests\TestCase;
@@ -34,6 +36,43 @@ class RateLimitHardeningTest extends TestCase
         $blocked->assertStatus(429);
         $blocked->assertJsonPath('error', 'rate_limited');
         $blocked->assertJsonPath('status', 429);
+        $blocked->assertHeader('Retry-After');
+    }
+
+    public function test_authenticated_api_limits_are_separated_by_bearer_token(): void
+    {
+        $requestA = Request::create('/api/v1/me', 'GET', [], [], [], [
+            'REMOTE_ADDR' => '10.1.0.5',
+            'HTTP_AUTHORIZATION' => 'Bearer token-a',
+        ]);
+        $requestB = Request::create('/api/v1/me', 'GET', [], [], [], [
+            'REMOTE_ADDR' => '10.1.0.5',
+            'HTTP_AUTHORIZATION' => 'Bearer token-b',
+        ]);
+
+        $limitA = RateLimiter::limiter('api')($requestA);
+        $limitB = RateLimiter::limiter('api')($requestB);
+
+        $this->assertSame(60, $limitA->maxAttempts);
+        $this->assertNotSame($limitA->key, $limitB->key);
+        $this->assertStringStartsWith('token:', $limitA->key);
+        $this->assertStringStartsWith('token:', $limitB->key);
+    }
+
+    public function test_onboarding_and_club_join_have_dedicated_limits(): void
+    {
+        $request = Request::create('/api/v1/onboarding', 'POST', [], [], [], [
+            'REMOTE_ADDR' => '10.1.0.5',
+            'HTTP_AUTHORIZATION' => 'Bearer token-a',
+        ]);
+
+        $onboarding = RateLimiter::limiter('onboarding')($request);
+        $nickname = RateLimiter::limiter('nickname-availability')($request);
+        $clubJoin = RateLimiter::limiter('club-join')($request);
+
+        $this->assertSame(12, $onboarding->maxAttempts);
+        $this->assertSame(20, $nickname->maxAttempts);
+        $this->assertSame(6, $clubJoin->maxAttempts);
     }
 
     public function test_apple_login_rejects_an_unsigned_token_before_creating_a_session(): void
