@@ -90,7 +90,7 @@
             </div>
 
             <div class="d-flex justify-content-between align-items-center mb-4 small">
-              <a class="link-underline" href="https://wa.me/51953761235?text=que%20tal%20como%20est%C3%A1s%20olvide%20mi%20contrase%C3%B1a%20en%20fulbii" target="_blank" rel="noopener">¿Olvidaste tu contraseña?</a>
+              <a class="link-underline" href="https://wa.me/51978323154?text=Olvid%C3%A9%20mi%20contrase%C3%B1a%20en%20Fulbii" target="_blank" rel="noopener">¿Olvidaste tu contraseña?</a>
             </div>
 
             <div class="d-grid gap-2">
@@ -106,7 +106,7 @@
                 <a href="{{ route('register') }}" class="fw-600">Crear cuenta</a>
               </div>
             @else
-              <p class="text-center mt-3 mb-0 small text-muted">
+          <p class="text-center mt-3 mb-0 small text-muted">
                 El acceso al backoffice es solo para cuentas autorizadas.
               </p>
             @endif
@@ -162,6 +162,12 @@
       </div>
     </section>
   </div>
+</div>
+
+<div class="text-center small text-muted mt-3">
+  <a href="{{ route('support') }}">Soporte</a> ·
+  <a href="{{ route('privacy') }}">Privacidad</a> ·
+  <a href="https://wa.me/51978323154" target="_blank" rel="noopener">WhatsApp</a>
 </div>
 
 <!-- espacio inferior para no chocar con la tabbar en móvil -->

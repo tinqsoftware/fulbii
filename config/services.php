@@ -66,4 +66,11 @@ return [
         'paths' => ['/join/*', '/pichanga/*', '/club/*'],
     ],
 
+    'fulbii_public' => [
+        'support_email' => env('SUPPORT_EMAIL', 'soporte@fulbii.com'),
+        'support_whatsapp' => env('SUPPORT_WHATSAPP', '51978323154'),
+        'legal_owner' => env('LEGAL_OWNER', 'Tinq Software'),
+        'privacy_effective_date' => env('PRIVACY_EFFECTIVE_DATE', '27 de agosto de 2026'),
+    ],
+
 ];

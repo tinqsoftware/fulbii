@@ -9,7 +9,17 @@ class PublicLandingController extends Controller
 {
     public function landing(): View
     {
-        return view('public.landing', $this->storeLinks());
+        return view('public.landing', array_merge($this->storeLinks(), $this->publicContact()));
+    }
+
+    public function support(): View
+    {
+        return view('public.support', array_merge($this->storeLinks(), $this->publicContact()));
+    }
+
+    public function privacy(): View
+    {
+        return view('public.privacy', array_merge($this->storeLinks(), $this->publicContact()));
     }
 
     public function join(string $joinCode): View
@@ -17,7 +27,7 @@ class PublicLandingController extends Controller
         $code = strtoupper(trim($joinCode));
         abort_if($code === '', 404);
 
-        return view('public.app-link', array_merge($this->storeLinks(), [
+        return view('public.app-link', array_merge($this->storeLinks(), $this->publicContact(), [
             'title' => 'Únete a un grupo en Fulbii',
             'eyebrow' => 'Invitación a grupo',
             'description' => 'Abre Fulbii para revisar la invitación y solicitar tu ingreso al grupo.',
@@ -30,7 +40,7 @@ class PublicLandingController extends Controller
     {
         abort_if($clubId <= 0, 404);
 
-        return view('public.app-link', array_merge($this->storeLinks(), [
+        return view('public.app-link', array_merge($this->storeLinks(), $this->publicContact(), [
             'title' => 'Este grupo te espera en Fulbii',
             'eyebrow' => 'Grupo Fulbii',
             'description' => 'Abre la app para ver la actividad del grupo, sus pichangas y miembros.',
@@ -43,7 +53,7 @@ class PublicLandingController extends Controller
     {
         abort_if($pichangaId <= 0, 404);
 
-        return view('public.app-link', array_merge($this->storeLinks(), [
+        return view('public.app-link', array_merge($this->storeLinks(), $this->publicContact(), [
             'title' => 'Una pichanga te espera en Fulbii',
             'eyebrow' => 'Pichanga Fulbii',
             'description' => 'Abre la app para confirmar, conversar con el grupo y ver todos los detalles.',
@@ -54,7 +64,7 @@ class PublicLandingController extends Controller
 
     public function appOnly(): View
     {
-        return view('public.app-link', array_merge($this->storeLinks(), [
+        return view('public.app-link', array_merge($this->storeLinks(), $this->publicContact(), [
             'title' => 'Este flujo vive en la app Fulbii',
             'eyebrow' => 'Experiencia móvil',
             'description' => 'Para mantener tus permisos, datos y notificaciones sincronizados, continúa desde la app Fulbii.',
@@ -77,6 +87,20 @@ class PublicLandingController extends Controller
             'baseUrl' => rtrim((string) config('services.app_links.base_url', config('app.url')), '/'),
             'androidStoreUrl' => trim((string) config('services.app_links.android_store_url', '')),
             'iosStoreUrl' => trim((string) config('services.app_links.ios_store_url', '')),
+        ];
+    }
+
+    /** @return array{supportEmail:string,supportWhatsapp:string,supportWhatsappUrl:string,legalOwner:string,privacyEffectiveDate:string} */
+    private function publicContact(): array
+    {
+        $whatsapp = preg_replace('/\\D+/', '', (string) config('services.fulbii_public.support_whatsapp', '51978323154')) ?: '51978323154';
+
+        return [
+            'supportEmail' => (string) config('services.fulbii_public.support_email', 'soporte@fulbii.com'),
+            'supportWhatsapp' => $whatsapp,
+            'supportWhatsappUrl' => "https://wa.me/{$whatsapp}",
+            'legalOwner' => (string) config('services.fulbii_public.legal_owner', 'Tinq Software'),
+            'privacyEffectiveDate' => (string) config('services.fulbii_public.privacy_effective_date', now()->translatedFormat('j \\d\\e F \\d\\e Y')),
         ];
     }
 }

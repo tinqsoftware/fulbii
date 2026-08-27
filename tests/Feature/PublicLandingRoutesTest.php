@@ -45,4 +45,26 @@ class PublicLandingRoutesTest extends TestCase
             ->assertSee('El acceso al backoffice es solo para cuentas autorizadas.')
             ->assertDontSee('Crear cuenta');
     }
+
+    public function test_public_support_page_has_whatsapp_contact(): void
+    {
+        $this->get('/soporte')
+            ->assertOk()
+            ->assertSee('Centro de soporte Fulbii')
+            ->assertSee('Escribir por WhatsApp')
+            ->assertSee('https://wa.me/51978323154', false)
+            ->assertSee('soporte@fulbii.com');
+    }
+
+    public function test_public_privacy_page_explains_data_and_contact_options(): void
+    {
+        $this->get('/privacidad')
+            ->assertOk()
+            ->assertSee('Política de privacidad')
+            ->assertSee('Tinq Software')
+            ->assertSee('Firebase Cloud Messaging')
+            ->assertSee('Google Maps')
+            ->assertSee('https://wa.me/51978323154', false)
+            ->assertSee('soporte@fulbii.com');
+    }
 }

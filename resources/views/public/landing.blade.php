@@ -14,9 +14,9 @@
   </style>
 </head>
 <body>
-  <header class="shell nav">
+    <header class="shell nav">
     <a class="brand" href="{{ url('/') }}"><i>⚽</i>Fulbii</a>
-    <nav class="nav-links" aria-label="Navegación principal"><a href="#como-funciona">Cómo funciona</a><a href="#funciones">Funciones</a><a href="#descargar">Descargar</a><a href="{{ route('login') }}">Administración</a></nav>
+    <nav class="nav-links" aria-label="Navegación principal"><a href="#como-funciona">Cómo funciona</a><a href="#funciones">Funciones</a><a href="#descargar">Descargar</a><a href="{{ route('support') }}">Soporte</a><a href="{{ route('privacy') }}">Privacidad</a><a href="{{ $supportWhatsappUrl }}" target="_blank" rel="noopener">WhatsApp</a><a href="{{ route('login') }}">Administración</a></nav>
   </header>
   <main>
     <section class="hero"><div class="shell hero-grid"><div><p class="eyebrow">La comunidad de tu próxima pichanga</p><h1>Juega más.<br>Coordina mejor.</h1><p>Encuentra canchas, organiza pichangas, reúne a tu grupo, compite en retos y construye tu perfil futbolero desde una sola app.</p><div class="actions"><a class="button" href="fulbii://pichangas">Abrir Fulbii</a>@if($iosStoreUrl !== '')<a class="button secondary" href="{{ $iosStoreUrl }}">Descargar en iPhone</a>@endif @if($androidStoreUrl !== '')<a class="button secondary" href="{{ $androidStoreUrl }}">Descargar en Android</a>@endif</div></div><div class="phone" aria-label="Vista previa de Fulbii"><div class="phone-copy"><strong>Todo el fútbol de tu barrio</strong><span>Canchas, cupos, grupos y tu próxima jugada.</span></div></div></div></section>
@@ -25,6 +25,6 @@
     <section><div class="shell"><p class="eyebrow">Comunidad cuidada</p><h2>Más juego, menos fricción.</h2><div class="grid"><article class="card"><div class="card-icon">✓</div><h3>Asistencia clara</h3><p>Confirmaciones, cupos, lista de espera y recordatorios para que nadie quede sin saber qué pasa.</p></article><article class="card"><div class="card-icon">♧</div><h3>Control para cada grupo</h3><p>Administradores, invitaciones, preferencias de notificaciones y reportes para una comunidad sana.</p></article><article class="card"><div class="card-icon">◌</div><h3>Notificaciones útiles</h3><p>Actualizaciones importantes, chat y decisiones se enlazan directamente con el contenido correcto.</p></article></div></div></section>
     <section id="descargar" class="cta"><div class="shell"><p class="eyebrow">Tu próxima pichanga</p><h2>Empieza desde Fulbii.</h2><p>Abre la app para descubrir dónde jugar, organizar a tu grupo y llegar a la cancha con todo resuelto.</p><div class="actions" style="justify-content:center"><a class="button" href="fulbii://pichangas">Abrir Fulbii</a>@if($iosStoreUrl !== '')<a class="button secondary" href="{{ $iosStoreUrl }}">iPhone</a>@endif @if($androidStoreUrl !== '')<a class="button secondary" href="{{ $androidStoreUrl }}">Android</a>@endif</div></div></section>
   </main>
-  <footer><div class="shell"><span>© {{ now()->year }} Fulbii. Fútbol organizado, comunidad activa.</span><a href="{{ route('login') }}">Acceso de administración</a></div></footer>
+  <footer><div class="shell"><span>© {{ now()->year }} Fulbii. Fútbol organizado, comunidad activa.</span><span><a href="{{ route('support') }}">Soporte</a> · <a href="{{ route('privacy') }}">Privacidad</a> · <a href="{{ $supportWhatsappUrl }}" target="_blank" rel="noopener">WhatsApp</a> · <a href="{{ route('login') }}">Administración</a></span></div></footer>
 </body>
 </html>

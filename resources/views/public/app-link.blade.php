@@ -22,6 +22,7 @@
       @if($androidStoreUrl !== '')<a class="button secondary" href="{{ $androidStoreUrl }}">Descargar para Android</a>@endif
     </div>
     <p class="foot">¿No se abrió? Instala Fulbii y vuelve a tocar el enlace. <a href="{{ url('/') }}">Conoce Fulbii</a></p>
+    <p class="foot"><a href="{{ route('support') }}">Soporte</a> · <a href="{{ route('privacy') }}">Privacidad</a> · <a href="{{ $supportWhatsappUrl }}" target="_blank" rel="noopener">WhatsApp</a></p>
   </main>
   <script>setTimeout(function(){ window.location.assign(@json($appLink)); }, 500);</script>
 </body>

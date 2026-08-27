@@ -7,6 +7,8 @@ use App\Http\Controllers\WellKnownController;
 use App\Http\Controllers\PublicLandingController;
 
 Route::get('/', [PublicLandingController::class, 'landing'])->name('home');
+Route::get('/soporte', [PublicLandingController::class, 'support'])->name('support');
+Route::get('/privacidad', [PublicLandingController::class, 'privacy'])->name('privacy');
 Route::redirect('/mapa', '/')->name('mapa');
 Route::prefix('.well-known')->group(function () {
   Route::get('/apple-app-site-association', [WellKnownController::class, 'appleAppSiteAssociation'])
